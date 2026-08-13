@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0b0b0f">
+  <title>Kabir Mobile Data</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="pin-screen" id="pinScreen">
+    <div class="glass-card pin-card">
+      <div class="brand-mark">KM</div>
+      <h1>Kabir Mobile Data</h1>
+      <p class="subtitle">Kabir Mobile</p>
+
+      <div class="pin-title">Enter PIN</div>
+
+      <div class="pin-dots" id="pinDots" aria-label="PIN progress">
+        <span></span><span></span><span></span><span></span>
+      </div>
+
+      <div class="keypad" id="keypad">
+        <button class="key" data-key="1">1</button>
+        <button class="key" data-key="2">2</button>
+        <button class="key" data-key="3">3</button>
+        <button class="key" data-key="4">4</button>
+        <button class="key" data-key="5">5</button>
+        <button class="key" data-key="6">6</button>
+        <button class="key" data-key="7">7</button>
+        <button class="key" data-key="8">8</button>
+        <button class="key" data-key="9">9</button>
+        <div class="key-spacer"></div>
+        <button class="key" data-key="0">0</button>
+        <button class="key key-delete" data-key="delete" aria-label="Delete">⌫</button>
+      </div>
+
+      <p class="pin-message" id="pinMessage"></p>
+    </div>
+  </main>
+
+  <main class="app-shell hidden" id="appShell">
+    <header class="topbar glass-card">
+      <div>
+        <p class="eyebrow">KABIR MOBILE</p>
+        <h2>Kabir Mobile Data</h2>
+      </div>
+      <button class="icon-button" id="logoutButton" aria-label="Lock">⌑</button>
+    </header>
+
+    <section class="welcome glass-card">
+      <p class="eyebrow">SECURE DATABASE</p>
+      <h1>Welcome</h1>
+      <p>Your shop data dashboard is ready.</p>
+      <a class="primary-button" href="admin.html">Open Admin Dashboard</a>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
