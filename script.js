@@ -29,6 +29,29 @@ let scanTimer=null;
 const $=id=>document.getElementById(id);
 const val=id=>($(id)?.value||"").trim();
 
+const FINANCE_COMPANIES=[
+    "Bajaj Finance","HDB Financial Services","TVS Credit","Home Credit India",
+    "IDFC FIRST Bank","Tata Capital","L&T Finance","Mahindra Finance",
+    "Shriram Finance","Cholamandalam Finance","Hero FinCorp","DMI Finance",
+    "Aditya Birla Finance","Personal Finance","Other Mobile Finance",
+    "No Finance / Cash"
+];
+
+function setupFinanceCompany(){
+    const select=$("financeCompany");
+    if(!select || select.dataset.ready==="1") return;
+
+    FINANCE_COMPANIES.forEach(name=>{
+        const option=document.createElement("option");
+        option.value=name;
+        option.textContent=name;
+        select.appendChild(option);
+    });
+
+    select.dataset.ready="1";
+}
+
+
 
 /* =========================================================
    PHONE BRANDS / MODELS / COLOURS / STORAGE
@@ -889,6 +912,9 @@ async function save(e){
             storage:
                 val("storage"),
 
+            financeCompany:
+                val("financeCompany"),
+
             phoneAmount:
                 Number(
                     val("phoneAmount")
@@ -965,6 +991,9 @@ async function save(e){
          */
 
         $("customerForm").reset();
+
+        if($("financeCompany"))
+            $("financeCompany").value="";
 
 
         /*
@@ -1104,6 +1133,7 @@ function renderSearch(){
             c.model,
             c.colour,
             c.storage,
+            c.financeCompany,
             c.lockName,
             c.stock,
             c.counter,
@@ -1237,6 +1267,11 @@ function renderSearch(){
                     ${item(
                         "Storage",
                         c.storage||"-"
+                    )}
+
+                    ${item(
+                        "Finance Company",
+                        c.financeCompany||"-"
                     )}
 
                     ${item(
@@ -1564,6 +1599,8 @@ function init(){
     nav();
 
     brands();
+
+    setupFinanceCompany();
 
     pincode();
 
