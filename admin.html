@@ -7,9 +7,9 @@
 <main class="admin app">
 <header class="glass topbar"><div><div class="eyebrow">KABIR MOBILE</div><h2>Admin Settings</h2></div><a class="round" href="index.html">‹</a></header>
 <section class="glass panel">
-<div class="section-head"><div><div class="eyebrow">SECURITY</div><h2>Password Settings</h2></div></div>
-<p class="muted">Main website और Admin Panel दोनों में यही 4-digit password काम करेगा. यहाँ password बदलने पर दोनों जगह वही नया password लागू होगा.</p>
-<form id="changePinForm"><label>Current Password<input id="currentPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></label><label>New Password<input id="newPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></label><label>Confirm New Password<input id="confirmPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></label><button class="save" type="submit">SAVE NEW PASSWORD</button><p id="pinSettingsMessage" class="message"></p></form>
+<div class="section-head"><div><div class="eyebrow">SECURITY</div><h2>PIN Settings</h2></div></div>
+<p class="muted">PIN is the local app lock. Firebase authentication and database rules provide the real backend access control.</p>
+<form id="changePinForm"><label>Current PIN<input id="currentPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></label><label>New PIN<input id="newPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></label><label>Confirm New PIN<input id="confirmPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></label><button class="save" type="submit">SAVE NEW PIN</button><p id="pinSettingsMessage" class="message"></p></form>
 </section>
 <section class="glass panel"><div class="section-head"><div><div class="eyebrow">DATABASE</div><h2>Live Status</h2></div></div><div class="mini-grid"><div><span>Customers</span><strong id="adminCustomers">0</strong></div><div><span>Devices</span><strong id="adminDevices">0</strong></div></div><p id="adminFirebaseStatus" class="firebase-status">Connecting to Firebase…</p></section>
 <footer>Copyright © 2026 Kabir Data powered by AMAN</footer>
