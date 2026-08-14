@@ -56,18 +56,19 @@
       <label>7. IMEI<div class="with-button"><input id="imei" inputmode="numeric" maxlength="15" required><button id="scanImeiButton" type="button">▣ Scan</button></div><small>QR/barcode scan uses the phone camera when supported.</small></label>
       <label>8. Colour<select id="colour" required disabled><option value="">Select model first</option></select></label>
       <label>9. RAM + Storage<select id="storage" required disabled><option value="">Select model first</option></select></label>
-      <div class="cols"><label>10. Phone Amount<input id="phoneAmount" type="number" inputmode="decimal" min="0" required placeholder="₹"></label><label>11. Down Payment (DP)<input id="downPayment" type="number" inputmode="decimal" min="0" required placeholder="₹"></label></div>
-      <div class="cols"><label>12. EMI Amount<input id="emiAmount" type="number" inputmode="decimal" min="0" placeholder="₹"></label><label>EMI Months<input id="emiMonths" type="number" inputmode="numeric" min="0" placeholder="Months"></label></div>
-      <div class="cols"><label>13. Lock<input id="lockName" placeholder="Lock name"></label><label>14. Stock<input id="stock" placeholder="Purchase source"></label></div>
-      <div class="cols"><label>15. Counter<input id="counter"></label><label>16. Financer Name<input id="financerName"></label></div>
+      <label>10. Finance Company<select id="financeCompany"><option value="">Select Finance Company</option></select></label>
+      <div class="cols"><label>11. Phone Amount<input id="phoneAmount" type="number" inputmode="decimal" min="0" required placeholder="₹"></label><label>12. Down Payment (DP)<input id="downPayment" type="number" inputmode="decimal" min="0" required placeholder="₹"></label></div>
+      <div class="cols"><label>13. EMI Amount<input id="emiAmount" type="number" inputmode="decimal" min="0" placeholder="₹"></label><label>EMI Months<input id="emiMonths" type="number" inputmode="numeric" min="0" placeholder="Months"></label></div>
+      <div class="cols"><label>14. Lock<input id="lockName" placeholder="Lock name"></label><label>15. Stock<input id="stock" placeholder="Purchase source"></label></div>
+      <div class="cols"><label>16. Counter<input id="counter"></label><label>17. Financer Name<input id="financerName"></label></div>
     </div>
     <div class="block"><b>Bill & Documents</b>
-      <label>17. Bill (After 3 Months)<div class="bill-box"><span><strong>Bill</strong><small id="billDueText"></small></span><em>NO</em></div></label>
-      <label>18. Aadhaar Card<input id="aadhaarFile" type="file" accept="image/*,.pdf" capture="environment"><small>Camera or photo/library.</small></label>
-      <label>19. PAN Card<input id="panFile" type="file" accept="image/*,.pdf" capture="environment"><small>Camera or photo/library.</small></label>
-      <label>20. Customer Photo<input id="customerPhoto" type="file" accept="image/*" capture="user"><small>Direct front camera on supported phones.</small></label>
+      <label>18. Bill (After 3 Months)<div class="bill-box"><span><strong>Bill</strong><small id="billDueText"></small></span><em>NO</em></div></label>
+      <label>19. Aadhaar Card<input id="aadhaarFile" type="file" accept="image/*,.pdf" capture="environment"><small>Camera or photo/library.</small></label>
+      <label>20. PAN Card<input id="panFile" type="file" accept="image/*,.pdf" capture="environment"><small>Camera or photo/library.</small></label>
+      <label>21. Customer Photo<input id="customerPhoto" type="file" accept="image/*" capture="user"><small>Direct front camera on supported phones.</small></label>
     </div>
-    <button id="saveCustomerButton" class="save" type="submit">21. SAVE CUSTOMER <span id="saveSpinner" class="spinner hidden"></span></button>
+    <button id="saveCustomerButton" class="save" type="submit">22. SAVE CUSTOMER <span id="saveSpinner" class="spinner hidden"></span></button>
     <p id="formMessage" class="message"></p>
   </form>
 </section>
