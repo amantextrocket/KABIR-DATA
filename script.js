@@ -1,8 +1,33 @@
 /* =========================================================
    KABIR MOBILE DATA
-   Initial PIN + UI logic
-   Firebase integration will be connected later.
+   Original structure + Firebase connection
    ========================================================= */
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
+import {
+  getAuth,
+  signInAnonymously,
+  onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js";
+import {
+  getFirestore
+} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDWD2S7Zvcy-T_Ddr8Ytbqwv9tNEBNIJg4",
+  authDomain: "kabir-data.firebaseapp.com",
+  projectId: "kabir-data",
+  storageBucket: "kabir-data.firebasestorage.app",
+  messagingSenderId: "261218356495",
+  appId: "1:261218356495:web:2bbfeae7c70df8d3a2c27a",
+  measurementId: "G-EYTJPH33KQ"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+window.kabirFirebase = { app, auth, db };
 
 const DEFAULT_PIN = "0000";
 const PIN_STORAGE_KEY = "kabirMobilePin";
@@ -14,8 +39,47 @@ function getSavedPin() {
   return /^\d{4}$/.test(savedPin || "") ? savedPin : DEFAULT_PIN;
 }
 
+function updateFirebaseUI(status, type = "") {
+  const statusText = document.getElementById("connectionStatus");
+  const firebaseStatus = document.getElementById("firebaseStatus");
+  const databaseStatus = document.getElementById("databaseStatus");
+  const badge = document.getElementById("firebaseBadge");
+
+  if (statusText) statusText.textContent = status;
+  if (firebaseStatus) firebaseStatus.textContent = status;
+  if (databaseStatus) {
+    databaseStatus.textContent =
+      type === "connected" ? "Connected" :
+      type === "error" ? "Error" : "Connecting…";
+  }
+
+  if (badge) {
+    badge.classList.remove("connected", "error");
+    if (type) badge.classList.add(type);
+  }
+}
+
+async function connectFirebase() {
+  updateFirebaseUI("Connecting to Firebase…");
+
+  try {
+    await signInAnonymously(auth);
+    updateFirebaseUI("Firebase connected", "connected");
+  } catch (error) {
+    console.error("Firebase authentication error:", error);
+    updateFirebaseUI("Firebase connection failed", "error");
+  }
+}
+
+onAuthStateChanged(auth, (user) => {
+  if (user) {
+    updateFirebaseUI("Firebase connected", "connected");
+  }
+});
+
 function updatePinDots() {
   const dots = document.querySelectorAll("#pinDots span");
+
   dots.forEach((dot, index) => {
     dot.classList.toggle("filled", index < enteredPin.length);
   });
@@ -23,9 +87,7 @@ function updatePinDots() {
 
 function showPinMessage(message) {
   const messageElement = document.getElementById("pinMessage");
-  if (messageElement) {
-    messageElement.textContent = message;
-  }
+  if (messageElement) messageElement.textContent = message;
 }
 
 function unlock() {
@@ -60,7 +122,10 @@ function checkPin() {
     unlock();
   } else {
     showPinMessage("Incorrect PIN");
-    if (navigator.vibrate) navigator.vibrate([35, 35, 35]);
+
+    if (navigator.vibrate) {
+      navigator.vibrate([35, 35, 35]);
+    }
 
     setTimeout(() => {
       enteredPin = "";
@@ -110,6 +175,7 @@ function setupPinKeypad() {
 function setupKeyboardInput() {
   document.addEventListener("keydown", (event) => {
     const pinScreen = document.getElementById("pinScreen");
+
     if (!pinScreen || pinScreen.classList.contains("hidden")) return;
 
     if (/^\d$/.test(event.key)) {
@@ -122,6 +188,7 @@ function setupKeyboardInput() {
 
 function setupLogout() {
   const logoutButton = document.getElementById("logoutButton");
+
   if (logoutButton) {
     logoutButton.addEventListener("click", lock);
   }
@@ -143,6 +210,8 @@ function setupChangePin() {
     const currentPin = document.getElementById("currentPin").value.trim();
     const newPin = document.getElementById("newPin").value.trim();
     const confirmPin = document.getElementById("confirmPin").value.trim();
+
+    message.style.color = "";
 
     if (currentPin !== getSavedPin()) {
       message.textContent = "Current PIN is incorrect.";
@@ -181,12 +250,7 @@ function init() {
   setupLogout();
   setupChangePin();
   updatePinDots();
-
-  /*
-    For the first version, PIN unlock is handled locally.
-    Firebase configuration and secure authentication will be
-    connected in the next stage.
-  */
+  connectFirebase();
 }
 
 document.addEventListener("DOMContentLoaded", init);
