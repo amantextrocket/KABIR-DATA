@@ -10,10 +10,9 @@
   --text: #f7f7fb;
   --muted: rgba(247, 247, 251, 0.58);
   --soft: rgba(255, 255, 255, 0.09);
-  --accent: #ffffff;
   --danger: #ff6b6b;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
-    "Helvetica Neue", Arial, sans-serif;
+  --success: #55df8b;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
 }
 
 html,
@@ -126,15 +125,8 @@ button {
   border-radius: 15px;
 }
 
-h1,
-h2,
-h3,
-p {
-  margin-top: 0;
-}
-
 .pin-card h1 {
-  margin-bottom: 4px;
+  margin: 0 0 4px;
   font-size: 25px;
   letter-spacing: -0.7px;
 }
@@ -215,6 +207,13 @@ p {
   margin: 16px 0 0;
   color: var(--danger);
   font-size: 13px;
+}
+
+.connection-status {
+  min-height: 18px;
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .app-shell,
@@ -306,6 +305,35 @@ p {
 .secondary-button {
   color: var(--text);
   background: var(--soft);
+}
+
+.firebase-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 12px;
+  padding: 9px 12px;
+  border: 1px solid var(--card-border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.firebase-badge.connected .status-dot {
+  background: var(--success);
+  box-shadow: 0 0 10px rgba(85, 223, 139, 0.55);
+}
+
+.firebase-badge.error .status-dot {
+  background: var(--danger);
 }
 
 .stats-grid {
