@@ -1,62 +1,80 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="theme-color" content="#0b0b0f">
-  <title>Kabir Mobile Data</title>
-  <link rel="stylesheet" href="style.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#08090d">
+<title>Kabir Mobile Data</title>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <main class="pin-screen" id="pinScreen">
-    <div class="glass-card pin-card">
-      <div class="brand-mark">KM</div>
-      <h1>Kabir Mobile Data</h1>
-      <p class="subtitle">Kabir Mobile</p>
+<section id="pinScreen" class="pin-screen">
+  <div class="glass pin-card">
+    <div class="logo">KM</div>
+    <div class="eyebrow">KABIR MOBILE</div>
+    <h1>Kabir Mobile Data</h1>
+    <p class="muted">Secure shop database</p>
+    <label class="pin-label" for="pinInput">Enter PIN</label>
+    <input id="pinInput" class="pin-input" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" placeholder="••••">
+    <div id="pinDots" class="pin-dots"><i></i><i></i><i></i><i></i></div>
+    <p id="pinMessage" class="message"></p>
+  </div>
+</section>
 
-      <div class="pin-title">Enter PIN</div>
+<main id="appScreen" class="app hidden">
+<header class="glass topbar">
+  <div><div class="eyebrow">KABIR MOBILE</div><h2>Kabir Mobile Data</h2></div>
+  <button id="lockButton" class="round" type="button">⌑</button>
+</header>
 
-      <div class="pin-dots" id="pinDots" aria-label="PIN progress">
-        <span></span><span></span><span></span><span></span>
-      </div>
+<section class="dashboard">
+  <button id="totalCustomersCard" class="glass stat" type="button"><span class="icon">👥</span><span>Total Customers</span><strong id="totalCustomers">0</strong></button>
+  <button id="totalDevicesCard" class="glass stat" type="button"><span class="icon">📱</span><span>Total Devices</span><strong id="totalDevices">0</strong></button>
+  <button id="searchCustomerCard" class="glass action" type="button"><span class="icon">⌕</span><strong>Search Customer</strong><small>Name, mobile, IMEI, date…</small></button>
+  <button id="addCustomerCard" class="glass action" type="button"><span class="icon">＋</span><strong>Add Customer</strong><small>Create a new customer record</small></button>
+</section>
 
-      <div class="keypad" id="keypad">
-        <button class="key" data-key="1">1</button>
-        <button class="key" data-key="2">2</button>
-        <button class="key" data-key="3">3</button>
-        <button class="key" data-key="4">4</button>
-        <button class="key" data-key="5">5</button>
-        <button class="key" data-key="6">6</button>
-        <button class="key" data-key="7">7</button>
-        <button class="key" data-key="8">8</button>
-        <button class="key" data-key="9">9</button>
-        <div class="key-spacer"></div>
-        <button class="key" data-key="0">0</button>
-        <button class="key key-delete" data-key="delete" aria-label="Delete">⌫</button>
-      </div>
+<section id="searchSection" class="glass panel hidden">
+  <div class="section-head"><div><div class="eyebrow">DATABASE</div><h2>Search Customer</h2></div><button class="close" data-close="searchSection">×</button></div>
+  <div class="search"><span>⌕</span><input id="searchInput" type="search" placeholder="Name, mobile, IMEI, date, city…" autocomplete="off"></div>
+  <div id="searchResults" class="results"><div class="empty">Customer records will appear here.</div></div>
+</section>
 
-      <p class="pin-message" id="pinMessage"></p>
-      <p class="connection-status" id="connectionStatus">Connecting…</p>
+<section id="addSection" class="glass panel hidden">
+  <div class="section-head"><div><div class="eyebrow">NEW RECORD</div><h2>Add Customer</h2></div><button class="close" data-close="addSection">×</button></div>
+  <form id="customerForm">
+    <div class="block"><b>Customer Details</b>
+      <label>1. Customer Name<input id="customerName" required autocomplete="name"></label>
+      <label>2. Address<textarea id="address" rows="3" required></textarea></label>
+      <label>3. PIN Code<input id="pincode" inputmode="numeric" maxlength="6" required placeholder="6 digit PIN code"><small id="pincodeStatus"></small></label>
+      <div class="cols"><label>4. City / Village<input id="city" required placeholder="Auto from PIN"></label><label>State<input id="state" required placeholder="Auto from PIN"></label></div>
+      <label>Mobile Number<input id="phone" type="tel" inputmode="tel" maxlength="10" required></label>
     </div>
-  </main>
+    <div class="block"><b>Device Details</b>
+      <label>5. Phone Brand<select id="brand" required><option value="">Select brand</option></select></label>
+      <label>6. Phone Model<select id="model" required disabled><option value="">Select brand first</option></select></label>
+      <label>7. IMEI<div class="with-button"><input id="imei" inputmode="numeric" maxlength="15" required><button id="scanImeiButton" type="button">▣ Scan</button></div><small>QR/barcode scan uses the phone camera when supported.</small></label>
+      <label>8. Colour<select id="colour" required disabled><option value="">Select model first</option></select></label>
+      <label>9. RAM + Storage<select id="storage" required disabled><option value="">Select model first</option></select></label>
+      <div class="cols"><label>10. Phone Amount<input id="phoneAmount" type="number" inputmode="decimal" min="0" required placeholder="₹"></label><label>11. Down Payment (DP)<input id="downPayment" type="number" inputmode="decimal" min="0" required placeholder="₹"></label></div>
+      <div class="cols"><label>12. EMI Amount<input id="emiAmount" type="number" inputmode="decimal" min="0" placeholder="₹"></label><label>EMI Months<input id="emiMonths" type="number" inputmode="numeric" min="0" placeholder="Months"></label></div>
+      <div class="cols"><label>13. Lock<input id="lockName" placeholder="Lock name"></label><label>14. Stock<input id="stock" placeholder="Purchase source"></label></div>
+      <div class="cols"><label>15. Counter<input id="counter"></label><label>16. Financer Name<input id="financerName"></label></div>
+    </div>
+    <div class="block"><b>Bill & Documents</b>
+      <label>17. Bill (After 3 Months)<div class="bill-box"><span><strong>Bill</strong><small id="billDueText"></small></span><em>NO</em></div></label>
+      <label>18. Aadhaar Card<input id="aadhaarFile" type="file" accept="image/*,.pdf" capture="environment"><small>Camera or photo/library.</small></label>
+      <label>19. PAN Card<input id="panFile" type="file" accept="image/*,.pdf" capture="environment"><small>Camera or photo/library.</small></label>
+      <label>20. Customer Photo<input id="customerPhoto" type="file" accept="image/*" capture="user"><small>Direct front camera on supported phones.</small></label>
+    </div>
+    <button id="saveCustomerButton" class="save" type="submit">21. SAVE CUSTOMER <span id="saveSpinner" class="spinner hidden"></span></button>
+    <p id="formMessage" class="message"></p>
+  </form>
+</section>
+<footer>Copyright © 2026 Kabir Data powered by AMAN</footer>
+</main>
 
-  <main class="app-shell hidden" id="appShell">
-    <header class="topbar glass-card">
-      <div>
-        <p class="eyebrow">KABIR MOBILE</p>
-        <h2>Kabir Mobile Data</h2>
-      </div>
-      <button class="icon-button" id="logoutButton" aria-label="Lock">⌑</button>
-    </header>
-
-    <section class="welcome glass-card">
-      <p class="eyebrow">SECURE DATABASE</p>
-      <h1>Welcome</h1>
-      <p>Your shop data dashboard is ready.</p>
-      <a class="primary-button" href="admin.html">Open Admin Dashboard</a>
-    </section>
-  </main>
-
-  <script type="module" src="script.js"></script>
+<div id="scannerModal" class="modal hidden"><div class="glass modal-card"><div class="section-head"><div><div class="eyebrow">CAMERA</div><h2>Scan IMEI</h2></div><button id="closeScannerButton" class="close">×</button></div><video id="scannerVideo" playsinline muted></video><p id="scannerMessage" class="message">Point the camera at a QR/barcode.</p></div></div>
+<script type="module" src="script.js"></script>
 </body>
 </html>
