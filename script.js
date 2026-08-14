@@ -20,6 +20,8 @@ const db=getFirestore(app);
 const PIN_KEY="kabir_mobile_pin";
 const DEFAULT_PIN="0000";
 const COL="customers";
+const SETTINGS_COL="settings";
+const SETTINGS_DOC="security";
 
 let user=null;
 let customers=[];
@@ -241,8 +243,30 @@ storage:["128 GB","256 GB"]
    COMMON HELPERS
 ========================================================= */
 
+let sharedPin=DEFAULT_PIN;
+let sharedPinLoaded=false;
+
 function pin(){
-    return localStorage.getItem(PIN_KEY)||DEFAULT_PIN;
+    return sharedPin||DEFAULT_PIN;
+}
+
+async function loadSharedPin(){
+    try{
+        const snap=await import("https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js")
+            .then(({getDoc})=>getDoc(doc(db,SETTINGS_COL,SETTINGS_DOC)));
+
+        if(snap.exists() && typeof snap.data().pin==="string" && /^\\d{4}$/.test(snap.data().pin)){
+            sharedPin=snap.data().pin;
+        }else{
+            sharedPin=DEFAULT_PIN;
+            await import("https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js")
+                .then(({setDoc})=>setDoc(doc(db,SETTINGS_COL,SETTINGS_DOC),{pin:DEFAULT_PIN}));
+        }
+        sharedPinLoaded=true;
+    }catch(e){
+        console.error("Shared password load failed:",e);
+        sharedPinLoaded=false;
+    }
 }
 
 function msg(id,t,ok=false){
@@ -1353,135 +1377,109 @@ function search(){
 ========================================================= */
 
 async function startScan(){
-
     let modal=$("scannerModal");
     let video=$("scannerVideo");
     let m=$("scannerMessage");
 
     modal.classList.remove("hidden");
 
-
-    if(!("BarcodeDetector" in window)){
-
-        m.textContent=
-            "इस browser में barcode scanner available नहीं है. IMEI manually enter करें.";
-
-        return;
-    }
-
-
     try{
+        if(!navigator.mediaDevices?.getUserMedia){
+            throw Error("Camera API unavailable");
+        }
 
-        let fmts=
-            await BarcodeDetector
-                .getSupportedFormats();
-
-
-        let formats=
-            fmts.filter(
+        // Prefer native BarcodeDetector where available.
+        if("BarcodeDetector" in window){
+            let fmts=await BarcodeDetector.getSupportedFormats();
+            let formats=fmts.filter(
                 x=>[
-                    "qr_code",
-                    "code_128",
-                    "code_39",
-                    "ean_13",
-                    "ean_8"
+                    "qr_code","code_128","code_39","code_93",
+                    "ean_13","ean_8","upc_a","upc_e","itf"
                 ].includes(x)
             );
 
-
-        if(!formats.length)
-            throw Error("No barcode format");
-
-
-        scanStream=
-            await navigator.mediaDevices
-                .getUserMedia({
-                    video:{
-                        facingMode:{
-                            ideal:"environment"
-                        }
-                    },
+            if(formats.length){
+                scanStream=await navigator.mediaDevices.getUserMedia({
+                    video:{facingMode:{ideal:"environment"}},
                     audio:false
                 });
+                video.srcObject=scanStream;
+                await video.play();
 
+                let detector=new BarcodeDetector({formats});
 
+                let loop=async()=>{
+                    if(!scanStream) return;
+                    try{
+                        let a=await detector.detect(video);
+                        if(a?.length){
+                            let raw=a[0].rawValue||"";
+                            let d=raw.replace(/\\D/g,"");
+                            m.textContent="Scanned: "+raw;
+                            if(d.length>=15){
+                                $("imei").value=d.slice(0,15);
+                                stopScan();
+                                return;
+                            }
+                        }
+                    }catch(x){}
+                    scanTimer=setTimeout(loop,250);
+                };
+                loop();
+                return;
+            }
+        }
+
+        // Fallback for browsers (including iPhone/Safari builds) without native BarcodeDetector.
+        const z=await import("https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/+esm");
+        const Reader=z.BrowserMultiFormatReader||z.BrowserQRCodeReader;
+        if(!Reader) throw Error("Scanner library unavailable");
+
+        scanStream=await navigator.mediaDevices.getUserMedia({
+            video:{facingMode:{ideal:"environment"}},
+            audio:false
+        });
         video.srcObject=scanStream;
-
         await video.play();
 
-
-        let detector=
-            new BarcodeDetector({
-                formats
-            });
-
-
-        let loop=async()=>{
-
-            if(!scanStream)
-                return;
-
-            try{
-
-                let a=
-                    await detector.detect(video);
-
-
-                if(a?.length){
-
-                    let raw=
-                        a[0].rawValue||"";
-
-                    let d=
-                        raw.replace(
-                            /\D/g,
-                            ""
-                        );
-
-
-                    m.textContent=
-                        "Scanned: "+raw;
-
-
-                    if(d.length>=15){
-
-                        $("imei").value=
-                            d.slice(0,15);
-
-                        stopScan();
-
-                        return;
-                    }
+        const reader=new Reader();
+        let active=true;
+        const controls=await reader.decodeFromVideoElement(video,(result,err)=>{
+            if(!active) return;
+            if(result){
+                const raw=result.getText?.()||result.text||"";
+                const d=raw.replace(/\\D/g,"");
+                m.textContent="Scanned: "+raw;
+                if(d.length>=15){
+                    $("imei").value=d.slice(0,15);
+                    active=false;
+                    try{controls?.stop?.();}catch(x){}
+                    stopScan();
                 }
-
-            }catch(x){}
-
-
-            scanTimer=
-                setTimeout(
-                    loop,
-                    350
-                );
-        };
-
-
-        loop();
-
+            }
+        });
+        scanTimer=controls;
+        return;
 
     }catch(x){
-
         console.error(x);
-
         m.textContent=
-            "Camera access नहीं मिला. iPhone Settings में camera permission check करें.";
+            "Camera/barcode scanner शुरू नहीं हुआ. Camera permission और HTTPS/localhost check करें.";
+        if(scanStream) stopScan();
     }
+
+    
 }
 
 
 function stopScan(){
 
-    if(scanTimer)
-        clearTimeout(scanTimer);
+    if(scanTimer){
+        try{
+            if(typeof scanTimer==="number") clearTimeout(scanTimer);
+            else scanTimer.stop?.();
+        }catch(x){}
+    }
 
     scanTimer=null;
 
@@ -1592,8 +1590,9 @@ function changePin(){
    INITIALIZE
 ========================================================= */
 
-function init(){
+async function init(){
 
+    await loadSharedPin();
     setupPin();
 
     nav();
