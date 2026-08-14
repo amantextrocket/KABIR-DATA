@@ -1,85 +1,18 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="theme-color" content="#0b0b0f">
-  <title>Admin — Kabir Mobile Data</title>
-  <link rel="stylesheet" href="style.css">
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><meta name="theme-color" content="#08090d"><title>Admin — Kabir Mobile Data</title><link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <main class="admin-shell">
-    <header class="topbar glass-card">
-      <div>
-        <p class="eyebrow">KABIR MOBILE</p>
-        <h2>Admin Dashboard</h2>
-      </div>
-      <a class="icon-button" href="index.html" aria-label="Lock">⌑</a>
-    </header>
-
-    <section class="hero-panel glass-card">
-      <div class="brand-mark small">KM</div>
-      <p class="eyebrow">CUSTOMER DATABASE</p>
-      <h1>Kabir Mobile Data</h1>
-      <p>Customer records, search and shop management will be added here.</p>
-
-      <div class="firebase-badge" id="firebaseBadge">
-        <span class="status-dot"></span>
-        <span id="firebaseStatus">Connecting to Firebase…</span>
-      </div>
-    </section>
-
-    <section class="stats-grid">
-      <article class="glass-card stat-card">
-        <span>Total Customers</span>
-        <strong id="totalCustomers">0</strong>
-      </article>
-      <article class="glass-card stat-card">
-        <span>Database</span>
-        <strong id="databaseStatus">Connecting…</strong>
-      </article>
-    </section>
-
-    <section class="glass-card panel">
-      <div class="section-heading">
-        <div>
-          <p class="eyebrow">SECURITY</p>
-          <h2>PIN Settings</h2>
-        </div>
-      </div>
-
-      <button class="secondary-button" id="changePinButton">Change PIN</button>
-
-      <div class="change-pin-box hidden" id="changePinBox">
-        <label for="currentPin">Current PIN</label>
-        <input id="currentPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="0000">
-
-        <label for="newPin">New PIN</label>
-        <input id="newPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="4 digit PIN">
-
-        <label for="confirmPin">Confirm New PIN</label>
-        <input id="confirmPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="Repeat new PIN">
-
-        <button class="primary-button" id="savePinButton">Save New PIN</button>
-        <p class="pin-message" id="changePinMessage"></p>
-      </div>
-    </section>
-
-    <section class="glass-card panel">
-      <div class="section-heading">
-        <div>
-          <p class="eyebrow">COMING NEXT</p>
-          <h2>Customer Data</h2>
-        </div>
-      </div>
-      <div class="empty-state">
-        <div class="empty-icon">＋</div>
-        <h3>Customer database ready</h3>
-        <p>Next we can add customer name, phone, address, orders, search and Firebase storage.</p>
-      </div>
-    </section>
-  </main>
-
-  <script type="module" src="script.js"></script>
-</body>
-</html>
+<main class="admin app">
+<header class="glass topbar"><div><div class="eyebrow">KABIR MOBILE</div><h2>Admin Settings</h2></div><a class="round" href="index.html">‹</a></header>
+<section class="glass panel">
+<div class="section-head"><div><div class="eyebrow">SECURITY</div><h2>PIN Settings</h2></div></div>
+<p class="muted">PIN is the local app lock. Firebase authentication and database rules provide the real backend access control.</p>
+<form id="changePinForm"><label>Current PIN<input id="currentPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></label><label>New PIN<input id="newPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></label><label>Confirm New PIN<input id="confirmPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></label><button class="save" type="submit">SAVE NEW PIN</button><p id="pinSettingsMessage" class="message"></p></form>
+</section>
+<section class="glass panel"><div class="section-head"><div><div class="eyebrow">DATABASE</div><h2>Live Status</h2></div></div><div class="mini-grid"><div><span>Customers</span><strong id="adminCustomers">0</strong></div><div><span>Devices</span><strong id="adminDevices">0</strong></div></div><p id="adminFirebaseStatus" class="firebase-status">Connecting to Firebase…</p></section>
+<footer>Copyright © 2026 Kabir Data powered by AMAN</footer>
+</main>
+<script type="module" src="script.js"></script>
+</body></html>
