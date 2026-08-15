@@ -1544,7 +1544,17 @@ async function saveRepair(e){
     const ids=["repairCustomerName","repairPhone","repairDevice","repairProblem","repairBy","repairPayment"];
     for(const id of ids)if(!val(id)){ $(id)?.focus();msg("repairMessage","सभी fields भरना जरूरी है.");return }
     const phone=val("repairPhone").replace(/\D/g,"");
-    if(!/^\d{10}$/.test(phone)){msg("repairMessage","10 digit customer phone number डालें.");return}
+    if(!/^\d{10}$/.test(phone)){
+        msg("repairMessage","10 digit customer phone number डालें.");
+        return;
+    }
+
+    const payment=val("repairPayment");
+    if(payment===""){
+        msg("repairMessage","Payment भरना जरूरी है.");
+        return;
+    }
+
     const saveBtn = $("repairForm")?.querySelector("button[type='submit']");
     if(saveBtn) saveBtn.disabled=true;
 
@@ -1555,7 +1565,7 @@ async function saveRepair(e){
             device:val("repairDevice"),
             problem:val("repairProblem"),
             repairBy:val("repairBy"),
-            payment:Number(val("repairPayment")),
+            payment:Number(payment),
             createdAt:serverTimestamp(),
             createdBy:user?.uid||null
         });
@@ -1572,10 +1582,31 @@ async function saveRepair(e){
 function loadScript(src){return new Promise((resolve,reject)=>{const s=document.createElement("script");s.src=src;s.onload=resolve;s.onerror=reject;document.head.appendChild(s)})}
 async function exportXlsx(rows,filename,sheet){
     try{
-        if(!window.XLSX)await loadScript("https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js");
-        const ws=XLSX.utils.json_to_sheet(rows),wb=XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb,ws,sheet);XLSX.writeFile(wb,filename);
-    }catch(e){console.error(e);alert("Excel file download नहीं हो पाया.")}
+        if(!rows || !rows.length){
+            alert("Download करने के लिए data उपलब्ध नहीं है.");
+            return;
+        }
+
+        if(!window.XLSX){
+            await loadScript(
+                "https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"
+            );
+        }
+
+        if(!window.XLSX){
+            throw Error("Excel library load नहीं हुई.");
+        }
+
+        const ws=XLSX.utils.json_to_sheet(rows);
+        const wb=XLSX.utils.book_new();
+
+        XLSX.utils.book_append_sheet(wb,ws,sheet);
+        XLSX.writeFile(wb,filename);
+
+    }catch(e){
+        console.error("Excel export error:",e);
+        alert("Excel file download नहीं हो पाया. Internet connection check करें.");
+    }
 }
 function exportCustomers(){
     if(!customers.length){alert("Customer data अभी उपलब्ध नहीं है.");return}
@@ -1668,6 +1699,7 @@ function init(){
     authInit();
 
     subscribe();
+    subscribeRepairing();
 
     $("customerForm")
         ?.addEventListener(
