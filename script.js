@@ -1,6 +1,6 @@
 import {initializeApp} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
 import {getAuth,signInAnonymously,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js";
-import {getFirestore,collection,addDoc,updateDoc,doc,onSnapshot,query,orderBy,serverTimestamp} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
+import {getFirestore,collection,addDoc,updateDoc,deleteDoc,doc,onSnapshot,query,orderBy,serverTimestamp} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
 
 const firebaseConfig={
     apiKey:"AIzaSyDWD2S7Zvcy-T_Ddr8Ytbqwv9tNEBNIJg4",
@@ -20,8 +20,8 @@ const db=getFirestore(app);
 const PIN_KEY="kabir_mobile_pin";
 const DEFAULT_PIN="0000";
 const COL="customers";
-const SETTINGS_COL="settings";
-const SETTINGS_DOC="security";
+const REPAIR_COL="repairing";
+const REMOTE_DEVICES_URL="https://cdn.jsdelivr.net/gh/bsthen/device-models/devices.json";
 
 let user=null;
 let customers=[];
@@ -54,6 +54,48 @@ function setupFinanceCompany(){
 }
 
 
+
+
+let remoteModelsByBrand={};
+let remoteModelsLoaded=false;
+
+async function loadAllPhoneModels(){
+    if(remoteModelsLoaded)return;
+    try{
+        const cached=sessionStorage.getItem("kabir_device_catalog");
+        if(cached){
+            remoteModelsByBrand=JSON.parse(cached);
+            remoteModelsLoaded=true;
+            return;
+        }
+        const r=await fetch(REMOTE_DEVICES_URL,{cache:"force-cache"});
+        if(!r.ok)throw Error("Device catalog unavailable");
+        const data=await r.json(), grouped={};
+        Object.values(data||{}).forEach(d=>{
+            const brand=String(d?.brand||"").trim(), name=String(d?.name||"").trim();
+            if(!brand||!name)return;
+            (grouped[brand] ||= []).push(name);
+        });
+        Object.keys(grouped).forEach(k=>grouped[k]=[...new Set(grouped[k])]);
+        remoteModelsByBrand=grouped;
+        sessionStorage.setItem("kabir_device_catalog",JSON.stringify(grouped));
+        remoteModelsLoaded=true;
+    }catch(e){console.warn("Phone catalog unavailable:",e)}
+}
+function modelListForBrand(brand){
+    const local=Object.keys(BRANDS?.[brand]?.models||{});
+    const key=Object.keys(remoteModelsByBrand).find(k=>k.toLowerCase()===String(brand).toLowerCase());
+    const remote=key?remoteModelsByBrand[key]:[];
+    return [...new Set([...local,...remote])];
+}
+function fillModelOptions(brand){
+    const m=$("model"); if(!m)return;
+    m.innerHTML='<option value="">Select model</option>';
+    modelListForBrand(brand).forEach(x=>{
+        const o=document.createElement("option");o.value=x;o.textContent=x;m.appendChild(o);
+    });
+    m.disabled=!m.options.length;
+}
 
 /* =========================================================
    PHONE BRANDS / MODELS / COLOURS / STORAGE
@@ -243,30 +285,8 @@ storage:["128 GB","256 GB"]
    COMMON HELPERS
 ========================================================= */
 
-let sharedPin=DEFAULT_PIN;
-let sharedPinLoaded=false;
-
 function pin(){
-    return sharedPin||DEFAULT_PIN;
-}
-
-async function loadSharedPin(){
-    try{
-        const snap=await import("https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js")
-            .then(({getDoc})=>getDoc(doc(db,SETTINGS_COL,SETTINGS_DOC)));
-
-        if(snap.exists() && typeof snap.data().pin==="string" && /^\\d{4}$/.test(snap.data().pin)){
-            sharedPin=snap.data().pin;
-        }else{
-            sharedPin=DEFAULT_PIN;
-            await import("https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js")
-                .then(({setDoc})=>setDoc(doc(db,SETTINGS_COL,SETTINGS_DOC),{pin:DEFAULT_PIN}));
-        }
-        sharedPinLoaded=true;
-    }catch(e){
-        console.error("Shared password load failed:",e);
-        sharedPinLoaded=false;
-    }
+    return localStorage.getItem(PIN_KEY)||DEFAULT_PIN;
 }
 
 function msg(id,t,ok=false){
@@ -486,7 +506,9 @@ function show(id){
 
     [
         "searchSection",
-        "addSection"
+        "addSection",
+        "repairAddSection",
+        "repairSearchSection"
     ].forEach(x=>{
         $(x)?.classList.add("hidden");
     });
@@ -573,6 +595,7 @@ function brands(){
         });
 
     b.onchange=()=>{
+
         let d=BRANDS[b.value];
 
         let m=$("model");
@@ -592,15 +615,13 @@ function brands(){
         c.disabled=true;
         s.disabled=true;
 
-        if(!d) return;
+        if(d){
 
-        // Selected brand ke saare defined models dropdown me show karo.
-        Object.keys(d.models || {}).forEach(modelName=>{
-            let o=document.createElement("option");
-            o.value=modelName;
-            o.textContent=modelName;
-            m.appendChild(o);
-        });
+            fillModelOptions(b.value);
+            loadAllPhoneModels().then(()=>{
+                if($("brand")?.value===b.value) fillModelOptions(b.value);
+            });
+        }
     };
 
     $("model").onchange=()=>{
@@ -785,6 +806,21 @@ function amounts(){
    AADHAAR / PAN / PHOTO ARE OPTIONAL.
 ========================================================= */
 
+function makeCustomerCode(){
+    return "KM"+Math.floor(1000+Math.random()*9000);
+}
+async function uniqueCustomerCode(){
+    for(let i=0;i<20;i++){
+        const code=makeCustomerCode();
+        if(!customers.some(c=>c.customerCode===code))return code;
+    }
+    return "KM"+Date.now().toString().slice(-4);
+}
+function formatDateTime(c){
+    const d=c?.createdAt?.toDate?.();
+    return d?new Intl.DateTimeFormat("en-IN",{dateStyle:"medium",timeStyle:"short"}).format(d):"Date pending";
+}
+
 async function save(e){
 
     e.preventDefault();
@@ -897,6 +933,7 @@ async function save(e){
 
         let customerData={
 
+            customerCode:await uniqueCustomerCode(),
             customerName:
                 val("customerName"),
 
@@ -998,10 +1035,15 @@ async function save(e){
          * ONLY FIRESTORE SAVE
          */
 
-        await addDoc(
-            collection(db,COL),
-            customerData
-        );
+        const editId=$("customerForm").dataset.editId;
+        if(editId){
+            delete customerData.customerCode;
+            delete customerData.createdAt;
+            delete customerData.createdBy;
+            await updateDoc(doc(db,COL,editId),customerData);
+        }else{
+            await addDoc(collection(db,COL),customerData);
+        }
 
 
         /*
@@ -1009,6 +1051,9 @@ async function save(e){
          */
 
         $("customerForm").reset();
+        delete $("customerForm").dataset.editId;
+        if($("customerCode")) $("customerCode").value="";
+        if($("saveCustomerButton")) $("saveCustomerButton").textContent="22. SAVE CUSTOMER";
 
         if($("financeCompany"))
             $("financeCompany").value="";
@@ -1116,241 +1161,88 @@ function item(a,b){
 ========================================================= */
 
 function renderSearch(){
+    const box=$("searchResults"); if(!box)return;
+    const s=val("searchInput").toLowerCase();
+    const arr=customers.filter(c=>!s||[
+        c.customerCode,c.customerName,c.phone,c.imei,c.pincode,c.city,c.state,c.brand,c.model,
+        c.colour,c.storage,c.financeCompany,c.lockName,c.stock,c.counter,c.financerName,formatDateTime(c)
+    ].filter(Boolean).join(" ").toLowerCase().includes(s));
 
-    let box=$("searchResults");
+    if(!arr.length){box.innerHTML=`<div class="empty">${s?"No customer found.":"No customer records yet."}</div>`;return;}
 
-    if(!box)return;
+    box.innerHTML=arr.map(c=>`
+      <article class="result customer-result" data-customer="${esc(c.id)}">
+        <div class="result-top">
+          <div><div class="result-name">${esc(c.customerName||"Unnamed")}</div>
+          <div class="result-meta">${esc(c.customerCode||"KM----")} • ${esc(c.phone||"")} • ${esc(formatDateTime(c))}</div></div>
+          <div class="bill"><span>BILL</span><label class="switch"><input type="checkbox" data-bill="${esc(c.id)}" ${c.billYes?"checked":""}><span class="slider"></span></label></div>
+        </div>
+        <div class="result-grid">
+          ${item("Device",`${c.brand||""} ${c.model||""}`)}
+          ${item("IMEI",c.imei||"-")}${item("Finance",c.financeCompany||"-")}
+          ${item("Amount",`₹${Number(c.phoneAmount||0).toLocaleString("en-IN")}`)}
+        </div>
+        <div class="result-open-hint">Tap to view full details • Edit • Delete • PDF</div>
+      </article>`).join("");
 
-    let s=
-        val("searchInput")
-        .toLowerCase();
-
-
-    let arr=customers.filter(c=>{
-
-        if(!s)
-            return true;
-
-        let date=
-            c.createdAt
-            ?.toDate
-            ?.()
-            ?.toLocaleDateString("en-IN")
-            ||"";
-
-
-        return [
-
-            c.customerName,
-            c.phone,
-            c.imei,
-            c.pincode,
-            c.city,
-            c.state,
-            c.brand,
-            c.model,
-            c.colour,
-            c.storage,
-            c.financeCompany,
-            c.lockName,
-            c.stock,
-            c.counter,
-            c.financerName,
-            date
-
-        ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(s);
+    box.querySelectorAll("[data-bill]").forEach(i=>{
+        i.onchange=async()=>{
+            try{await updateDoc(doc(db,COL,i.dataset.bill),{billYes:i.checked,"bill.status":i.checked?"YES":"NO"})}
+            catch(x){i.checked=!i.checked;console.error(x)}
+        };
     });
-
-
-    if(!arr.length){
-
-        box.innerHTML=`
-
-            <div class="empty">
-
-                ${
-                    s
-                    ?"No customer found."
-                    :"No customer records yet."
-                }
-
-            </div>
-        `;
-
-        return;
-    }
-
-
-    box.innerHTML=
-
-        arr.map(c=>{
-
-            let date=
-                c.createdAt
-                ?.toDate
-                ?.()
-                ?
-                new Intl.DateTimeFormat(
-                    "en-IN",
-                    {
-                        day:"2-digit",
-                        month:"short",
-                        year:"numeric"
-                    }
-                ).format(
-                    c.createdAt.toDate()
-                )
-                :
-                "Date pending";
-
-
-            return `
-
-            <article class="result">
-
-                <div class="result-top">
-
-                    <div>
-
-                        <div class="result-name">
-
-                            ${esc(
-                                c.customerName||
-                                "Unnamed"
-                            )}
-
-                        </div>
-
-                        <div class="result-meta">
-
-                            ${esc(
-                                c.phone||""
-                            )}
-
-                            •
-
-                            ${esc(date)}
-
-                        </div>
-
-                    </div>
-
-
-                    <div class="bill">
-
-                        <span>BILL</span>
-
-                        <label class="switch">
-
-                            <input
-                                type="checkbox"
-                                data-bill="${c.id}"
-                                ${
-                                    c.billYes
-                                    ?"checked"
-                                    :""
-                                }
-                            >
-
-                            <span class="slider"></span>
-
-                        </label>
-
-                    </div>
-
-                </div>
-
-
-                <div class="result-grid">
-
-                    ${item(
-                        "Device",
-                        `${c.brand||""} ${c.model||""}`
-                    )}
-
-                    ${item(
-                        "IMEI",
-                        c.imei||"-"
-                    )}
-
-                    ${item(
-                        "Colour",
-                        c.colour||"-"
-                    )}
-
-                    ${item(
-                        "Storage",
-                        c.storage||"-"
-                    )}
-
-                    ${item(
-                        "Finance Company",
-                        c.financeCompany||"-"
-                    )}
-
-                    ${item(
-                        "City",
-                        `${c.city||""}, ${c.state||""}`
-                    )}
-
-                    ${item(
-                        "Amount",
-                        `₹${Number(
-                            c.phoneAmount||0
-                        ).toLocaleString("en-IN")}`
-                    )}
-
-                </div>
-
-            </article>
-
-            `;
-
-        })
-        .join("");
-
-
-    /*
-     * BILL switch
-     */
-
-    box
-        .querySelectorAll("[data-bill]")
-        .forEach(i=>{
-
-            i.onchange=async()=>{
-
-                try{
-
-                    await updateDoc(
-                        doc(
-                            db,
-                            COL,
-                            i.dataset.bill
-                        ),
-                        {
-                            billYes:i.checked,
-                            "bill.status":
-                                i.checked
-                                ?"YES"
-                                :"NO"
-                        }
-                    );
-
-                }catch(x){
-
-                    i.checked=!i.checked;
-
-                    console.error(x);
-                }
-            };
+    box.querySelectorAll(".customer-result").forEach(card=>{
+        card.addEventListener("click",e=>{
+            if(e.target.closest(".switch"))return;
+            const c=customers.find(x=>x.id===card.dataset.customer);if(c)showCustomerDetail(c);
         });
+    });
 }
-
+function detailItem(a,b){return `<div class="detail-item"><small>${esc(a)}</small><b>${esc(b??"-")}</b></div>`}
+let activeCustomerId=null;
+function showCustomerDetail(c){
+    activeCustomerId=c.id;
+    $("detailTitle").textContent=`${c.customerName||"Customer"} • ${c.customerCode||""}`;
+    $("customerDetailBody").innerHTML=`<div class="detail-grid">
+      ${detailItem("Customer Code",c.customerCode)}${detailItem("Date & Time",formatDateTime(c))}
+      ${detailItem("Name",c.customerName)}${detailItem("Phone",c.phone)}
+      ${detailItem("Address",c.address)}${detailItem("PIN Code",c.pincode)}
+      ${detailItem("City / State",`${c.city||""}, ${c.state||""}`)}
+      ${detailItem("Brand",c.brand)}${detailItem("Model",c.model)}${detailItem("IMEI",c.imei)}
+      ${detailItem("Colour",c.colour)}${detailItem("RAM + Storage",c.storage)}
+      ${detailItem("Finance Company",c.financeCompany)}
+      ${detailItem("Phone Amount",`₹${c.phoneAmount||0}`)}${detailItem("Down Payment",`₹${c.downPayment||0}`)}
+      ${detailItem("EMI",`₹${c.emiAmount||0} × ${c.emiMonths||0} months`)}
+      ${detailItem("Lock",c.lockName)}${detailItem("Stock",c.stock)}
+      ${detailItem("Counter",c.counter)}${detailItem("Financer",c.financerName)}
+      ${detailItem("Bill",c.billYes?"YES":"NO")}
+    </div>`;
+    $("customerDetailModal")?.classList.remove("hidden");
+}
+function closeCustomerDetail(){activeCustomerId=null;$("customerDetailModal")?.classList.add("hidden")}
+async function deleteCustomer(){
+    const c=customers.find(x=>x.id===activeCustomerId);if(!c)return;
+    if(!confirm(`Delete ${c.customerName||"this customer"} (${c.customerCode||""}) permanently?`))return;
+    try{await deleteDoc(doc(db,COL,c.id));closeCustomerDetail()}
+    catch(e){console.error(e);alert("Customer delete नहीं हुआ. Firebase Rules check करें.")}
+}
+function editCustomer(){
+    const c=customers.find(x=>x.id===activeCustomerId);if(!c)return;
+    closeCustomerDetail();show("addSection");
+    const map={customerName:"customerName",address:"address",pincode:"pincode",city:"city",state:"state",phone:"phone",
+      brand:"brand",model:"model",imei:"imei",colour:"colour",storage:"storage",financeCompany:"financeCompany",
+      phoneAmount:"phoneAmount",downPayment:"downPayment",emiAmount:"emiAmount",emiMonths:"emiMonths",
+      lockName:"lockName",stock:"stock",counter:"counter",financerName:"financerName"};
+    Object.entries(map).forEach(([k,id])=>{if($(id))$(id).value=c[k]??""});
+    $("customerCode").value=c.customerCode||"";
+    $("saveCustomerButton").textContent="UPDATE CUSTOMER";
+    $("customerForm").dataset.editId=c.id;
+    $("brand").dispatchEvent(new Event("change"));
+    setTimeout(()=>{
+        $("model").value=c.model||"";$("model").dispatchEvent(new Event("change"));
+        setTimeout(()=>{$("colour").value=c.colour||"";$("storage").value=c.storage||""},0);
+    },100);
+}
 
 /* =========================================================
    SEARCH INPUT
@@ -1371,109 +1263,135 @@ function search(){
 ========================================================= */
 
 async function startScan(){
+
     let modal=$("scannerModal");
     let video=$("scannerVideo");
     let m=$("scannerMessage");
 
     modal.classList.remove("hidden");
 
-    try{
-        if(!navigator.mediaDevices?.getUserMedia){
-            throw Error("Camera API unavailable");
-        }
 
-        // Prefer native BarcodeDetector where available.
-        if("BarcodeDetector" in window){
-            let fmts=await BarcodeDetector.getSupportedFormats();
-            let formats=fmts.filter(
+    if(!("BarcodeDetector" in window)){
+
+        m.textContent=
+            "इस browser में barcode scanner available नहीं है. IMEI manually enter करें.";
+
+        return;
+    }
+
+
+    try{
+
+        let fmts=
+            await BarcodeDetector
+                .getSupportedFormats();
+
+
+        let formats=
+            fmts.filter(
                 x=>[
-                    "qr_code","code_128","code_39","code_93",
-                    "ean_13","ean_8","upc_a","upc_e","itf"
+                    "qr_code",
+                    "code_128",
+                    "code_39",
+                    "ean_13",
+                    "ean_8"
                 ].includes(x)
             );
 
-            if(formats.length){
-                scanStream=await navigator.mediaDevices.getUserMedia({
-                    video:{facingMode:{ideal:"environment"}},
+
+        if(!formats.length)
+            throw Error("No barcode format");
+
+
+        scanStream=
+            await navigator.mediaDevices
+                .getUserMedia({
+                    video:{
+                        facingMode:{
+                            ideal:"environment"
+                        }
+                    },
                     audio:false
                 });
-                video.srcObject=scanStream;
-                await video.play();
 
-                let detector=new BarcodeDetector({formats});
 
-                let loop=async()=>{
-                    if(!scanStream) return;
-                    try{
-                        let a=await detector.detect(video);
-                        if(a?.length){
-                            let raw=a[0].rawValue||"";
-                            let d=raw.replace(/\\D/g,"");
-                            m.textContent="Scanned: "+raw;
-                            if(d.length>=15){
-                                $("imei").value=d.slice(0,15);
-                                stopScan();
-                                return;
-                            }
-                        }
-                    }catch(x){}
-                    scanTimer=setTimeout(loop,250);
-                };
-                loop();
-                return;
-            }
-        }
-
-        // Fallback for browsers (including iPhone/Safari builds) without native BarcodeDetector.
-        const z=await import("https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/+esm");
-        const Reader=z.BrowserMultiFormatReader||z.BrowserQRCodeReader;
-        if(!Reader) throw Error("Scanner library unavailable");
-
-        scanStream=await navigator.mediaDevices.getUserMedia({
-            video:{facingMode:{ideal:"environment"}},
-            audio:false
-        });
         video.srcObject=scanStream;
+
         await video.play();
 
-        const reader=new Reader();
-        let active=true;
-        const controls=await reader.decodeFromVideoElement(video,(result,err)=>{
-            if(!active) return;
-            if(result){
-                const raw=result.getText?.()||result.text||"";
-                const d=raw.replace(/\\D/g,"");
-                m.textContent="Scanned: "+raw;
-                if(d.length>=15){
-                    $("imei").value=d.slice(0,15);
-                    active=false;
-                    try{controls?.stop?.();}catch(x){}
-                    stopScan();
+
+        let detector=
+            new BarcodeDetector({
+                formats
+            });
+
+
+        let loop=async()=>{
+
+            if(!scanStream)
+                return;
+
+            try{
+
+                let a=
+                    await detector.detect(video);
+
+
+                if(a?.length){
+
+                    let raw=
+                        a[0].rawValue||"";
+
+                    let d=
+                        raw.replace(
+                            /\D/g,
+                            ""
+                        );
+
+
+                    m.textContent=
+                        "Scanned: "+raw;
+
+
+                    if(d.length>=15){
+
+                        $("imei").value=
+                            d.slice(0,15);
+
+                        stopScan();
+
+                        return;
+                    }
                 }
-            }
-        });
-        scanTimer=controls;
-        return;
+
+            }catch(x){}
+
+
+            scanTimer=
+                setTimeout(
+                    loop,
+                    350
+                );
+        };
+
+
+        loop();
+
 
     }catch(x){
-        console.error(x);
-        m.textContent=
-            "Camera/barcode scanner शुरू नहीं हुआ. Camera permission और HTTPS/localhost check करें.";
-        if(scanStream) stopScan();
-    }
 
-    
+        console.error(x);
+
+        m.textContent=
+            "Camera access नहीं मिला. iPhone Settings में camera permission check करें.";
+    }
 }
 
 
 function stopScan(){
 
-    if(scanTimer){
-        try{
-            if(typeof scanTimer==="number") clearTimeout(scanTimer);
-            else scanTimer.stop?.();
-        }catch(x){}
-    }
+    if(scanTimer)
+        clearTimeout(scanTimer);
 
     scanTimer=null;
 
@@ -1580,13 +1498,105 @@ function changePin(){
 }
 
 
+
+let repairing=[];
+let repairListenerStarted=false;
+function subscribeRepairing(){
+    if(repairListenerStarted)return; repairListenerStarted=true;
+    const q=query(collection(db,REPAIR_COL),orderBy("createdAt","desc"));
+    onSnapshot(q,s=>{repairing=s.docs.map(d=>({id:d.id,...d.data()}));renderRepairing()},
+        e=>console.error("Repairing listener:",e));
+}
+function renderRepairing(){
+    const box=$("repairResults");if(!box)return;
+    const s=val("repairSearchInput").toLowerCase();
+    const arr=repairing.filter(r=>!s||[r.customerName,r.phone,r.device,r.problem,r.repairBy,r.payment,formatDateTime(r)].join(" ").toLowerCase().includes(s));
+    if(!arr.length){box.innerHTML=`<div class="empty">${s?"No repairing record found.":"No repairing records yet."}</div>`;return}
+    box.innerHTML=arr.map(r=>`<article class="result">
+      <div class="result-name">${esc(r.customerName||"")}</div><div class="result-meta">${esc(r.phone||"")} • ${esc(formatDateTime(r))}</div>
+      <div class="result-grid">${item("Brand / Model",r.device)}${item("Problem",r.problem)}${item("Repairing By",r.repairBy)}${item("Payment",`₹${Number(r.payment||0).toLocaleString("en-IN")}`)}</div>
+    </article>`).join("");
+}
+async function saveRepair(e){
+    e.preventDefault();
+    const ids=["repairCustomerName","repairPhone","repairDevice","repairProblem","repairBy","repairPayment"];
+    for(const id of ids)if(!val(id)){ $(id)?.focus();msg("repairMessage","सभी fields भरना जरूरी है.");return }
+    const phone=val("repairPhone").replace(/\D/g,"");
+    if(!/^\d{10}$/.test(phone)){msg("repairMessage","10 digit customer phone number डालें.");return}
+    try{
+        await addDoc(collection(db,REPAIR_COL),{customerName:val("repairCustomerName"),phone,device:val("repairDevice"),
+            problem:val("repairProblem"),repairBy:val("repairBy"),payment:Number(val("repairPayment")),
+            createdAt:serverTimestamp(),createdBy:user?.uid||null});
+        $("repairForm").reset();msg("repairMessage","Repairing data saved successfully ✓",true);
+    }catch(e){console.error(e);msg("repairMessage",e?.message||"Repairing save नहीं हुआ.")}
+}
+function loadScript(src){return new Promise((resolve,reject)=>{const s=document.createElement("script");s.src=src;s.onload=resolve;s.onerror=reject;document.head.appendChild(s)})}
+async function exportXlsx(rows,filename,sheet){
+    try{
+        if(!window.XLSX)await loadScript("https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js");
+        const ws=XLSX.utils.json_to_sheet(rows),wb=XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb,ws,sheet);XLSX.writeFile(wb,filename);
+    }catch(e){console.error(e);alert("Excel file download नहीं हो पाया.")}
+}
+function exportCustomers(){
+    if(!customers.length){alert("Customer data अभी उपलब्ध नहीं है.");return}
+    exportXlsx(customers.map(c=>({"Customer Code":c.customerCode||"","Date & Time":formatDateTime(c),"Customer Name":c.customerName||"",
+      "Phone":c.phone||"","Address":c.address||"","PIN Code":c.pincode||"","City":c.city||"","State":c.state||"",
+      "Brand":c.brand||"","Model":c.model||"","IMEI":c.imei||"","Colour":c.colour||"","RAM + Storage":c.storage||"",
+      "Finance Company":c.financeCompany||"","Phone Amount":c.phoneAmount||0,"Down Payment":c.downPayment||0,
+      "EMI Amount":c.emiAmount||0,"EMI Months":c.emiMonths||0,"Lock":c.lockName||"","Stock":c.stock||"",
+      "Counter":c.counter||"","Financer":c.financerName||"","Bill":c.billYes?"YES":"NO"})),"Kabir_Mobile_Customers.xlsx","Customers");
+}
+function exportRepairing(){
+    if(!repairing.length){alert("Repairing data अभी उपलब्ध नहीं है.");return}
+    exportXlsx(repairing.map(r=>({"Date & Time":formatDateTime(r),"Customer Name":r.customerName||"","Phone":r.phone||"",
+      "Brand / Model":r.device||"","Problem":r.problem||"","Repairing By":r.repairBy||"","Payment":r.payment||0})),
+      "Kabir_Repairing_Data.xlsx","Repairing");
+}
+async function downloadCustomerPdf(){
+    const c=customers.find(x=>x.id===activeCustomerId);if(!c)return;
+    try{
+        if(!window.jspdf)await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
+        const pdf=new window.jspdf.jsPDF();let y=18;
+        pdf.setFontSize(18);pdf.text("KABIR MOBILE DATA",14,y);y+=10;pdf.setFontSize(10);
+        [["Customer Code",c.customerCode],["Date & Time",formatDateTime(c)],["Customer Name",c.customerName],["Phone",c.phone],
+        ["Address",c.address],["PIN Code",c.pincode],["City / State",`${c.city||""}, ${c.state||""}`],["Brand",c.brand],["Model",c.model],
+        ["IMEI",c.imei],["Colour",c.colour],["RAM + Storage",c.storage],["Finance Company",c.financeCompany],
+        ["Phone Amount",`₹${c.phoneAmount||0}`],["Down Payment",`₹${c.downPayment||0}`],["EMI",`₹${c.emiAmount||0} × ${c.emiMonths||0} months`],
+        ["Lock",c.lockName],["Stock",c.stock],["Counter",c.counter],["Financer",c.financerName],["Bill",c.billYes?"YES":"NO"]].forEach(([a,b])=>{
+            if(y>280){pdf.addPage();y=18}pdf.setFont(undefined,"bold");pdf.text(String(a||""),14,y);
+            pdf.setFont(undefined,"normal");pdf.text(String(b||"-"),65,y,{maxWidth:130});y+=8;
+        });
+        pdf.save(`${c.customerCode||"customer"}_${(c.customerName||"customer").replace(/\s+/g,"_")}.pdf`);
+    }catch(e){console.error(e);alert("PDF बन नहीं पाया.")}
+}
+function themeSystem(){
+    document.documentElement.dataset.theme=localStorage.getItem("kabir_theme")||"dark";
+    $("themeButton")?.addEventListener("click",()=>$("themeModal")?.classList.remove("hidden"));
+    $("closeThemeButton")?.addEventListener("click",()=>$("themeModal")?.classList.add("hidden"));
+    document.querySelectorAll("[data-theme]").forEach(b=>b.addEventListener("click",()=>{
+        localStorage.setItem("kabir_theme",b.dataset.theme);document.documentElement.dataset.theme=b.dataset.theme;$("themeModal")?.classList.add("hidden")
+    }));
+}
+function featureNav(){
+    $("addRepairingCard")?.addEventListener("click",()=>show("repairAddSection"));
+    $("searchRepairingCard")?.addEventListener("click",()=>{show("repairSearchSection");renderRepairing();$("repairSearchInput")?.focus()});
+    $("repairSearchInput")?.addEventListener("input",renderRepairing);
+    $("repairForm")?.addEventListener("submit",saveRepair);
+    $("exportCustomersButton")?.addEventListener("click",exportCustomers);
+    $("exportRepairingButton")?.addEventListener("click",exportRepairing);
+    $("downloadCustomerPdf")?.addEventListener("click",downloadCustomerPdf);
+    $("deleteCustomerButton")?.addEventListener("click",deleteCustomer);
+    $("editCustomerButton")?.addEventListener("click",editCustomer);
+    $("closeDetailButton")?.addEventListener("click",closeCustomerDetail);
+}
+
 /* =========================================================
    INITIALIZE
 ========================================================= */
 
-async function init(){
+function init(){
 
-    await loadSharedPin();
     setupPin();
 
     nav();
