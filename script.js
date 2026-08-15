@@ -511,30 +511,31 @@ function subscribe(){
 ========================================================= */
 
 function counts(){
-    const n=Array.isArray(customers)?customers.length:0;
-    const d=Array.isArray(customers)
+    // KABIR MOBILE DATA — only customer collection
+    const mobileCustomers=Array.isArray(customers)?customers.length:0;
+    const mobileDevices=Array.isArray(customers)
         ?customers.reduce((total,c)=>{
             const value=Number(c.deviceCount);
             return total+(Number.isFinite(value)&&value>0?value:1);
         },0)
         :0;
 
-    const customerEls=[
-        $("totalCustomers"),
-        $("repairTotalCustomers")
-    ];
-    const deviceEls=[
-        $("totalDevices"),
-        $("repairTotalDevices")
-    ];
+    if($("totalCustomers"))$("totalCustomers").textContent=String(mobileCustomers);
+    if($("totalDevices"))$("totalDevices").textContent=String(mobileDevices);
 
-    customerEls.forEach(el=>{
-        if(el)el.textContent=String(n);
-    });
+    // KABIR REPAIRING DATA — completely separate counts
+    const repairRows=Array.isArray(repairing)?repairing:[];
+    const repairDevices=repairRows.length;
+    const repairCustomerKeys=new Set(
+        repairRows.map(r=>{
+            const phone=String(r.phone||"").replace(/\D/g,"");
+            return phone || String(r.customerName||"").trim().toLowerCase();
+        }).filter(Boolean)
+    );
+    const repairCustomers=repairCustomerKeys.size;
 
-    deviceEls.forEach(el=>{
-        if(el)el.textContent=String(d);
-    });
+    if($("repairTotalCustomers"))$("repairTotalCustomers").textContent=String(repairCustomers);
+    if($("repairTotalDevices"))$("repairTotalDevices").textContent=String(repairDevices);
 }
 
 
@@ -1603,6 +1604,7 @@ function subscribeRepairing(){
             return tb-ta;
         });
 
+        counts();
         renderRepairing();
     };
 
