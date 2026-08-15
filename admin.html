@@ -4,14 +4,27 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><meta name="theme-color" content="#08090d"><title>Admin — Kabir Mobile Data</title><link rel="stylesheet" href="style.css">
 </head>
 <body>
-<main class="admin app">
+<section id="pinScreen" class="pin-screen">
+  <div class="glass pin-card">
+    <div class="logo">KM</div>
+    <div class="eyebrow">KABIR MOBILE</div>
+    <h1>Admin Panel</h1>
+    <p class="muted">Enter PIN</p>
+    <label class="pin-label" for="pinInput">Enter PIN</label>
+    <input id="pinInput" class="pin-input" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" placeholder="••••">
+    <div id="pinDots" class="pin-dots"><i></i><i></i><i></i><i></i></div>
+    <p id="pinMessage" class="message"></p>
+  </div>
+</section>
+
+<main id="appScreen" class="admin app hidden">
 <header class="glass topbar"><div><div class="eyebrow">KABIR MOBILE</div><h2>Admin Settings</h2></div><a class="round" href="index.html">‹</a></header>
 <section class="glass panel">
 <div class="section-head"><div><div class="eyebrow">SECURITY</div><h2>PIN Settings</h2></div></div>
-<p class="muted">PIN is the local app lock. Firebase authentication and database rules provide the real backend access control.</p>
+<p class="muted">Main website और Admin Panel दोनों में यही एक shared PIN काम करेगा.</p>
 <form id="changePinForm"><label>Current PIN<input id="currentPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></label><label>New PIN<input id="newPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></label><label>Confirm New PIN<input id="confirmPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></label><button class="save" type="submit">SAVE NEW PIN</button><p id="pinSettingsMessage" class="message"></p></form>
 </section>
-<section class="glass panel"><div class="section-head"><div><div class="eyebrow">DATABASE</div><h2>Live Status</h2></div></div><div class="mini-grid"><div><span>Customers</span><strong id="adminCustomers">0</strong></div><div><span>Devices</span><strong id="adminDevices">0</strong></div></div><p id="adminFirebaseStatus" class="firebase-status">Connecting to Firebase…</p></section>
+<section class="glass panel"><div class="section-head"><div><div class="eyebrow">KABIR MOBILE DATA</div><h2>Live Status</h2></div></div><div class="mini-grid"><div><span>Total Customers</span><strong id="adminCustomers">0</strong></div><div><span>Total Devices</span><strong id="adminDevices">0</strong></div></div><p id="adminFirebaseStatus" class="firebase-status">Connecting to Firebase…</p></section>
 <footer>Copyright © 2026 Kabir Data powered by AMAN</footer>
 </main>
 <script type="module" src="script.js"></script>
