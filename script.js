@@ -1,6 +1,6 @@
 import {initializeApp} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
 import {getAuth,signInAnonymously,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js";
-import {getFirestore,collection,addDoc,updateDoc,deleteDoc,doc,onSnapshot,query,orderBy,serverTimestamp} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
+import {getFirestore,collection,addDoc,updateDoc,deleteDoc,setDoc,getDoc,doc,onSnapshot,query,orderBy,serverTimestamp} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
 
 const firebaseConfig={
     apiKey:"AIzaSyDWD2S7Zvcy-T_Ddr8Ytbqwv9tNEBNIJg4",
@@ -21,6 +21,8 @@ const PIN_KEY="kabir_mobile_pin";
 const DEFAULT_PIN="0000";
 const COL="customers";
 const REPAIR_COL="repairing";
+const SETTINGS_COL="settings";
+const SETTINGS_DOC="security";
 const REMOTE_DEVICES_URL="https://cdn.jsdelivr.net/gh/bsthen/device-models/devices.json";
 
 let user=null;
@@ -285,8 +287,48 @@ storage:["128 GB","256 GB"]
    COMMON HELPERS
 ========================================================= */
 
+let sharedPin=DEFAULT_PIN;
+let pinLoaded=false;
+
+async function loadSharedPin(){
+    try{
+        const ref=doc(db,SETTINGS_COL,SETTINGS_DOC);
+        const snap=await getDoc(ref);
+
+        if(snap.exists()){
+            const p=String(snap.data()?.pin||"");
+            if(/^\d{4}$/.test(p)){
+                sharedPin=p;
+                localStorage.setItem(PIN_KEY,p);
+                pinLoaded=true;
+                return p;
+            }
+        }
+
+        const cached=localStorage.getItem(PIN_KEY);
+        sharedPin=/^\d{4}$/.test(cached||"")?cached:DEFAULT_PIN;
+        await setDoc(ref,{pin:sharedPin,updatedAt:serverTimestamp()},{merge:true});
+    }catch(e){
+        console.warn("Shared PIN read failed:",e);
+        const cached=localStorage.getItem(PIN_KEY);
+        sharedPin=/^\d{4}$/.test(cached||"")?cached:DEFAULT_PIN;
+    }
+    pinLoaded=true;
+    return sharedPin;
+}
+
 function pin(){
-    return localStorage.getItem(PIN_KEY)||DEFAULT_PIN;
+    return sharedPin||DEFAULT_PIN;
+}
+
+async function changeSharedPin(newPin){
+    if(!/^\d{4}$/.test(newPin)) throw Error("PIN must be exactly 4 digits.");
+    await setDoc(doc(db,SETTINGS_COL,SETTINGS_DOC),{
+        pin:newPin,
+        updatedAt:serverTimestamp()
+    },{merge:true});
+    sharedPin=newPin;
+    localStorage.setItem(PIN_KEY,newPin);
 }
 
 function msg(id,t,ok=false){
@@ -297,7 +339,19 @@ function msg(id,t,ok=false){
         e.style.color=ok?"var(--success)":"";
     }
 }
-
+function showSuccessToast(title="Successfully Saved",text="Data saved successfully"){
+    const toast=$("successToast");
+    if(!toast)return;
+    $("successToastTitle").textContent=title;
+    $("successToastText").textContent=text;
+    toast.classList.remove("hidden");
+    requestAnimationFrame(()=>toast.classList.add("show"));
+    clearTimeout(window.__kabirToastTimer);
+    window.__kabirToastTimer=setTimeout(()=>{
+        toast.classList.remove("show");
+        setTimeout(()=>toast.classList.add("hidden"),300);
+    },2200);
+}
 
 /* =========================================================
    PIN SYSTEM
@@ -338,42 +392,45 @@ function lock(){
     }
 }
 
+function pinError(){
+    const card=document.querySelector(".pin-card");
+    const input=$("pinInput");
+    card?.classList.remove("pin-shake");
+    void card?.offsetWidth;
+    card?.classList.add("pin-shake");
+
+    if(navigator.vibrate){
+        try{navigator.vibrate([90,35,90,35,140]);}catch(_){}
+    }
+
+    input?.select();
+    setTimeout(()=>card?.classList.remove("pin-shake"),500);
+}
+
 function setupPin(){
-
-    let e=$("pinInput");
-
+    const e=$("pinInput");
     if(!e)return;
 
-    e.addEventListener("input",()=>{
-
-        e.value=e.value
-            .replace(/\D/g,"")
-            .slice(0,4);
-
+    e.addEventListener("input",async()=>{
+        e.value=e.value.replace(/\D/g,"").slice(0,4);
         dots(e.value);
-
         msg("pinMessage","");
 
         if(e.value.length===4){
+            const entered=e.value;
 
-            if(e.value===pin()){
+            if(!pinLoaded) await loadSharedPin();
 
+            if(entered===pin()){
                 unlock();
-
             }else{
-
                 msg("pinMessage","Incorrect PIN");
-
-                if(navigator.vibrate)
-                    navigator.vibrate([80,40,80]);
-
+                pinError();
                 setTimeout(()=>{
-
                     e.value="";
                     dots("");
                     msg("pinMessage","");
                     e.focus();
-
                 },500);
             }
         }
@@ -386,7 +443,6 @@ function setupPin(){
     else
         setTimeout(()=>e.focus(),250);
 }
-
 
 /* =========================================================
    FIREBASE AUTH
@@ -476,6 +532,12 @@ function counts(){
 
     if($("totalDevices"))
         $("totalDevices").textContent=d;
+
+    if($("repairTotalCustomers"))
+        $("repairTotalCustomers").textContent=n;
+
+    if($("repairTotalDevices"))
+        $("repairTotalDevices").textContent=d;
 }
 
 function updateAdmin(){
@@ -508,7 +570,10 @@ function show(id){
         "searchSection",
         "addSection",
         "repairAddSection",
-        "repairSearchSection"
+        "repairSearchSection",
+        "customerDetailModal",
+        "themeModal",
+        "scannerModal"
     ].forEach(x=>{
         $(x)?.classList.add("hidden");
     });
@@ -557,6 +622,22 @@ function nav(){
         }
     );
 
+    $("repairTotalCustomersCard")?.addEventListener(
+        "click",
+        ()=>{
+            show("searchSection");
+            renderSearch();
+        }
+    );
+
+    $("repairTotalDevicesCard")?.addEventListener(
+        "click",
+        ()=>{
+            show("searchSection");
+            renderSearch();
+        }
+    );
+
     document
         .querySelectorAll("[data-close]")
         .forEach(b=>{
@@ -571,6 +652,23 @@ function nav(){
         });
 }
 
+
+function closeTopLayer(){
+    const ids=[
+        "customerDetailModal","themeModal","scannerModal",
+        "repairSearchSection","repairAddSection","addSection","searchSection"
+    ];
+    for(const id of ids){
+        const el=$(id);
+        if(el && !el.classList.contains("hidden")){
+            el.classList.add("hidden");
+            return;
+        }
+    }
+}
+document.addEventListener("keydown",e=>{
+    if(e.key==="Escape") closeTopLayer();
+});
 
 /* =========================================================
    BRANDS / MODELS / COLOURS / STORAGE
@@ -1084,11 +1182,8 @@ async function save(e){
         billDate();
 
 
-        msg(
-            "formMessage",
-            "Customer saved successfully ✓",
-            true
-        );
+        msg("formMessage","");
+        showSuccessToast("Successfully Saved","Customer data saved successfully");
 
 
         /*
@@ -1480,20 +1575,16 @@ function changePin(){
         }
 
 
-        localStorage.setItem(
-            PIN_KEY,
-            b
-        );
-
-
-        f.reset();
-
-
-        msg(
-            "pinSettingsMessage",
-            "PIN changed successfully ✓",
-            true
-        );
+        changeSharedPin(b)
+            .then(()=>{
+                f.reset();
+                msg("pinSettingsMessage","PIN changed successfully ✓",true);
+                showSuccessToast("PIN Updated","New PIN is now saved to Firebase");
+            })
+            .catch(error=>{
+                console.error(error);
+                msg("pinSettingsMessage","PIN save नहीं हुआ. Firebase Rules check करें.");
+            });
     };
 }
 
@@ -1544,17 +1635,7 @@ async function saveRepair(e){
     const ids=["repairCustomerName","repairPhone","repairDevice","repairProblem","repairBy","repairPayment"];
     for(const id of ids)if(!val(id)){ $(id)?.focus();msg("repairMessage","सभी fields भरना जरूरी है.");return }
     const phone=val("repairPhone").replace(/\D/g,"");
-    if(!/^\d{10}$/.test(phone)){
-        msg("repairMessage","10 digit customer phone number डालें.");
-        return;
-    }
-
-    const payment=val("repairPayment");
-    if(payment===""){
-        msg("repairMessage","Payment भरना जरूरी है.");
-        return;
-    }
-
+    if(!/^\d{10}$/.test(phone)){msg("repairMessage","10 digit customer phone number डालें.");return}
     const saveBtn = $("repairForm")?.querySelector("button[type='submit']");
     if(saveBtn) saveBtn.disabled=true;
 
@@ -1565,13 +1646,14 @@ async function saveRepair(e){
             device:val("repairDevice"),
             problem:val("repairProblem"),
             repairBy:val("repairBy"),
-            payment:Number(payment),
+            payment:Number(val("repairPayment")),
             createdAt:serverTimestamp(),
             createdBy:user?.uid||null
         });
 
         $("repairForm").reset();
-        msg("repairMessage","Repairing data saved successfully ✓",true);
+        msg("repairMessage","");
+        showSuccessToast("Successfully Saved","Repairing data saved successfully");
     }catch(e){
         console.error(e);
         msg("repairMessage",e?.message||"Repairing save नहीं हुआ.");
@@ -1582,31 +1664,10 @@ async function saveRepair(e){
 function loadScript(src){return new Promise((resolve,reject)=>{const s=document.createElement("script");s.src=src;s.onload=resolve;s.onerror=reject;document.head.appendChild(s)})}
 async function exportXlsx(rows,filename,sheet){
     try{
-        if(!rows || !rows.length){
-            alert("Download करने के लिए data उपलब्ध नहीं है.");
-            return;
-        }
-
-        if(!window.XLSX){
-            await loadScript(
-                "https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"
-            );
-        }
-
-        if(!window.XLSX){
-            throw Error("Excel library load नहीं हुई.");
-        }
-
-        const ws=XLSX.utils.json_to_sheet(rows);
-        const wb=XLSX.utils.book_new();
-
-        XLSX.utils.book_append_sheet(wb,ws,sheet);
-        XLSX.writeFile(wb,filename);
-
-    }catch(e){
-        console.error("Excel export error:",e);
-        alert("Excel file download नहीं हो पाया. Internet connection check करें.");
-    }
+        if(!window.XLSX)await loadScript("https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js");
+        const ws=XLSX.utils.json_to_sheet(rows),wb=XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb,ws,sheet);XLSX.writeFile(wb,filename);
+    }catch(e){console.error(e);alert("Excel file download नहीं हो पाया.")}
 }
 function exportCustomers(){
     if(!customers.length){alert("Customer data अभी उपलब्ध नहीं है.");return}
@@ -1666,6 +1727,7 @@ function featureNav(){
 ========================================================= */
 
 function init(){
+    loadSharedPin();
 
     setupPin();
 
