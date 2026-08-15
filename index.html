@@ -40,6 +40,10 @@
 
 <section id="repairingHome" class="repairing-home">
   <div class="section-head"><div><div class="eyebrow">KABIR REPAIRING DATA</div><h2>Kabir Repairing Data</h2></div><button id="exportRepairingButton" class="round" type="button">⇩</button></div>
+  <div class="repairing-stats">
+    <button id="repairTotalCustomersCard" class="glass stat" type="button"><span class="icon">👥</span><span>Total Customers</span><strong id="repairTotalCustomers">0</strong></button>
+    <button id="repairTotalDevicesCard" class="glass stat" type="button"><span class="icon">📱</span><span>Total Devices</span><strong id="repairTotalDevices">0</strong></button>
+  </div>
   <div class="repairing-actions">
     <button id="addRepairingCard" class="glass action" type="button"><span class="icon">🛠</span><strong>Add Repairing</strong><small>New repairing record</small></button>
     <button id="searchRepairingCard" class="glass action" type="button"><span class="icon">⌕</span><strong>Search Repairing</strong><small>Name, phone, problem, payment…</small></button>
@@ -85,8 +89,13 @@
     <p id="formMessage" class="message"></p>
   </form>
 </section>
-<footer>Copyright © 2026 Kabir Data powered by AMAN</footer>
 </main>
+<footer>Copyright © 2026 Kabir Data powered by AMAN</footer>
+
+<div id="successToast" class="success-toast hidden">
+  <div class="success-check">✓</div>
+  <div><strong id="successToastTitle">Successfully Saved</strong><small id="successToastText">Data saved successfully</small></div>
+</div>
 
 <section id="repairAddSection" class="glass panel hidden">
   <div class="section-head"><div><div class="eyebrow">NEW REPAIRING</div><h2>Add Repairing</h2></div><button class="close" data-close="repairAddSection">×</button></div>
