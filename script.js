@@ -17,14 +17,14 @@ const firebaseConfig={
 const app=initializeApp(firebaseConfig);
 
 // Firebase App Check - reCAPTCHA Enterprise
-let appCheck=null;
+// Safe initialization: if App Check is unavailable, the existing website/login logic continues.
 try{
-    appCheck=initializeAppCheck(app,{
+    initializeAppCheck(app,{
         provider:new ReCaptchaEnterpriseProvider("6LeYw4ctAAAAAOtOC-Bzqzx8Y7KFF3A1ScQX2j2V"),
         isTokenAutoRefreshEnabled:true
     });
-}catch(appCheckError){
-    console.warn("Firebase App Check initialization failed; continuing without App Check for now.",appCheckError);
+}catch(e){
+    console.warn("Firebase App Check initialization failed:",e);
 }
 
 const auth=getAuth(app);
@@ -488,7 +488,6 @@ function pinError(){
 }
 
 function setupPin(){
-    if(!document.querySelector(".admin")) return;
     const e=$("pinInput"); if(!e)return;
     e.addEventListener("input",async()=>{
         e.value=e.value.replace(/\D/g,"").slice(0,4); dots(e.value); msg("pinMessage","");
