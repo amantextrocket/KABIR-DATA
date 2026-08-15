@@ -479,36 +479,28 @@ async function authInit(){
 ========================================================= */
 
 function subscribe(){
-
-    let q=query(
-        collection(db,COL),
-        orderBy("createdAt","desc")
-    );
-
     onSnapshot(
-        q,
-        s=>{
+        collection(db,COL),
+        snap=>{
+            customers=snap.docs.map(d=>({
+                id:d.id,
+                ...d.data()
+            }));
 
-            customers=s.docs.map(
-                d=>({
-                    id:d.id,
-                    ...d.data()
-                })
-            );
+            customers.sort((a,b)=>{
+                const ta=a.createdAt?.toMillis?.()||0;
+                const tb=b.createdAt?.toMillis?.()||0;
+                return tb-ta;
+            });
 
             counts();
             renderSearch();
             updateAdmin();
-
         },
         e=>{
-
-            console.error(e);
-
-            msg(
-                "formMessage",
-                "Firestore access error. Check Firebase Firestore rules."
-            );
+            console.error("Customer listener:",e);
+            msg("formMessage","Firestore access error. Check Firebase rules.");
+            counts();
         }
     );
 }
@@ -519,26 +511,32 @@ function subscribe(){
 ========================================================= */
 
 function counts(){
+    const n=Array.isArray(customers)?customers.length:0;
+    const d=Array.isArray(customers)
+        ?customers.reduce((total,c)=>{
+            const value=Number(c.deviceCount);
+            return total+(Number.isFinite(value)&&value>0?value:1);
+        },0)
+        :0;
 
-    let n=customers.length;
+    const customerEls=[
+        $("totalCustomers"),
+        $("repairTotalCustomers")
+    ];
+    const deviceEls=[
+        $("totalDevices"),
+        $("repairTotalDevices")
+    ];
 
-    let d=customers.reduce(
-        (s,c)=>s+(c.deviceCount||1),
-        0
-    );
+    customerEls.forEach(el=>{
+        if(el)el.textContent=String(n);
+    });
 
-    if($("totalCustomers"))
-        $("totalCustomers").textContent=n;
-
-    if($("totalDevices"))
-        $("totalDevices").textContent=d;
-
-    if($("repairTotalCustomers"))
-        $("repairTotalCustomers").textContent=n;
-
-    if($("repairTotalDevices"))
-        $("repairTotalDevices").textContent=d;
+    deviceEls.forEach(el=>{
+        if(el)el.textContent=String(d);
+    });
 }
+
 
 function updateAdmin(){
 
@@ -1701,14 +1699,37 @@ async function downloadCustomerPdf(){
         pdf.save(`${c.customerCode||"customer"}_${(c.customerName||"customer").replace(/\s+/g,"_")}.pdf`);
     }catch(e){console.error(e);alert("PDF बन नहीं पाया.")}
 }
-function themeSystem(){
-    document.documentElement.dataset.theme=localStorage.getItem("kabir_theme")||"dark";
-    $("themeButton")?.addEventListener("click",()=>$("themeModal")?.classList.remove("hidden"));
-    $("closeThemeButton")?.addEventListener("click",()=>$("themeModal")?.classList.add("hidden"));
-    document.querySelectorAll("[data-theme]").forEach(b=>b.addEventListener("click",()=>{
-        localStorage.setItem("kabir_theme",b.dataset.theme);document.documentElement.dataset.theme=b.dataset.theme;$("themeModal")?.classList.add("hidden")
-    }));
+function applyTheme(theme){
+    const allowed=["dark","light","midnight","silver","glass"];
+    if(!allowed.includes(theme)) theme="dark";
+
+    document.documentElement.setAttribute("data-theme",theme);
+    localStorage.setItem("kabir_theme",theme);
+
+    document.querySelectorAll("#themeChoices button[data-theme]").forEach(btn=>{
+        btn.classList.toggle("selected",btn.dataset.theme===theme);
+    });
 }
+
+function themeSystem(){
+    applyTheme(localStorage.getItem("kabir_theme")||"dark");
+
+    $("themeButton")?.addEventListener("click",()=>{
+        $("themeModal")?.classList.remove("hidden");
+    });
+
+    $("closeThemeButton")?.addEventListener("click",()=>{
+        $("themeModal")?.classList.add("hidden");
+    });
+
+    $("themeChoices")?.addEventListener("click",e=>{
+        const btn=e.target.closest("button[data-theme]");
+        if(!btn)return;
+        applyTheme(btn.dataset.theme);
+        setTimeout(()=>$("themeModal")?.classList.add("hidden"),180);
+    });
+}
+
 function featureNav(){
     $("addRepairingCard")?.addEventListener("click",()=>show("repairAddSection"));
     $("searchRepairingCard")?.addEventListener("click",()=>{show("repairSearchSection");renderRepairing();$("repairSearchInput")?.focus()});
