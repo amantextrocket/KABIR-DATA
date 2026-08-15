@@ -1502,10 +1502,32 @@ function changePin(){
 let repairing=[];
 let repairListenerStarted=false;
 function subscribeRepairing(){
-    if(repairListenerStarted)return; repairListenerStarted=true;
-    const q=query(collection(db,REPAIR_COL),orderBy("createdAt","desc"));
-    onSnapshot(q,s=>{repairing=s.docs.map(d=>({id:d.id,...d.data()}));renderRepairing()},
-        e=>console.error("Repairing listener:",e));
+    if(repairListenerStarted)return;
+    repairListenerStarted=true;
+
+    const applyRepairing = s => {
+        repairing = s.docs.map(d => ({id:d.id,...d.data()}));
+
+        repairing.sort((a,b)=>{
+            const ta = a.createdAt?.toMillis?.() || 0;
+            const tb = b.createdAt?.toMillis?.() || 0;
+            return tb-ta;
+        });
+
+        renderRepairing();
+    };
+
+    onSnapshot(
+        collection(db,REPAIR_COL),
+        applyRepairing,
+        e => {
+            console.error("Repairing listener:",e);
+            const box=$("repairResults");
+            if(box){
+                box.innerHTML='<div class="empty">Repairing data load नहीं हुआ. Firebase Rules check करें.</div>';
+            }
+        }
+    );
 }
 function renderRepairing(){
     const box=$("repairResults");if(!box)return;
@@ -1523,12 +1545,29 @@ async function saveRepair(e){
     for(const id of ids)if(!val(id)){ $(id)?.focus();msg("repairMessage","सभी fields भरना जरूरी है.");return }
     const phone=val("repairPhone").replace(/\D/g,"");
     if(!/^\d{10}$/.test(phone)){msg("repairMessage","10 digit customer phone number डालें.");return}
+    const saveBtn = $("repairForm")?.querySelector("button[type='submit']");
+    if(saveBtn) saveBtn.disabled=true;
+
     try{
-        await addDoc(collection(db,REPAIR_COL),{customerName:val("repairCustomerName"),phone,device:val("repairDevice"),
-            problem:val("repairProblem"),repairBy:val("repairBy"),payment:Number(val("repairPayment")),
-            createdAt:serverTimestamp(),createdBy:user?.uid||null});
-        $("repairForm").reset();msg("repairMessage","Repairing data saved successfully ✓",true);
-    }catch(e){console.error(e);msg("repairMessage",e?.message||"Repairing save नहीं हुआ.")}
+        await addDoc(collection(db,REPAIR_COL),{
+            customerName:val("repairCustomerName"),
+            phone,
+            device:val("repairDevice"),
+            problem:val("repairProblem"),
+            repairBy:val("repairBy"),
+            payment:Number(val("repairPayment")),
+            createdAt:serverTimestamp(),
+            createdBy:user?.uid||null
+        });
+
+        $("repairForm").reset();
+        msg("repairMessage","Repairing data saved successfully ✓",true);
+    }catch(e){
+        console.error(e);
+        msg("repairMessage",e?.message||"Repairing save नहीं हुआ.");
+    }finally{
+        if(saveBtn) saveBtn.disabled=false;
+    }
 }
 function loadScript(src){return new Promise((resolve,reject)=>{const s=document.createElement("script");s.src=src;s.onload=resolve;s.onerror=reject;document.head.appendChild(s)})}
 async function exportXlsx(rows,filename,sheet){
@@ -1616,6 +1655,15 @@ function init(){
     scanner();
 
     changePin();
+
+    /*
+     * IMPORTANT:
+     * New home/repairing/export buttons must be initialized here.
+     * Earlier these listeners were defined in featureNav(), but
+     * featureNav() was never called, so the buttons did nothing.
+     */
+    themeSystem();
+    featureNav();
 
     authInit();
 
