@@ -24,7 +24,11 @@
 <main id="appScreen" class="app hidden">
 <header class="glass topbar">
   <div><div class="eyebrow">KABIR MOBILE</div><h2>Kabir Mobile Data</h2></div>
-  <button id="lockButton" class="round" type="button">⌑</button>
+  <div class="top-actions">
+    <button id="exportCustomersButton" class="round" type="button" title="Download Customer Excel">⇩</button>
+    <button id="themeButton" class="round" type="button" title="Theme">◐</button>
+    <button id="lockButton" class="round" type="button">⌑</button>
+  </div>
 </header>
 
 <section class="dashboard">
@@ -32,6 +36,14 @@
   <button id="totalDevicesCard" class="glass stat" type="button"><span class="icon">📱</span><span>Total Devices</span><strong id="totalDevices">0</strong></button>
   <button id="searchCustomerCard" class="glass action" type="button"><span class="icon">⌕</span><strong>Search Customer</strong><small>Name, mobile, IMEI, date…</small></button>
   <button id="addCustomerCard" class="glass action" type="button"><span class="icon">＋</span><strong>Add Customer</strong><small>Create a new customer record</small></button>
+</section>
+
+<section id="repairingHome" class="repairing-home">
+  <div class="section-head"><div><div class="eyebrow">KABIR REPAIRING DATA</div><h2>Kabir Repairing Data</h2></div><button id="exportRepairingButton" class="round" type="button">⇩</button></div>
+  <div class="repairing-actions">
+    <button id="addRepairingCard" class="glass action" type="button"><span class="icon">🛠</span><strong>Add Repairing</strong><small>New repairing record</small></button>
+    <button id="searchRepairingCard" class="glass action" type="button"><span class="icon">⌕</span><strong>Search Repairing</strong><small>Name, phone, problem, payment…</small></button>
+  </div>
 </section>
 
 <section id="searchSection" class="glass panel hidden">
@@ -45,6 +57,7 @@
   <form id="customerForm">
     <div class="block"><b>Customer Details</b>
       <label>1. Customer Name<input id="customerName" required autocomplete="name"></label>
+      <label>Customer Code<input id="customerCode" readonly placeholder="Automatic KM1234"></label>
       <label>2. Address<textarea id="address" rows="3" required></textarea></label>
       <label>3. PIN Code<input id="pincode" inputmode="numeric" maxlength="6" required placeholder="6 digit PIN code"><small id="pincodeStatus"></small></label>
       <div class="cols"><label>4. City / Village<input id="city" required placeholder="Auto from PIN"></label><label>State<input id="state" required placeholder="Auto from PIN"></label></div>
@@ -75,6 +88,32 @@
 <footer>Copyright © 2026 Kabir Data powered by AMAN</footer>
 </main>
 
+<section id="repairAddSection" class="glass panel hidden">
+  <div class="section-head"><div><div class="eyebrow">NEW REPAIRING</div><h2>Add Repairing</h2></div><button class="close" data-close="repairAddSection">×</button></div>
+  <form id="repairForm">
+    <label>1. Customer Name<input id="repairCustomerName" required></label>
+    <label>2. Customer Phone Number<input id="repairPhone" type="tel" inputmode="tel" maxlength="10" required></label>
+    <label>3. Brand or Model<input id="repairDevice" required></label>
+    <label>4. Problem<select id="repairProblem" required><option value="">Select problem</option><option>Combo</option><option>Battery</option><option>Body</option><option>Panel</option><option>Outkey</option><option>Volume & On/Off Patta</option><option>Motherboard</option><option>CC Board</option><option>Camera</option><option>Speaker</option><option>Mic</option><option>Fingerprint</option><option>Software</option><option>Hardware</option><option>Charging Port</option><option>Display</option><option>Touch</option><option>Network</option><option>Water Damage</option><option>Other</option></select></label>
+    <label>5. Repairing By<input id="repairBy" required></label>
+    <label>6. Payment<input id="repairPayment" type="number" inputmode="decimal" min="0" required placeholder="₹"></label>
+    <button class="save" type="submit">SAVE REPAIRING</button><p id="repairMessage" class="message"></p>
+  </form>
+</section>
+<section id="repairSearchSection" class="glass panel hidden">
+  <div class="section-head"><div><div class="eyebrow">REPAIRING DATABASE</div><h2>Search Repairing</h2></div><button class="close" data-close="repairSearchSection">×</button></div>
+  <div class="search"><span>⌕</span><input id="repairSearchInput" type="search" placeholder="Name, phone, problem, brand/model, payment…" autocomplete="off"></div>
+  <div id="repairResults" class="results"></div>
+</section>
+<div id="customerDetailModal" class="modal hidden"><div class="glass modal-card detail-card">
+  <div class="section-head"><div><div class="eyebrow">CUSTOMER DETAILS</div><h2 id="detailTitle">Customer</h2></div><button id="closeDetailButton" class="close">×</button></div>
+  <div id="customerDetailBody"></div>
+  <div class="detail-actions"><button id="downloadCustomerPdf" class="save" type="button">DOWNLOAD PDF</button><button id="editCustomerButton" class="glass save secondary" type="button">EDIT CUSTOMER</button><button id="deleteCustomerButton" class="glass save danger-btn" type="button">DELETE CUSTOMER</button></div>
+</div></div>
+<div id="themeModal" class="modal hidden"><div class="glass modal-card">
+  <div class="section-head"><div><div class="eyebrow">APPEARANCE</div><h2>Choose Theme</h2></div><button id="closeThemeButton" class="close">×</button></div>
+  <div id="themeChoices" class="theme-grid"><button data-theme="dark">🌑 Dark</button><button data-theme="light">☀️ Light</button><button data-theme="midnight">🌌 Midnight</button><button data-theme="silver">◽ Silver</button><button data-theme="glass">✨ Glass</button></div>
+</div></div>
 <div id="scannerModal" class="modal hidden"><div class="glass modal-card"><div class="section-head"><div><div class="eyebrow">CAMERA</div><h2>Scan IMEI</h2></div><button id="closeScannerButton" class="close">×</button></div><video id="scannerVideo" playsinline muted></video><p id="scannerMessage" class="message">Point the camera at a QR/barcode.</p></div></div>
 <script type="module" src="script.js"></script>
 </body>
