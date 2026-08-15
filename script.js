@@ -17,10 +17,15 @@ const firebaseConfig={
 const app=initializeApp(firebaseConfig);
 
 // Firebase App Check - reCAPTCHA Enterprise
-const appCheck=initializeAppCheck(app,{
-    provider:new ReCaptchaEnterpriseProvider("6LeYw4ctAAAAAOtOC-Bzqzx8Y7KFF3A1ScQX2j2V"),
-    isTokenAutoRefreshEnabled:true
-});
+let appCheck=null;
+try{
+    appCheck=initializeAppCheck(app,{
+        provider:new ReCaptchaEnterpriseProvider("6LeYw4ctAAAAAOtOC-Bzqzx8Y7KFF3A1ScQX2j2V"),
+        isTokenAutoRefreshEnabled:true
+    });
+}catch(appCheckError){
+    console.warn("Firebase App Check initialization failed; continuing without App Check for now.",appCheckError);
+}
 
 const auth=getAuth(app);
 const db=getFirestore(app);
