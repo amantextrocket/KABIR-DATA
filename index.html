@@ -8,16 +8,21 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<section id="pinScreen" class="pin-screen">
-  <div class="glass pin-card">
+<section id="loginScreen" class="pin-screen">
+  <div class="glass pin-card login-card">
     <div class="logo">KM</div>
     <div class="eyebrow">KABIR MOBILE</div>
     <h1>Kabir Mobile Data</h1>
-    <p class="muted">Secure shop database</p>
-    <label class="pin-label" for="pinInput">Enter PIN</label>
-    <input id="pinInput" class="pin-input" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" placeholder="••••">
-    <div id="pinDots" class="pin-dots"><i></i><i></i><i></i><i></i></div>
-    <p id="pinMessage" class="message"></p>
+    <p class="muted">Secure employee login • Section 1 + Section 2</p>
+    <form id="employeeLoginForm">
+      <label class="pin-label" for="employeeIdInput">Website ID</label>
+      <input id="employeeIdInput" class="login-input" autocomplete="username" autocapitalize="characters" placeholder="PRATIK1234">
+      <label class="pin-label compact" for="employeePasswordInput">Password</label>
+      <input id="employeePasswordInput" class="login-input" type="password" autocomplete="current-password" placeholder="Password">
+      <button class="save login-button" type="submit">LOGIN TO KABIR DATA</button>
+    </form>
+    <p id="loginMessage" class="message"></p>
+    <small class="login-note">Login के बाद दोबारा password नहीं मांगा जाएगा जब तक आप Logout न करें।</small>
   </div>
 </section>
 
@@ -27,9 +32,12 @@
   <div class="top-actions">
     <button id="exportCustomersButton" class="round" type="button" title="Download Customer Excel">⇩</button>
     <button id="themeButton" class="round" type="button" title="Theme">◐</button>
-    <button id="lockButton" class="round" type="button">⌑</button>
+    <button id="aiButton" class="round ai-round" type="button" title="Kabir AI">🤖</button>
+    <button id="lockButton" class="round" type="button" title="Logout">⌑</button>
   </div>
 </header>
+
+<section id="writeLockBanner" class="glass lock-banner hidden"><span>🔒</span><div><strong>DATABASE WRITE LOCK</strong><small>12:00 AM से 10:00 AM तक Add / Edit / Delete बंद है। Data देखना और AI चलाना जारी रहेगा।</small></div></section>
 
 <section class="dashboard">
   <button id="totalCustomersCard" class="glass stat" type="button"><span class="icon">👥</span><span>Total Customers</span><strong id="totalCustomers">0</strong></button>
@@ -124,6 +132,14 @@
   <div id="themeChoices" class="theme-grid"><button data-theme="dark">🌑 Dark</button><button data-theme="light">☀️ Light</button><button data-theme="midnight">🌌 Midnight</button><button data-theme="silver">◽ Silver</button><button data-theme="glass">✨ Glass</button></div>
 </div></div>
 <div id="scannerModal" class="modal hidden"><div class="glass modal-card"><div class="section-head"><div><div class="eyebrow">CAMERA</div><h2>Scan IMEI</h2></div><button id="closeScannerButton" class="close">×</button></div><video id="scannerVideo" playsinline muted></video><p id="scannerMessage" class="message">Point the camera at a QR/barcode.</p></div></div>
+
+<section id="aiModal" class="modal hidden"><div class="glass modal-card ai-card">
+  <div class="section-head"><div><div class="eyebrow">KABIR AI</div><h2>पूछिए कुछ भी</h2></div><button id="closeAiButton" class="close">×</button></div>
+  <div id="aiMessages" class="ai-messages"><div class="ai-welcome">नमस्ते 👋 मैं Kabir AI हूँ। Kabir Mobile Data और Kabir Repairing Data के बारे में Hindi, English या Hinglish में कुछ भी पूछिए।</div></div>
+  <div class="ai-input-row"><textarea id="aiInput" rows="2" placeholder="जैसे: आज कितने customer add हुए? / Show Pratik's work..."></textarea><button id="aiVoiceButton" class="voice-btn" type="button" title="Voice">🎙️</button><button id="aiSendButton" class="send-btn" type="button">➤</button></div>
+  <div class="ai-suggestions"><button type="button" data-ai="आज कितने customer हैं?">आज कितने customer हैं?</button><button type="button" data-ai="आज की repairing बताओ">आज की repairing बताओ</button><button type="button" data-ai="सबसे ज्यादा कौन सा brand है?">Top brand?</button></div>
+</div></section>
+
 <script type="module" src="script.js"></script>
 </body>
 </html>
