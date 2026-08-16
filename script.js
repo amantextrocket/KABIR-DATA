@@ -408,23 +408,121 @@ function pinError(){
     setTimeout(()=>card?.classList.remove("pin-shake"),500);
 }
 
+
+let adminLoginBusy=false;
+
+function adminPinShake(){
+    const card=document.querySelector("#adminLoginScreen .pin-card");
+    const input=$("adminPinInput");
+
+    if(card){
+        card.classList.remove("pin-shake");
+        void card.offsetWidth;
+        card.classList.add("pin-shake");
+        setTimeout(()=>card.classList.remove("pin-shake"),550);
+    }
+
+    if(navigator.vibrate){
+        try{navigator.vibrate([100,40,100,40,150]);}catch(_){}
+    }
+
+    setTimeout(()=>{
+        if(input){
+            input.value="";
+            input.focus();
+        }
+    },550);
+}
+
+async function adminLogin(e){
+    if(e?.preventDefault)e.preventDefault();
+
+    const input=$("adminPinInput");
+    const pin=String(input?.value||"").replace(/\D/g,"").slice(0,4);
+
+    if(input)input.value=pin;
+
+    if(pin.length!==4){
+        msg("adminLoginMessage","4 digit PIN डालें.");
+        input?.focus();
+        return false;
+    }
+
+    if(adminLoginBusy)return false;
+    adminLoginBusy=true;
+
+    msg("adminLoginMessage","Checking PIN…",true);
+
+    try{
+        if(!kabirFunctions){
+            kabirFunctions=getFunctions(app,"asia-south1");
+        }
+
+        const data=await callKabir("adminLogin",{pin});
+
+        if(!data?.token){
+            throw new Error("Admin login token नहीं मिला.");
+        }
+
+        await signInWithCustomToken(auth,data.token);
+
+        msg("adminLoginMessage","Login successful ✓",true);
+        return true;
+    }catch(err){
+        console.error("ADMIN LOGIN ERROR:",err);
+        msg("adminLoginMessage","Wrong PIN");
+        adminPinShake();
+        return false;
+    }finally{
+        adminLoginBusy=false;
+    }
+}
+
 function setupPin(){
-  $("employeeLoginForm")?.addEventListener("submit",employeeLogin);
-  const form=$("adminLoginForm");
-  const input=$("adminPinInput");
-  if(form)form.addEventListener("submit",e=>{e.preventDefault();});
-  if(input){
-    input.maxLength=4;
-    input.addEventListener("input",()=>{
-      input.value=input.value.replace(/\D/g,"").slice(0,4);
-      if(input.value.length===4)adminLogin();
+    $("employeeLoginForm")?.addEventListener("submit",employeeLogin);
+
+    const form=$("adminLoginForm");
+    const input=$("adminPinInput");
+
+    if(form){
+        form.addEventListener("submit",e=>{
+            e.preventDefault();
+            if(input?.value.length===4)adminLogin(e);
+        });
+    }
+
+    if(input){
+        input.maxLength=4;
+        input.inputMode="numeric";
+
+        input.addEventListener("input",()=>{
+            input.value=input.value.replace(/\D/g,"").slice(0,4);
+
+            if(input.value.length===4){
+                adminLogin();
+            }
+        });
+
+        input.addEventListener("keydown",e=>{
+            if(e.key==="Enter"){
+                e.preventDefault();
+                adminLogin();
+            }
+        });
+    }
+
+    $("lockButton")?.addEventListener("click",async()=>{
+        try{await callKabir("logout");}catch(_){}
+        await signOut(auth);
+        sessionStorage.removeItem("kabir_login_id");
+        showLoginScreen();
     });
-    input.addEventListener("keydown",e=>{
-      if(e.key==="Enter"){e.preventDefault();adminLogin();}
+
+    $("adminLogoutButton")?.addEventListener("click",async()=>{
+        try{await callKabir("logout");}catch(_){}
+        await signOut(auth);
+        showLoginScreen();
     });
-  }
-  $("lockButton")?.addEventListener("click",async()=>{try{await callKabir("logout");}catch(_){}await signOut(auth);sessionStorage.removeItem("kabir_login_id");showLoginScreen();});
-  $("adminLogoutButton")?.addEventListener("click",async()=>{try{await callKabir("logout");}catch(_){}await signOut(auth);showLoginScreen();});
 }
 
 async function authInit(){
@@ -592,7 +690,7 @@ function changePin(){
     f.addEventListener("submit",async e=>{
         e.preventDefault();
         const a=val("newPin"),b=val("confirmPin");
-        if(!/^\d{4,12}$/.test(a)){msg("pinSettingsMessage","PIN 4 से 12 digits का होना चाहिए.");return;}
+        if(a!=="2968"){msg("pinSettingsMessage","Admin PIN fixed है: 2968");return;}
         if(a!==b){msg("pinSettingsMessage","दोनों PIN match नहीं हैं.");return;}
         try{await changeSharedPin(a);f.reset();msg("pinSettingsMessage","Admin PIN successfully updated ✓",true);}catch(err){msg("pinSettingsMessage",err?.message||"PIN update नहीं हुआ.");}
     });
