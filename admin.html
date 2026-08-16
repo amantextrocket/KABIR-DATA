@@ -16,7 +16,7 @@
     <p class="muted">Secure administrator login</p>
     <form id="adminLoginForm">
       <label class="pin-label" for="adminPinInput">Admin PIN</label>
-      <input id="adminPinInput" class="login-input" type="password" inputmode="numeric" maxlength="12" autocomplete="current-password" placeholder="Enter Admin PIN">
+      <input id="adminPinInput" class="login-input" type="password" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" autocomplete="off" placeholder="Enter 4-digit Admin PIN">
       <button class="save login-button" type="submit">OPEN ADMIN PANEL</button>
     </form>
     <p id="adminLoginMessage" class="message"></p>
