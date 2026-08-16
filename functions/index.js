@@ -57,13 +57,29 @@ async function requireActiveUser(request,adminOnly=false){
 async function ensureAdminConfig(){
   const ref=db.doc('admins/config');
   const snap=await ref.get();
-  if(snap.exists)return snap.data();
-  let pin='0000';
-  const old=await db.doc('settings/security').get();
-  if(old.exists && old.data()?.pin)pin=String(old.data().pin);
-  const {salt,hash}=await hashPassword(pin,'');
-  const data={salt,hash,createdAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()};
-  await ref.set(data,{merge:true});
+
+  // Fixed Admin PIN requested by owner: 2968.
+  // The config is repaired automatically so an old/wrong stored hash
+  // can never block the fixed PIN.
+  const pin='2968';
+  const salt='kabir-admin-2968-v1';
+  const {hash}=await hashPassword(pin,salt);
+
+  const data={
+    salt,
+    hash,
+    createdAt:snap.exists
+      ? (snap.data()?.createdAt||admin.firestore.FieldValue.serverTimestamp())
+      : admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt:admin.firestore.FieldValue.serverTimestamp()
+  };
+
+  if(!snap.exists ||
+     snap.data()?.salt!==salt ||
+     snap.data()?.hash!==hash){
+    await ref.set(data,{merge:true});
+  }
+
   return data;
 }
 async function issueToken(uid,claims){
@@ -76,28 +92,14 @@ async function createSession(uid,userId,role){
 }
 
 exports.adminLogin=onCall({enforceAppCheck:false},async request=>{
-  const pin=String(request.data?.pin||'').replace(/\D/g,'').slice(0,4);
-  if(!/^\d{4}$/.test(pin))throw new HttpsError('invalid-argument','Admin PIN exactly 4 digits required.');
+  const pin=String(request.data?.pin||'').replace(/\D/g,'');
+  if(!/^\d{4}$/.test(pin))throw new HttpsError('invalid-argument','Admin PIN exactly 4 digits का होना चाहिए.');
 
   const cfg=await ensureAdminConfig();
-  let valid=await verifyPassword(pin,cfg.salt,cfg.hash);
-
-  // Backward compatibility: older versions stored the admin PIN in settings/security.
-  // If the old PIN matches, migrate it immediately to the secure admins/config hash.
-  if(!valid){
-    const legacy=await db.doc('settings/security').get();
-    const legacyPin=legacy.exists?String(legacy.data()?.pin||''):'';
-    if(/^\d{4}$/.test(legacyPin) && pin===legacyPin){
-      const {salt,hash}=await hashPassword(pin,'');
-      await db.doc('admins/config').set({
-        salt,hash,
-        updatedAt:admin.firestore.FieldValue.serverTimestamp()
-      },{merge:true});
-      valid=true;
-    }
+  if(!await verifyPassword(pin,cfg.salt,cfg.hash)){
+    throw new HttpsError('permission-denied','Admin PIN incorrect.');
   }
 
-  if(!valid)throw new HttpsError('permission-denied','Admin PIN incorrect.');
   const uid='kabir_admin';
   try{await auth.getUser(uid);}catch(_){await auth.createUser({uid,displayName:'Kabir Admin'});}
   const sessionId=await createSession(uid,'ADMIN','admin');
@@ -107,10 +109,11 @@ exports.adminLogin=onCall({enforceAppCheck:false},async request=>{
 
 exports.changeAdminPin=onCall(async request=>{
   await requireActiveUser(request,true);
-  const pin=String(request.data?.newPin||'');
-  if(!/^\d{4}$/.test(pin))throw new HttpsError('invalid-argument','Admin PIN exactly 4 digits का होना चाहिए.');
-  const {salt,hash}=await hashPassword(pin,'');
-  await db.doc('admins/config').set({salt,hash,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+  const pin=String(request.data?.newPin||'').replace(/\D/g,'');
+  if(pin!=='2968'){
+    throw new HttpsError('invalid-argument','Admin PIN fixed है: 2968');
+  }
+  await ensureAdminConfig();
   return {ok:true};
 });
 
