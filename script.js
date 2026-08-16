@@ -1956,15 +1956,66 @@ async function employeeLogin(e){
     }finally{if(btn)btn.disabled=false;}
 }
 async function adminLogin(e){
-    e.preventDefault();const pin=val("adminPinInput");
-    if(!pin){msg("adminLoginMessage","Admin PIN डालें.");return;}
-    const btn=e.currentTarget.querySelector("button[type='submit']");if(btn)btn.disabled=true;
+    e.preventDefault();
+    const input=$("adminPinInput");
+    const pin=String(input?.value||"").replace(/\D/g,"").slice(0,4);
+    if(input)input.value=pin;
+
+    if(!/^\d{4}$/.test(pin)){
+        msg("adminLoginMessage","PIN exactly 4 digits होना चाहिए.");
+        adminPinError();
+        return;
+    }
+
+    const btn=e.currentTarget.querySelector("button[type='submit']");
+    if(btn)btn.disabled=true;
+
     try{
         const data=await callKabir("adminLogin",{pin});
         await signInWithCustomToken(auth,data.token);
+        if(input)input.value="";
         msg("adminLoginMessage","Login successful ✓",true);
-    }catch(err){console.error(err);msg("adminLoginMessage",err?.message||"Admin login failed.");}
-    finally{if(btn)btn.disabled=false;}
+    }catch(err){
+        console.error(err);
+        msg("adminLoginMessage",err?.message||"Admin PIN incorrect.");
+        adminPinError();
+    }finally{
+        if(btn)btn.disabled=false;
+    }
+}
+
+function adminPinError(){
+    const card=$("adminLoginScreen")?.querySelector(".pin-card");
+    const input=$("adminPinInput");
+    card?.classList.remove("pin-shake");
+    void card?.offsetWidth;
+    card?.classList.add("pin-shake");
+
+    if(navigator.vibrate){
+        try{navigator.vibrate([90,35,90]);}catch(_){}
+    }
+
+    setTimeout(()=>{
+        if(input){
+            input.value="";
+            input.focus();
+        }
+        card?.classList.remove("pin-shake");
+    },500);
+}
+
+function setupAdminPinInput(){
+    const input=$("adminPinInput");
+    if(!input || input.dataset.ready==="1")return;
+    input.dataset.ready="1";
+
+    input.addEventListener("input",()=>{
+        input.value=input.value.replace(/\D/g,"").slice(0,4);
+        msg("adminLoginMessage","");
+        if(input.value.length===4){
+            $("adminLoginForm")?.requestSubmit();
+        }
+    });
 }
 
 /* New secure PIN compatibility functions — old shared PIN storage is no longer used for website access. */
@@ -1977,6 +2028,7 @@ async function changeSharedPin(newPin){
 function setupPin(){
     $("employeeLoginForm")?.addEventListener("submit",employeeLogin);
     $("adminLoginForm")?.addEventListener("submit",adminLogin);
+    setupAdminPinInput();
     $("lockButton")?.addEventListener("click",async()=>{try{await callKabir("logout");}catch(_){}await signOut(auth);sessionStorage.removeItem("kabir_login_id");showLoginScreen();});
     $("adminLogoutButton")?.addEventListener("click",async()=>{try{await callKabir("logout");}catch(_){}await signOut(auth);showLoginScreen();});
 }
