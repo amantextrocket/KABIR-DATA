@@ -408,82 +408,13 @@ function pinError(){
     setTimeout(()=>card?.classList.remove("pin-shake"),500);
 }
 
-
-let adminLoginBusy=false;
-
-function adminPinShake(){
-    const card=document.querySelector("#adminLoginScreen .pin-card");
-    const input=$("adminPinInput");
-
-    if(card){
-        card.classList.remove("pin-shake");
-        void card.offsetWidth;
-        card.classList.add("pin-shake");
-        setTimeout(()=>card.classList.remove("pin-shake"),550);
-    }
-
-    if(navigator.vibrate){
-        try{navigator.vibrate([100,40,100,40,150]);}catch(_){}
-    }
-
-    setTimeout(()=>{
-        if(input){
-            input.value="";
-            input.focus();
-        }
-    },550);
-}
-
-async function adminLogin(e){
-    if(e?.preventDefault)e.preventDefault();
-
-    const input=$("adminPinInput");
-    const pin=String(input?.value||"").replace(/\D/g,"").slice(0,4);
-
-    if(input)input.value=pin;
-
-    if(pin.length!==4){
-        msg("adminLoginMessage","4 digit PIN डालें.");
-        input?.focus();
-        return false;
-    }
-
-    if(adminLoginBusy)return false;
-    adminLoginBusy=true;
-
-    msg("adminLoginMessage","Checking PIN…",true);
-
-    try{
-        if(!kabirFunctions){
-            kabirFunctions=getFunctions(app,"asia-south1");
-        }
-
-        const data=await callKabir("adminLogin",{pin});
-
-        if(!data?.token){
-            throw new Error("Admin login token नहीं मिला.");
-        }
-
-        await signInWithCustomToken(auth,data.token);
-
-        msg("adminLoginMessage","Login successful ✓",true);
-        return true;
-    }catch(err){
-        console.error("ADMIN LOGIN ERROR:",err);
-        msg("adminLoginMessage","Wrong PIN");
-        adminPinShake();
-        return false;
-    }finally{
-        adminLoginBusy=false;
-    }
-}
-
 function setupPin(){
     $("employeeLoginForm")?.addEventListener("submit",employeeLogin);
 
     const form=$("adminLoginForm");
     const input=$("adminPinInput");
 
+    // No Admin button: PIN alone controls login.
     if(form){
         form.addEventListener("submit",e=>{
             e.preventDefault();
@@ -494,10 +425,13 @@ function setupPin(){
     if(input){
         input.maxLength=4;
         input.inputMode="numeric";
+        input.autocomplete="off";
 
         input.addEventListener("input",()=>{
             input.value=input.value.replace(/\D/g,"").slice(0,4);
+            msg("adminLoginMessage","");
 
+            // Automatic login immediately after the 4th digit.
             if(input.value.length===4){
                 adminLogin();
             }
@@ -506,7 +440,7 @@ function setupPin(){
         input.addEventListener("keydown",e=>{
             if(e.key==="Enter"){
                 e.preventDefault();
-                adminLogin();
+                if(input.value.length===4)adminLogin();
             }
         });
     }
