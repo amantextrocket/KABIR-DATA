@@ -1,31 +1,81 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="hi">
 <head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><meta name="theme-color" content="#08090d"><title>Admin — Kabir Mobile Data</title><link rel="stylesheet" href="style.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#08090d">
+<title>Admin — Kabir Mobile Data</title>
+<link rel="stylesheet" href="style.css">
 </head>
-<body>
-<section id="pinScreen" class="pin-screen">
-  <div class="glass pin-card">
+<body data-page="admin">
+<section id="adminLoginScreen" class="pin-screen">
+  <div class="glass pin-card login-card">
     <div class="logo">KM</div>
     <div class="eyebrow">KABIR MOBILE</div>
     <h1>Admin Panel</h1>
-    <p class="muted">Enter PIN</p>
-    <label class="pin-label" for="pinInput">Enter PIN</label>
-    <input id="pinInput" class="pin-input" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" placeholder="••••">
-    <div id="pinDots" class="pin-dots"><i></i><i></i><i></i><i></i></div>
-    <p id="pinMessage" class="message"></p>
+    <p class="muted">Secure administrator login</p>
+    <form id="adminLoginForm">
+      <label class="pin-label" for="adminPinInput">Admin PIN</label>
+      <input id="adminPinInput" class="login-input" type="password" inputmode="numeric" maxlength="12" autocomplete="current-password" placeholder="Enter Admin PIN">
+      <button class="save login-button" type="submit">OPEN ADMIN PANEL</button>
+    </form>
+    <p id="adminLoginMessage" class="message"></p>
   </div>
 </section>
 
-<main id="appScreen" class="admin app hidden">
-<header class="glass topbar"><div><div class="eyebrow">KABIR MOBILE</div><h2>Admin Settings</h2></div><a class="round" href="index.html">‹</a></header>
+<main id="adminAppScreen" class="admin app hidden">
+<header class="glass topbar">
+  <div><div class="eyebrow">KABIR MOBILE</div><h2>Admin Control Center</h2></div>
+  <div class="top-actions"><button id="adminAiButton" class="round ai-round" type="button">🤖</button><button id="adminLogoutButton" class="round" type="button" title="Logout">⌑</button></div>
+</header>
+
+<section id="adminLockBanner" class="glass lock-banner hidden"><span>🔒</span><div><strong>DATABASE WRITE LOCK ACTIVE</strong><small>12:00 AM से 10:00 AM तक Main Website के Add / Edit / Delete बंद हैं।</small></div></section>
+
 <section class="glass panel">
-<div class="section-head"><div><div class="eyebrow">SECURITY</div><h2>PIN Settings</h2></div></div>
-<p class="muted">Main website और Admin Panel दोनों में यही एक shared PIN काम करेगा.</p>
-<form id="changePinForm"><label>Current PIN<input id="currentPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></label><label>New PIN<input id="newPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></label><label>Confirm New PIN<input id="confirmPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></label><button class="save" type="submit">SAVE NEW PIN</button><p id="pinSettingsMessage" class="message"></p></form>
+  <div class="section-head"><div><div class="eyebrow">KABIR MOBILE DATA</div><h2>Live Status</h2></div></div>
+  <div class="mini-grid"><div><span>Total Customers</span><strong id="adminCustomers">0</strong></div><div><span>Total Devices</span><strong id="adminDevices">0</strong></div></div>
+  <p id="adminFirebaseStatus" class="firebase-status">Connecting to Firebase…</p>
 </section>
-<section class="glass panel"><div class="section-head"><div><div class="eyebrow">KABIR MOBILE DATA</div><h2>Live Status</h2></div></div><div class="mini-grid"><div><span>Total Customers</span><strong id="adminCustomers">0</strong></div><div><span>Total Devices</span><strong id="adminDevices">0</strong></div></div><p id="adminFirebaseStatus" class="firebase-status">Connecting to Firebase…</p></section>
+
+<section class="glass panel">
+  <div class="section-head"><div><div class="eyebrow">ADMIN SECURITY</div><h2>Change Admin PIN</h2></div></div>
+  <form id="changePinForm" class="admin-form"><div class="cols"><label>New PIN<input id="newPin" type="password" inputmode="numeric" maxlength="12" placeholder="New Admin PIN"></label><label>Confirm PIN<input id="confirmPin" type="password" inputmode="numeric" maxlength="12" placeholder="Confirm PIN"></label></div><button class="save" type="submit">SAVE NEW ADMIN PIN</button><p id="pinSettingsMessage" class="message"></p></form>
+</section>
+
+<section class="glass panel">
+  <div class="section-head"><div><div class="eyebrow">WEBSITE ACCESS</div><h2>Website Users</h2></div></div>
+  <p class="muted">हर employee के लिए अलग ID + password बनाइए। एक ID एक समय में केवल एक device पर active रहेगी।</p>
+  <form id="createEmployeeForm" class="admin-form">
+    <div class="cols"><label>User ID<input id="newEmployeeId" autocapitalize="characters" placeholder="PRATIK1234"></label><label>Name / Label<input id="newEmployeeName" placeholder="Pratik"></label></div>
+    <div class="cols"><label>Password<input id="newEmployeePassword" placeholder="खाली छोड़ें तो automatic generate होगा"></label><label>Permission<select id="newEmployeeRole"><option value="employee">Website User</option></select></label></div>
+    <button class="save" type="submit">＋ CREATE / GENERATE USER</button>
+    <p id="createEmployeeMessage" class="message"></p>
+  </form>
+  <div id="newCredentialsBox" class="credentials-box hidden"><strong>नया Login तैयार है</strong><div><span>ID</span><b id="createdUserId"></b></div><div><span>Password</span><b id="createdUserPassword"></b></div><button id="copyCredentialsButton" class="glass save secondary" type="button">COPY LOGIN DETAILS</button></div>
+  <div id="employeeList" class="results"><div class="empty">Users load हो रहे हैं…</div></div>
+</section>
+
+<section class="glass panel">
+  <div class="section-head"><div><div class="eyebrow">AI ANALYSIS</div><h2>काम का पूरा Analysis</h2></div><button id="adminAiOpenButton" class="round" type="button">🤖</button></div>
+  <p class="muted">AI से पूछिए किस ID ने क्या किया, आज कितनी entries हुईं, किसने edit/delete किया और किसी भी data का analysis।</p>
+  <button id="adminQuickAnalysisButton" class="save" type="button">GENERATE TODAY'S AI REPORT</button>
+  <div id="adminAnalysisResult" class="ai-report hidden"></div>
+</section>
+
+<section class="glass panel">
+  <div class="section-head"><div><div class="eyebrow">ACTIVITY LOG</div><h2>Recent Work</h2></div><button id="refreshLogsButton" class="round" type="button">↻</button></div>
+  <div id="adminLogs" class="results"><div class="empty">Activity load हो रही है…</div></div>
+</section>
+
 <footer>Copyright © 2026 Kabir Data powered by AMAN</footer>
 </main>
+
+<section id="adminAiModal" class="modal hidden"><div class="glass modal-card ai-card">
+  <div class="section-head"><div><div class="eyebrow">ADMIN KABIR AI</div><h2>पूछिए कुछ भी</h2></div><button id="closeAdminAiButton" class="close">×</button></div>
+  <div id="adminAiMessages" class="ai-messages"><div class="ai-welcome">नमस्ते 👋 मैं Admin Kabir AI हूँ। मैं data और सभी users की activity का analysis कर सकता हूँ।</div></div>
+  <div class="ai-input-row"><textarea id="adminAiInput" rows="2" placeholder="जैसे: Pratik ने आज क्या किया?"></textarea><button id="adminAiVoiceButton" class="voice-btn" type="button">🎙️</button><button id="adminAiSendButton" class="send-btn" type="button">➤</button></div>
+  <div class="ai-suggestions"><button type="button" data-admin-ai="आज की पूरी activity report दो">आज की report</button><button type="button" data-admin-ai="किस user ने सबसे ज्यादा काम किया?">Top user</button><button type="button" data-admin-ai="आज किसने delete किया?">Delete activity</button></div>
+</div></section>
 <script type="module" src="script.js"></script>
-</body></html>
+</body>
+</html>
