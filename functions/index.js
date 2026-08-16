@@ -76,10 +76,28 @@ async function createSession(uid,userId,role){
 }
 
 exports.adminLogin=onCall({enforceAppCheck:false},async request=>{
-  const pin=String(request.data?.pin||'');
-  if(!pin)throw new HttpsError('invalid-argument','Admin PIN required.');
+  const pin=String(request.data?.pin||'').replace(/\D/g,'').slice(0,4);
+  if(!/^\d{4}$/.test(pin))throw new HttpsError('invalid-argument','Admin PIN exactly 4 digits required.');
+
   const cfg=await ensureAdminConfig();
-  if(!await verifyPassword(pin,cfg.salt,cfg.hash))throw new HttpsError('permission-denied','Admin PIN incorrect.');
+  let valid=await verifyPassword(pin,cfg.salt,cfg.hash);
+
+  // Backward compatibility: older versions stored the admin PIN in settings/security.
+  // If the old PIN matches, migrate it immediately to the secure admins/config hash.
+  if(!valid){
+    const legacy=await db.doc('settings/security').get();
+    const legacyPin=legacy.exists?String(legacy.data()?.pin||''):'';
+    if(/^\d{4}$/.test(legacyPin) && pin===legacyPin){
+      const {salt,hash}=await hashPassword(pin,'');
+      await db.doc('admins/config').set({
+        salt,hash,
+        updatedAt:admin.firestore.FieldValue.serverTimestamp()
+      },{merge:true});
+      valid=true;
+    }
+  }
+
+  if(!valid)throw new HttpsError('permission-denied','Admin PIN incorrect.');
   const uid='kabir_admin';
   try{await auth.getUser(uid);}catch(_){await auth.createUser({uid,displayName:'Kabir Admin'});}
   const sessionId=await createSession(uid,'ADMIN','admin');
@@ -90,7 +108,7 @@ exports.adminLogin=onCall({enforceAppCheck:false},async request=>{
 exports.changeAdminPin=onCall(async request=>{
   await requireActiveUser(request,true);
   const pin=String(request.data?.newPin||'');
-  if(!/^\d{4,12}$/.test(pin))throw new HttpsError('invalid-argument','Admin PIN 4 से 12 digits का होना चाहिए.');
+  if(!/^\d{4}$/.test(pin))throw new HttpsError('invalid-argument','Admin PIN exactly 4 digits का होना चाहिए.');
   const {salt,hash}=await hashPassword(pin,'');
   await db.doc('admins/config').set({salt,hash,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
   return {ok:true};
