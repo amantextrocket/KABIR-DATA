@@ -143,3 +143,14 @@ html[data-theme="silver"] select{
 /* Admin login: automatic PIN-only entry */
 #adminLoginForm{display:flex;flex-direction:column;gap:12px}
 #adminLoginForm .login-button{display:none!important}
+
+#adminPinInput{
+  width:100%;
+  box-sizing:border-box;
+  text-align:center!important;
+  letter-spacing:8px!important;
+  font-size:25px!important;
+}
+#adminLoginScreen .pin-card.pin-shake{
+  animation:pinShake .45s cubic-bezier(.36,.07,.19,.97)!important;
+}
