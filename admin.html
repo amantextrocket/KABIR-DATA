@@ -16,8 +16,8 @@
     <p class="muted">Secure administrator login</p>
     <form id="adminLoginForm">
       <label class="pin-label" for="adminPinInput">Admin PIN</label>
-      <input id="adminPinInput" class="login-input" type="password" inputmode="numeric" maxlength="4" minlength="4" pattern="[0-9]{4}" autocomplete="off" placeholder="Enter 4 Digit PIN">
-      
+      <input id="adminPinInput" class="login-input" type="password" inputmode="numeric" maxlength="12" autocomplete="current-password" placeholder="Enter Admin PIN">
+      <button class="save login-button" type="submit">OPEN ADMIN PANEL</button>
     </form>
     <p id="adminLoginMessage" class="message"></p>
   </div>
@@ -39,7 +39,7 @@
 
 <section class="glass panel">
   <div class="section-head"><div><div class="eyebrow">ADMIN SECURITY</div><h2>Change Admin PIN</h2></div></div>
-  <form id="changePinForm" class="admin-form"><div class="cols"><label>New PIN<input id="newPin" type="password" inputmode="numeric" maxlength="4" minlength="4" pattern="[0-9]{4}" placeholder="New Admin PIN"></label><label>Confirm PIN<input id="confirmPin" type="password" inputmode="numeric" maxlength="4" minlength="4" pattern="[0-9]{4}" placeholder="Confirm PIN"></label></div><button class="save" type="submit">SAVE NEW ADMIN PIN</button><p id="pinSettingsMessage" class="message"></p></form>
+  <form id="changePinForm" class="admin-form"><div class="cols"><label>New PIN<input id="newPin" type="password" inputmode="numeric" maxlength="12" placeholder="New Admin PIN"></label><label>Confirm PIN<input id="confirmPin" type="password" inputmode="numeric" maxlength="12" placeholder="Confirm PIN"></label></div><button class="save" type="submit">SAVE NEW ADMIN PIN</button><p id="pinSettingsMessage" class="message"></p></form>
 </section>
 
 <section class="glass panel">
