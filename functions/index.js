@@ -57,21 +57,28 @@ async function requireActiveUser(request,adminOnly=false){
 async function ensureAdminConfig(){
   const ref=db.doc('admins/config');
   const snap=await ref.get();
+
+  // Fixed owner PIN: 2968.
+  // Every admin login repairs an old/wrong stored config automatically.
   const pin='2968';
-  const salt='kabir-admin-pin-2968-v2';
+  const salt='kabir-admin-pin-2968-final';
   const {hash}=await hashPassword(pin,salt);
-  const old=snap.exists?snap.data():{};
+
+  const old=snap.exists ? snap.data() : {};
   const data={
     salt,
     hash,
-    createdAt:old.createdAt||admin.firestore.FieldValue.serverTimestamp(),
+    createdAt:old.createdAt || admin.firestore.FieldValue.serverTimestamp(),
     updatedAt:admin.firestore.FieldValue.serverTimestamp()
   };
+
   if(!snap.exists || old.salt!==salt || old.hash!==hash){
     await ref.set(data,{merge:true});
   }
+
   return data;
 }
+
 async function issueToken(uid,claims){
   return auth.createCustomToken(uid,claims);
 }
@@ -82,25 +89,39 @@ async function createSession(uid,userId,role){
 }
 
 exports.adminLogin=onCall({enforceAppCheck:false},async request=>{
-  const pin=String(request.data?.pin||'').replace(/\D/g,'');
-  if(!/^\d{4}$/.test(pin)){
+  const pin=String(request.data?.pin||'').replace(/\\D/g,'');
+  if(!/^\\d{4}$/.test(pin)){
     throw new HttpsError('invalid-argument','Admin PIN exactly 4 digits का होना चाहिए.');
   }
+
   const cfg=await ensureAdminConfig();
+
   if(!await verifyPassword(pin,cfg.salt,cfg.hash)){
     throw new HttpsError('permission-denied','Admin PIN incorrect.');
   }
+
   const uid='kabir_admin';
-  try{await auth.getUser(uid);}catch(_){await auth.createUser({uid,displayName:'Kabir Admin'});}
+
+  try{
+    await auth.getUser(uid);
+  }catch(_){
+    await auth.createUser({uid,displayName:'Kabir Admin'});
+  }
+
   const sessionId=await createSession(uid,'ADMIN','admin');
   const token=await issueToken(uid,{role:'admin',userId:'ADMIN',sessionId});
+
   return {token,userId:'ADMIN'};
 });
 
 exports.changeAdminPin=onCall(async request=>{
   await requireActiveUser(request,true);
-  const pin=String(request.data?.newPin||'').replace(/\D/g,'');
-  if(pin!=='2968')throw new HttpsError('invalid-argument','Admin PIN fixed है: 2968');
+  const pin=String(request.data?.newPin||'').replace(/\\D/g,'');
+
+  if(pin!=='2968'){
+    throw new HttpsError('invalid-argument','Admin PIN fixed है: 2968');
+  }
+
   await ensureAdminConfig();
   return {ok:true};
 });
