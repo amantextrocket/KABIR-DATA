@@ -19,7 +19,7 @@ const auth=getAuth(app);
 const db=getFirestore(app);
 
 const PIN_KEY="kabir_mobile_pin";
-const DEFAULT_PIN="0000";
+const DEFAULT_PIN="2968";
 const COL="customers";
 const REPAIR_COL="repairing";
 const SETTINGS_COL="settings";
@@ -1955,67 +1955,50 @@ async function employeeLogin(e){
         console.error(err);msg("loginMessage",err?.message||"Login failed.");
     }finally{if(btn)btn.disabled=false;}
 }
-async function adminLogin(e){
-    e.preventDefault();
-    const input=$("adminPinInput");
-    const pin=String(input?.value||"").replace(/\D/g,"").slice(0,4);
-    if(input)input.value=pin;
+let adminLoginBusy=false;
 
-    if(!/^\d{4}$/.test(pin)){
-        msg("adminLoginMessage","PIN exactly 4 digits होना चाहिए.");
-        adminPinError();
-        return;
-    }
-
-    const btn=e.currentTarget.querySelector("button[type='submit']");
-    if(btn)btn.disabled=true;
-
-    try{
-        const data=await callKabir("adminLogin",{pin});
-        await signInWithCustomToken(auth,data.token);
-        if(input)input.value="";
-        msg("adminLoginMessage","Login successful ✓",true);
-    }catch(err){
-        console.error(err);
-        msg("adminLoginMessage",err?.message||"Admin PIN incorrect.");
-        adminPinError();
-    }finally{
-        if(btn)btn.disabled=false;
-    }
-}
-
-function adminPinError(){
-    const card=$("adminLoginScreen")?.querySelector(".pin-card");
+function adminPinShake(){
+    const card=document.querySelector("#adminLoginScreen .pin-card");
     const input=$("adminPinInput");
     card?.classList.remove("pin-shake");
     void card?.offsetWidth;
     card?.classList.add("pin-shake");
-
     if(navigator.vibrate){
-        try{navigator.vibrate([90,35,90]);}catch(_){}
+        try{navigator.vibrate([90,35,90,35,140]);}catch(_){}
     }
-
-    setTimeout(()=>{
-        if(input){
-            input.value="";
-            input.focus();
-        }
-        card?.classList.remove("pin-shake");
-    },500);
+    setTimeout(()=>card?.classList.remove("pin-shake"),500);
+    setTimeout(()=>{input?.value="";input?.focus();},500);
 }
 
-function setupAdminPinInput(){
+async function adminLogin(e){
+    e?.preventDefault();
     const input=$("adminPinInput");
-    if(!input || input.dataset.ready==="1")return;
-    input.dataset.ready="1";
+    const pin=String(input?.value||"").replace(/\D/g,"").slice(0,4);
+    if(input)input.value=pin;
 
-    input.addEventListener("input",()=>{
-        input.value=input.value.replace(/\D/g,"").slice(0,4);
-        msg("adminLoginMessage","");
-        if(input.value.length===4){
-            $("adminLoginForm")?.requestSubmit();
-        }
-    });
+    if(pin.length!==4){
+        if(pin.length>0)msg("adminLoginMessage","PIN exactly 4 digits होना चाहिए.");
+        return;
+    }
+    if(adminLoginBusy)return;
+
+    adminLoginBusy=true;
+    const btn=$("adminLoginForm")?.querySelector("button[type='submit']");
+    if(btn)btn.disabled=true;
+    msg("adminLoginMessage","Checking PIN…",true);
+
+    try{
+        const data=await callKabir("adminLogin",{pin});
+        await signInWithCustomToken(auth,data.token);
+        msg("adminLoginMessage","Login successful ✓",true);
+    }catch(err){
+        console.error(err);
+        msg("adminLoginMessage","Incorrect PIN");
+        adminPinShake();
+    }finally{
+        adminLoginBusy=false;
+        if(btn)btn.disabled=false;
+    }
 }
 
 /* New secure PIN compatibility functions — old shared PIN storage is no longer used for website access. */
@@ -2027,8 +2010,28 @@ async function changeSharedPin(newPin){
 }
 function setupPin(){
     $("employeeLoginForm")?.addEventListener("submit",employeeLogin);
-    $("adminLoginForm")?.addEventListener("submit",adminLogin);
-    setupAdminPinInput();
+
+    const adminForm=$("adminLoginForm");
+    const adminInput=$("adminPinInput");
+
+    if(adminForm)adminForm.addEventListener("submit",adminLogin);
+
+    if(adminInput){
+        adminInput.addEventListener("input",()=>{
+            adminInput.value=adminInput.value.replace(/\D/g,"").slice(0,4);
+            msg("adminLoginMessage","");
+            if(adminInput.value.length===4){
+                adminLogin();
+            }
+        });
+        adminInput.addEventListener("keydown",e=>{
+            if(e.key==="Enter"){
+                e.preventDefault();
+                if(adminInput.value.length===4)adminLogin();
+            }
+        });
+    }
+
     $("lockButton")?.addEventListener("click",async()=>{try{await callKabir("logout");}catch(_){}await signOut(auth);sessionStorage.removeItem("kabir_login_id");showLoginScreen();});
     $("adminLogoutButton")?.addEventListener("click",async()=>{try{await callKabir("logout");}catch(_){}await signOut(auth);showLoginScreen();});
 }
