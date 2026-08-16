@@ -1,0 +1,78 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return signedIn() && request.auth.token.role == 'admin';
+    }
+
+    function isEmployee() {
+      return signedIn() && request.auth.token.role == 'employee';
+    }
+
+    function activeSession() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/sessions/$(request.auth.uid))
+        && get(/databases/$(database)/documents/sessions/$(request.auth.uid)).data.active == true
+        && get(/databases/$(database)/documents/sessions/$(request.auth.uid)).data.sessionId == request.auth.token.sessionId;
+    }
+
+    function websiteUser() {
+      return activeSession() && (isEmployee() || isAdmin());
+    }
+
+    // Firebase request.time is UTC. Add 5h30m to evaluate India Standard Time.
+    function indiaTime() {
+      return request.time + duration.value(5, 'h') + duration.value(30, 'm');
+    }
+
+    function writeWindowOpen() {
+      let t = indiaTime();
+      return t.hours() >= 10 && t.hours() < 24;
+    }
+
+    match /customers/{customerId} {
+      allow read: if websiteUser();
+      allow create, update, delete: if websiteUser() && writeWindowOpen();
+    }
+
+    match /repairing/{repairId} {
+      allow read: if websiteUser();
+      allow create, update, delete: if websiteUser() && writeWindowOpen();
+    }
+
+    // Employee directory is private to administrators.
+    match /employees/{employeeId} {
+      allow read: if isAdmin() && activeSession();
+      allow write: if false;
+    }
+
+    // Sessions are never writable from the browser. Cloud Functions manage them.
+    match /sessions/{sessionId} {
+      allow read: if isAdmin() && activeSession();
+      allow write: if false;
+    }
+
+    // Server-created activity log. Employees cannot alter their own history.
+    match /auditLogs/{logId} {
+      allow read: if isAdmin() && activeSession();
+      allow write: if false;
+    }
+
+    match /settings/{docId} {
+      allow read, write: if false;
+    }
+
+    match /admins/{docId} {
+      allow read, write: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
