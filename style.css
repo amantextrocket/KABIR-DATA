@@ -118,3 +118,7 @@ html[data-theme="silver"] select{
   box-shadow:0 0 0 2px rgba(255,255,255,.08),0 12px 30px rgba(0,0,0,.20)!important;
   transform:translateY(-2px);
 }
+
+/* ===== FINAL FUNCTIONAL SAFETY FIXES ===== */
+button:disabled,.save:disabled{opacity:.58!important;cursor:not-allowed!important;filter:saturate(.65)}
+.admin.app.admin-locked{display:none!important}
