@@ -34,6 +34,7 @@ let repairing=[];
 let secondHand=[];
 let accessories=[];
 let auditLogs=[];
+let recentlyDeleted={customers:[],repairing:[],secondHand:[],accessories:[]};
 let auditListenerStarted=false;
 let scanStream=null;
 let scanTimer=null;
@@ -290,6 +291,101 @@ storage:["128 GB","256 GB"]
 
 };
 
+
+/* =========================================================
+   PREMIUM INTERACTION + RECENTLY DELETED
+========================================================= */
+function deletedDateValue(x){
+    return x?.deletedAt?.toDate?.() || (x?.deletedAt ? new Date(x.deletedAt) : null);
+}
+function isDeleted(x){ return !!x?.deletedAt; }
+function activeRows(rows){ return (rows||[]).filter(x=>!isDeleted(x)); }
+function deletedLabel(type){ return ({customers:"Customer",repairing:"Repairing",secondHand:"Second Hand Phone",accessories:"Accessory"})[type]||"Item"; }
+function deletedTitle(type,x){
+    if(type==="customers") return x.customerName||x.customerCode||"Customer";
+    if(type==="repairing") return x.customerName||"Repairing Record";
+    if(type==="secondHand") return x.device||"Second Hand Phone";
+    return x.name||"Accessory";
+}
+function rebuildRecentlyDeleted(){
+    const all=[
+      ...recentlyDeleted.customers.map(x=>({...x,__type:"customers"})),
+      ...recentlyDeleted.repairing.map(x=>({...x,__type:"repairing"})),
+      ...recentlyDeleted.secondHand.map(x=>({...x,__type:"secondHand"})),
+      ...recentlyDeleted.accessories.map(x=>({...x,__type:"accessories"}))
+    ];
+    all.sort((a,b)=>(deletedDateValue(b)?.getTime()||0)-(deletedDateValue(a)?.getTime()||0));
+    const box=$("recentlyDeletedResults");
+    if($("recentDeletedCount")) $("recentDeletedCount").textContent=String(all.length);
+    if(!box)return;
+    box.innerHTML=all.length?all.map(x=>{
+      const d=deletedDateValue(x);
+      return `<article class="result trash-item"><div class="trash-icon">🗑️</div><div class="trash-main"><div class="result-name">${esc(deletedTitle(x.__type,x))}</div><div class="result-meta">${esc(deletedLabel(x.__type))} • Deleted ${d?new Intl.DateTimeFormat("en-IN",{dateStyle:"medium",timeStyle:"short"}).format(d):"just now"}</div><div class="result-grid">${item("ID",x.id||"")}${item("Auto delete",d?new Intl.DateTimeFormat("en-IN",{dateStyle:"medium"}).format(new Date(d.getTime()+30*86400000)):"30 days")}</div></div></article>`;
+    }).join(""):`<div class="empty">Recently deleted is empty.</div>`;
+}
+async function cleanupExpiredDeleted(){
+    const now=Date.now(), cutoff=now-30*86400000;
+    const groups=[
+      ["customers",recentlyDeleted.customers,COL],["repairing",recentlyDeleted.repairing,REPAIR_COL],
+      ["secondHand",recentlyDeleted.secondHand,SECOND_COL],["accessories",recentlyDeleted.accessories,ACCESSORY_COL]
+    ];
+    for(const [type,rows,col] of groups){
+      for(const x of rows){
+        const d=deletedDateValue(x);
+        const expiry=x?.deleteAfter?.toDate?.() || (x?.deleteAfter ? new Date(x.deleteAfter) : (d?new Date(d.getTime()+30*86400000):null));
+        if(expiry && expiry.getTime()<=now){
+          try{ await deleteDoc(doc(db,col,x.id)); await audit("auto_delete_30_days",{section:deletedLabel(type),description:`Automatically removed after 30 days: ${deletedTitle(type,x)}`}); }catch(e){console.warn("30-day cleanup",e)}
+        }
+      }
+    }
+}
+function premiumTapAnimation(){
+    document.addEventListener("pointerdown",e=>{
+      const b=e.target.closest("button"); if(!b||b.disabled)return;
+      b.classList.remove("tap-pop"); void b.offsetWidth; b.classList.add("tap-pop");
+      setTimeout(()=>b.classList.remove("tap-pop"),260);
+    },{passive:true});
+}
+function setupHomeModuleReorder(){
+    const wrap=$("homeModules"); if(!wrap)return;
+    const key="kabir_home_module_order";
+    const saved=JSON.parse(localStorage.getItem(key)||"null");
+    const ids=["financeModule","repairingModule","secondHandModule","accessoriesModule"];
+    if(Array.isArray(saved)){ saved.forEach(id=>{const el=$(id); if(el)wrap.appendChild(el); const box=$(id.replace("Module","Box")); if(box)wrap.appendChild(box);}); }
+    let drag=null,timer=null,startY=0,moved=false;
+    const cards=()=>ids.map(id=>$(id)).filter(Boolean);
+    cards().forEach(card=>{
+      card.setAttribute("draggable","false");
+      card.addEventListener("pointerdown",e=>{
+        if(e.pointerType==="mouse"&&e.button!==0)return;
+        startY=e.clientY;moved=false;
+        clearTimeout(timer);
+        timer=setTimeout(()=>{
+          drag=card; card.classList.add("long-dragging");
+          try{card.setPointerCapture(e.pointerId)}catch(_){}
+        },350);
+      });
+      card.addEventListener("pointermove",e=>{
+        if(!drag)return; moved=true;
+        const others=cards().filter(x=>x!==drag);
+        const target=others.find(o=>e.clientY < o.getBoundingClientRect().top+o.offsetHeight/2);
+        if(target)wrap.insertBefore(drag,target); else wrap.appendChild(drag);
+      });
+      const end=()=>{
+        clearTimeout(timer);
+        if(drag){
+          drag.classList.remove("long-dragging");
+          const order=cards().map(x=>x.id); localStorage.setItem(key,JSON.stringify(order));
+          drag=null;
+        }
+      };
+      card.addEventListener("pointerup",end); card.addEventListener("pointercancel",end);
+    });
+}
+function recentlyDeletedUi(){
+    $("recentlyDeletedButton")?.addEventListener("click",()=>{show("recentlyDeletedSection");rebuildRecentlyDeleted();});
+    $("trashPdfButton")?.addEventListener("click",()=>downloadAllDataPdf(true));
+}
 
 /* =========================================================
    COMMON HELPERS
@@ -661,11 +757,10 @@ function subscribe(){
     onSnapshot(
         collection(db,COL),
         snap=>{
-            customers=snap.docs.map(d=>({
-                id:d.id,
-                ...d.data()
-            }));
-
+            const all=snap.docs.map(d=>({id:d.id,...d.data()}));
+            recentlyDeleted.customers=all.filter(isDeleted);
+            customers=all.filter(x=>!isDeleted(x));
+            rebuildRecentlyDeleted();
             customers.sort((a,b)=>{
                 const ta=a.createdAt?.toMillis?.()||0;
                 const tb=b.createdAt?.toMillis?.()||0;
@@ -1486,7 +1581,7 @@ function renderSearch(){
           ${item("IMEI",c.imei||"-")}${item("Finance",c.financeCompany||"-")}
           ${item("Amount",`₹${Number(c.phoneAmount||0).toLocaleString("en-IN")}`)}
         </div>
-        <div class="result-open-hint">Tap to view full details • Edit • Delete • PDF</div>
+        <div class="result-card-actions"><button class="glass result-delete danger-btn" data-delete-customer="${esc(c.id)}" type="button">🗑️ Delete</button></div><div class="result-open-hint">Tap to view full details • Edit</div>
       </article>`).join("");
 
     box.querySelectorAll("[data-bill]").forEach(i=>{
@@ -1496,9 +1591,16 @@ function renderSearch(){
             catch(x){i.checked=!i.checked;console.error(x)}
         };
     });
+    box.querySelectorAll("[data-delete-customer]").forEach(btn=>btn.addEventListener("click",async e=>{
+        e.stopPropagation();
+        const c=customers.find(x=>x.id===btn.dataset.deleteCustomer); if(!c)return;
+        if(enforceWriteLock())return;
+        if(!confirm(`Delete ${c.customerName||"this customer"}? It will stay in Recently Deleted for 30 days.`))return;
+        try{await updateDoc(doc(db,COL,c.id),{deletedAt:serverTimestamp(),deleteAfter:new Date(Date.now()+30*86400000),deletedBy:user?.uid||null});await audit("customer_delete",{section:"Kabir Mobile Data",customerId:c.id,customerCode:c.customerCode,customerName:c.customerName,description:`Customer ${c.customerName||c.customerCode||c.id} moved to Recently Deleted`});}catch(err){console.error(err);alert("Delete नहीं हुआ.")}
+    }));
     box.querySelectorAll(".customer-result").forEach(card=>{
         card.addEventListener("click",e=>{
-            if(e.target.closest(".switch"))return;
+            if(e.target.closest(".switch")||e.target.closest("[data-delete-customer]"))return;
             const c=customers.find(x=>x.id===card.dataset.customer);if(c)showCustomerDetail(c);
         });
     });
@@ -1528,8 +1630,8 @@ function closeCustomerDetail(){activeCustomerId=null;$("customerDetailModal")?.c
 async function deleteCustomer(){
     if(enforceWriteLock("pinMessage"))return;
     const c=customers.find(x=>x.id===activeCustomerId);if(!c)return;
-    if(!confirm(`Delete ${c.customerName||"this customer"} (${c.customerCode||""}) permanently?`))return;
-    try{await deleteDoc(doc(db,COL,c.id)); await audit("customer_delete",{section:"Kabir Mobile Data",customerId:c.id,customerCode:c.customerCode,customerName:c.customerName,description:`Customer ${c.customerName||c.customerCode||c.id} deleted`}); closeCustomerDetail()}
+    if(!confirm(`Delete ${c.customerName||"this customer"} (${c.customerCode||""})? It will stay in Recently Deleted for 30 days.`))return;
+    try{await updateDoc(doc(db,COL,c.id),{deletedAt:serverTimestamp(),deleteAfter:new Date(Date.now()+30*86400000),deletedBy:user?.uid||null}); await audit("customer_delete",{section:"Kabir Mobile Data",customerId:c.id,customerCode:c.customerCode,customerName:c.customerName,description:`Customer ${c.customerName||c.customerCode||c.id} moved to Recently Deleted`}); closeCustomerDetail()}
     catch(e){console.error(e);alert("Customer delete नहीं हुआ. Firebase Rules check करें.")}
 }
 function editCustomer(){
@@ -1802,11 +1904,21 @@ let repairListenerStarted=false;
 
 function subscribeInventory(){
     if(isAdminPage)return;
-    onSnapshot(collection(db,SECOND_COL),snap=>{ secondHand=snap.docs.map(d=>({id:d.id,...d.data()})); if($("secondStockCount"))$("secondStockCount").textContent=String(secondHand.length); renderSecondHand(); },e=>console.warn("Second hand load:",e));
-    onSnapshot(collection(db,ACCESSORY_COL),snap=>{ accessories=snap.docs.map(d=>({id:d.id,...d.data()})); if($("accessoryStockCount"))$("accessoryStockCount").textContent=String(accessories.reduce((n,x)=>n+Number(x.quantity||0),0)); renderAccessories(); },e=>console.warn("Accessories load:",e));
+    onSnapshot(collection(db,SECOND_COL),snap=>{ const all=snap.docs.map(d=>({id:d.id,...d.data()})); recentlyDeleted.secondHand=all.filter(isDeleted); secondHand=all.filter(x=>!isDeleted(x)); if($("secondStockCount"))$("secondStockCount").textContent=String(secondHand.length); rebuildRecentlyDeleted(); renderSecondHand(); },e=>console.warn("Second hand load:",e));
+    onSnapshot(collection(db,ACCESSORY_COL),snap=>{ const all=snap.docs.map(d=>({id:d.id,...d.data()})); recentlyDeleted.accessories=all.filter(isDeleted); accessories=all.filter(x=>!isDeleted(x)); if($("accessoryStockCount"))$("accessoryStockCount").textContent=String(accessories.reduce((n,x)=>n+Number(x.quantity||0),0)); rebuildRecentlyDeleted(); renderAccessories(); },e=>console.warn("Accessories load:",e));
 }
-function renderSecondHand(){ const box=$("secondResults"); if(!box)return; const q=val("secondSearchInput").toLowerCase(); const rows=secondHand.filter(x=>!q||[x.customerName,x.phone,x.device,x.imei,x.condition].join(" ").toLowerCase().includes(q)); box.innerHTML=rows.length?rows.map(x=>`<article class="result"><div class="result-name">${esc(x.device||"Second Hand Phone")}</div><div class="result-meta">${esc(x.customerName||"")} • ${esc(x.phone||"")}</div><div class="result-grid">${item("IMEI",x.imei||"")}${item("Condition",x.condition||"")}${item("Purchase Price",`₹${Number(x.price||0).toLocaleString("en-IN")}`)}${item("Sale Price",`₹${Number(x.salePrice||0).toLocaleString("en-IN")}`)}</div></article>`).join(""):"<div class=\"empty\">No second-hand records found.</div>"; }
-function renderAccessories(){ const box=$("accessoryResults"); if(!box)return; const q=val("accessorySearchInput").toLowerCase(); const rows=accessories.filter(x=>!q||[x.name,x.category].join(" ").toLowerCase().includes(q)); box.innerHTML=rows.length?rows.map(x=>`<article class="result"><div class="result-name">${esc(x.name||"Accessory")}</div><div class="result-meta">${esc(x.category||"")}</div><div class="result-grid">${item("Quantity",x.quantity||0)}${item("Purchase Price",`₹${Number(x.price||0).toLocaleString("en-IN")}`)}${item("Sale Price",`₹${Number(x.salePrice||0).toLocaleString("en-IN")}`)}</div></article>`).join(""):"<div class=\"empty\">No accessories found.</div>"; }
+function renderSecondHand(){ const box=$("secondResults"); if(!box)return; const q=val("secondSearchInput").toLowerCase(); const rows=secondHand.filter(x=>!q||[x.customerName,x.phone,x.device,x.imei,x.condition].join(" ").toLowerCase().includes(q)); box.innerHTML=rows.length?rows.map(x=>`<article class="result"><div class="result-name">${esc(x.device||"Second Hand Phone")}</div><div class="result-meta">${esc(x.customerName||"")} • ${esc(x.phone||"")}</div><div class="result-grid">${item("IMEI",x.imei||"")}${item("Condition",x.condition||"")}${item("Purchase Price",`₹${Number(x.price||0).toLocaleString("en-IN")}`)}${item("Sale Price",`₹${Number(x.salePrice||0).toLocaleString("en-IN")`)}</div><div class="result-card-actions"><button class="glass result-delete danger-btn" data-delete-second="${esc(x.id)}" type="button">🗑️ Delete</button></div></article>`).join(""):"<div class="empty">No second-hand records found.</div>"; box.querySelectorAll("[data-delete-second]").forEach(b=>b.onclick=()=>softDeleteRecord(SECOND_COL,b.dataset.deleteSecond,"second_hand_delete","Second Hand")); }
+function renderAccessories(){ const box=$("accessoryResults"); if(!box)return; const q=val("accessorySearchInput").toLowerCase(); const rows=accessories.filter(x=>!q||[x.name,x.category].join(" ").toLowerCase().includes(q)); box.innerHTML=rows.length?rows.map(x=>`<article class="result"><div class="result-name">${esc(x.name||"Accessory")}</div><div class="result-meta">${esc(x.category||"")}</div><div class="result-grid">${item("Quantity",x.quantity||0)}${item("Purchase Price",`₹${Number(x.price||0).toLocaleString("en-IN")}`)}${item("Sale Price",`₹${Number(x.salePrice||0).toLocaleString("en-IN")`)}</div><div class="result-card-actions"><button class="glass result-delete danger-btn" data-delete-accessory="${esc(x.id)}" type="button">🗑️ Delete</button></div></article>`).join(""):"<div class="empty">No accessories found.</div>"; box.querySelectorAll("[data-delete-accessory]").forEach(b=>b.onclick=()=>softDeleteRecord(ACCESSORY_COL,b.dataset.deleteAccessory,"accessory_delete","Accessories")); }
+async function softDeleteRecord(collectionName,id,action,section){
+    if(enforceWriteLock())return;
+    if(!confirm("Delete this item? It will stay in Recently Deleted for 30 days."))return;
+    try{
+      await updateDoc(doc(db,collectionName,id),{deletedAt:serverTimestamp(),deleteAfter:new Date(Date.now()+30*86400000),deletedBy:user?.uid||null});
+      await audit(action,{section,recordId:id,description:`${section} item moved to Recently Deleted`});
+      showSuccessToast("Moved to Recently Deleted","This item will auto-delete after 30 days.");
+    }catch(e){console.error(e);alert("Delete नहीं हुआ. Firebase Rules check करें.")}
+}
+
 async function saveSecondHand(e){ e.preventDefault(); const data={customerName:val("secondCustomerName"),phone:val("secondPhone").replace(/\D/g,""),device:val("secondDevice"),imei:val("secondImei"),condition:val("secondCondition"),price:Number(val("secondPrice")||0),salePrice:Number(val("secondSalePrice")||0),createdAt:serverTimestamp(),createdBy:user?.uid||null}; if(!data.customerName||!/^\d{10}$/.test(data.phone)||!data.device){msg("secondMessage","Customer name, valid 10 digit phone और phone model भरें.");return;} try{await addDoc(collection(db,SECOND_COL),data);await audit("second_hand_add",{section:"Second Hand",customerName:data.customerName,description:`Second-hand phone added: ${data.device}`,extra:{phone:data.phone,imei:data.imei}});e.target.reset();msg("secondMessage","Successfully added.",true);showSuccessToast("Second Hand Saved","Phone stock में add हो गया.");}catch(err){console.error(err);msg("secondMessage",err?.message||"Save failed.");}}
 async function saveAccessory(e){ e.preventDefault(); const data={name:val("accessoryName"),category:val("accessoryCategory"),quantity:Number(val("accessoryQty")||0),price:Number(val("accessoryPrice")||0),salePrice:Number(val("accessorySalePrice")||0),createdAt:serverTimestamp(),createdBy:user?.uid||null}; if(!data.name||!data.category||data.quantity<1){msg("accessoryMessage","Name, category और quantity भरें.");return;} try{await addDoc(collection(db,ACCESSORY_COL),data);await audit("accessory_add",{section:"Accessories",description:`Accessory added: ${data.name}`,extra:{category:data.category,quantity:data.quantity}});e.target.reset();msg("accessoryMessage","Successfully added.",true);showSuccessToast("Accessory Saved","Accessory stock में add हो गया.");}catch(err){console.error(err);msg("accessoryMessage",err?.message||"Save failed.");}}
 function subscribeRepairing(){
@@ -1814,7 +1926,10 @@ function subscribeRepairing(){
     repairListenerStarted=true;
 
     const applyRepairing = s => {
-        repairing = s.docs.map(d => ({id:d.id,...d.data()}));
+        const all=s.docs.map(d=>({id:d.id,...d.data()}));
+        recentlyDeleted.repairing=all.filter(isDeleted);
+        repairing=all.filter(x=>!isDeleted(x));
+        rebuildRecentlyDeleted();
 
         repairing.sort((a,b)=>{
             const ta = a.createdAt?.toMillis?.() || 0;
@@ -1845,9 +1960,13 @@ function renderRepairing(){
     if(!arr.length){box.innerHTML=`<div class="empty">${s?"No repairing record found.":"No repairing records yet."}</div>`;return}
     box.innerHTML=arr.map(r=>`<article class="result">
       <div class="result-name">${esc(r.customerName||"")}</div><div class="result-meta">${esc(r.phone||"")} • ${esc(formatDateTime(r))}</div>
-      <div class="result-grid">${item("Brand / Model",r.device)}${item("Problem",r.problem)}${item("Repairing By",r.repairBy)}${item("Payment",`₹${Number(r.payment||0).toLocaleString("en-IN")}`)}</div>
+      <div class="result-grid">${item("Brand / Model",r.device)}${item("Problem",r.problem)}${item("Repairing By",r.repairBy)}${item("Payment",`₹${Number(r.payment||0).toLocaleString("en-IN")}`)}</div><div class="result-card-actions"><button class="glass result-delete danger-btn" data-delete-repair="${esc(r.id)}" type="button">🗑️ Delete</button></div>
     </article>`).join("");
+    box.querySelectorAll("[data-delete-repair]").forEach(b=>b.onclick=e=>{e.stopPropagation();deleteRepairRecord(b.dataset.deleteRepair)});
 }
+
+async function deleteRepairRecord(id){ return softDeleteRecord(REPAIR_COL,id,"repairing_delete","Kabir Repairing Data"); }
+
 async function saveRepair(e){
     e.preventDefault();
     if(enforceWriteLock("repairMessage"))return;
@@ -1924,6 +2043,38 @@ async function downloadCustomerPdf(){
         pdf.save(`${c.customerCode||"customer"}_${(c.customerName||"customer").replace(/\s+/g,"_")}.pdf`);
     }catch(e){console.error(e);alert("PDF बन नहीं पाया.")}
 }
+async function downloadAllDataPdf(fromTrash=false){
+    try{
+      if(!window.jspdf)await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
+      const {jsPDF}=window.jspdf; const pdf=new jsPDF({unit:"mm",format:"a4"});
+      const pageW=210,pageH=297,margin=14; let y=18;
+      const header=(title,sub)=>{pdf.setFillColor(12,14,20);pdf.roundedRect(margin,10,pageW-margin*2,22,6,6,"F");pdf.setTextColor(255,255,255);pdf.setFontSize(17);pdf.setFont(undefined,"bold");pdf.text(title,margin+6,23);pdf.setFontSize(8);pdf.setFont(undefined,"normal");pdf.text(sub,margin+6,28);pdf.setTextColor(20,20,24);y=42;};
+      const line=(label,value)=>{if(y>280){pdf.addPage();header("KABIR DATA","Continued")} pdf.setFillColor(247,248,250);pdf.roundedRect(margin,y-5,pageW-margin*2,9,2.5,2.5,"F");pdf.setFontSize(8);pdf.setFont(undefined,"bold");pdf.text(String(label||""),margin+3,y);pdf.setFont(undefined,"normal");pdf.text(String(value??"-").slice(0,115),margin+52,y);y+=11;};
+      header("KABIR MOBILE DATA","Premium complete data report • "+new Intl.DateTimeFormat("en-IN",{dateStyle:"medium",timeStyle:"short"}).format(new Date()));
+      const sections=[
+        ["FINANCE / CUSTOMERS",customers.map(c=>[c.customerCode,c.customerName,c.phone,`${c.brand||""} ${c.model||""}`,c.imei,formatDateTime(c)])],
+        ["REPAIRING",repairing.map(r=>[r.customerName,r.phone,r.device,r.problem,r.repairBy,formatDateTime(r)])],
+        ["SECOND HAND",secondHand.map(x=>[x.customerName,x.phone,x.device,x.imei,x.condition,`₹${x.salePrice||0}`])],
+        ["ACCESSORIES",accessories.map(x=>[x.name,x.category,`Qty ${x.quantity||0}`,`₹${x.salePrice||0}`])],
+      ];
+      for(const [title,rows] of sections){
+        if(y>255){pdf.addPage();header("KABIR DATA","Premium complete data report")};
+        pdf.setFontSize(12);pdf.setFont(undefined,"bold");pdf.text(title,margin,y);y+=8;
+        if(!rows.length){line("Status","No records");continue;}
+        rows.forEach(r=>line("Record",r.filter(Boolean).join(" • "))); y+=3;
+      }
+      if(fromTrash){
+        if(y>255){pdf.addPage();header("RECENTLY DELETED","30-day trash report")};
+        pdf.setFontSize(12);pdf.setFont(undefined,"bold");pdf.text("RECENTLY DELETED",margin,y);y+=8;
+        const all=[...recentlyDeleted.customers.map(x=>["Customer",deletedTitle("customers",x)]),...recentlyDeleted.repairing.map(x=>["Repairing",deletedTitle("repairing",x)]),...recentlyDeleted.secondHand.map(x=>["Second Hand",deletedTitle("secondHand",x)]),...recentlyDeleted.accessories.map(x=>["Accessory",deletedTitle("accessories",x)])];
+        all.forEach(r=>line(r[0],r[1]));
+      }
+      pdf.setFontSize(8);pdf.setTextColor(110,110,110);pdf.text("Copyright © 2026 Kabir Data powered by AMAN",margin,pageH-9);
+      pdf.save(fromTrash?"Kabir_Recently_Deleted_Report.pdf":"Kabir_Data_Complete_Premium_Report.pdf");
+      await audit("complete_pdf",{section:"Kabir Data",description:fromTrash?"Recently Deleted PDF generated":"Complete premium PDF generated"});
+    }catch(e){console.error(e);alert("PDF नहीं बन पाया. कृपया दोबारा try करें.")}
+}
+
 function applyTheme(theme){
     const allowed=["dark","light","midnight","silver","glass"];
     if(!allowed.includes(theme)) theme="dark";
@@ -1960,9 +2111,7 @@ function featureNav(){
     $("searchRepairingCard")?.addEventListener("click",()=>{show("repairSearchSection");renderRepairing();$("repairSearchInput")?.focus();audit("repairing_search",{section:"Kabir Repairing Data",description:"Repairing search opened"})});
     $("repairSearchInput")?.addEventListener("input",renderRepairing);
     $("repairForm")?.addEventListener("submit",saveRepair);
-    $("exportCustomersButton")?.addEventListener("click",exportCustomers);
-    $("exportRepairingButton")?.addEventListener("click",exportRepairing);
-    $("downloadCustomerPdf")?.addEventListener("click",downloadCustomerPdf);
+    $("allDataPdfButton")?.addEventListener("click",()=>downloadAllDataPdf(false));
     $("deleteCustomerButton")?.addEventListener("click",deleteCustomer);
     $("editCustomerButton")?.addEventListener("click",editCustomer);
     $("closeDetailButton")?.addEventListener("click",closeCustomerDetail);
@@ -2004,13 +2153,19 @@ async function init(){
     themeSystem();
     featureNav();
     setupHomeDateFilter();
+    premiumTapAnimation();
+    setupHomeModuleReorder();
+    recentlyDeletedUi();
+    cleanupExpiredDeleted();
     adminAnalytics();
     if($('appScreen')?.classList.contains('admin')) audit('page_open',{section:'Admin Panel',description:'Admin Panel opened'});
 
     authReady.then(()=>{
         subscribe();
         subscribeRepairing();
-    subscribeInventory();
+        subscribeInventory();
+        setTimeout(()=>cleanupExpiredDeleted(),1800);
+        setInterval(()=>cleanupExpiredDeleted(),6*60*60*1000);
     });
 
     $("customerForm")
