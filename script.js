@@ -46,6 +46,8 @@ let kabirAccessUser=null;
 let kabirAccessSessionId=null;
 let accessHeartbeatTimer=null;
 let accessSessionUnsubscribe=null;
+let authReadyResolve;
+const authReady=new Promise(resolve=>{authReadyResolve=resolve;});
 
 let user=null;
 let customers=[];
@@ -568,6 +570,8 @@ function setupKabirLogin(){
 
         try{
             if(!db)throw Error("Firebase अभी तैयार नहीं है. एक सेकंड बाद फिर कोशिश करें.");
+            await authReady;
+            if(!user)throw Error("Firebase login तैयार नहीं हुआ. फिर से कोशिश करें.");
             const rec=await getAccessUserById(id);
             if(!rec || rec.enabled===false)throw Error("Kabir ID या Password गलत है.");
             if(String(rec.password)!==password)throw Error("Kabir ID या Password गलत है.");
@@ -1699,29 +1703,72 @@ function formatAuditDate(v){
     return accessDateTime(v);
 }
 
+function showAdminSuccessPopup(title,text){
+    const popup=$("adminSuccessPopup");
+    if(!popup)return;
+    $("adminSuccessTitle").textContent=title||"Successfully Added";
+    $("adminSuccessText").textContent=text||"Saved successfully.";
+    popup.classList.remove("hidden");
+    requestAnimationFrame(()=>popup.classList.add("show"));
+    clearTimeout(window.__adminSuccessTimer);
+    window.__adminSuccessTimer=setTimeout(()=>{
+        popup.classList.remove("show");
+        setTimeout(()=>popup.classList.add("hidden"),250);
+    },2200);
+}
+
 async function adminSaveKabirUser(e){
     e.preventDefault();
+
     const name=val("kabirUserName");
     const id=normalizeKabirId(val("kabirUserId"));
     const password=val("kabirUserPassword");
-    if(!name||!id||!password)return msg("kabirUserMessage","Name, Kabir ID और Password भरें.");
-    if(!/^KABIR[A-Z0-9_-]{2,30}$/.test(id))return msg("kabirUserMessage","Kabir ID KABIR से शुरू होना चाहिए.");
+
+    if(!name||!id||!password){
+        msg("kabirUserMessage","Name, Kabir ID और Password भरें.");
+        return;
+    }
+
+    if(!/^KABIR[A-Z0-9_-]{2,30}$/.test(id)){
+        msg("kabirUserMessage","Kabir ID KABIR से शुरू होना चाहिए.");
+        return;
+    }
+
+    const button=e.submitter||$("kabirUserForm")?.querySelector("button[type=submit]");
+    if(button)button.disabled=true;
+
     try{
+        await authReady;
+        if(!user)throw Error("Firebase authentication तैयार नहीं है.");
+
         await setDoc(doc(db,ACCESS_USERS_COL,id),{
-            id,
-            name,
-            password,
+            id:id,
+            name:name,
+            password:password,
             enabled:true,
             status:"offline",
             activeSessionId:"",
+            lastLoginAt:null,
+            lastLogoutAt:null,
+            lastHeartbeat:null,
             updatedAt:serverTimestamp()
         },{merge:true});
-        msg("kabirUserMessage","Kabir user saved successfully ✓",true);
-        $("kabirUserForm").reset();
+
         await renderKabirUsers();
+
+        $("kabirUserForm")?.reset();
+        msg("kabirUserMessage","Successfully added ✓",true);
+        showAdminSuccessPopup("Successfully Added","Kabir ID और Password successfully saved.");
+
     }catch(e){
-        console.error(e);
-        msg("kabirUserMessage","User save नहीं हुआ. Firebase Rules check करें.");
+        console.error("Kabir user create/update error:",e);
+        msg("kabirUserMessage",
+            e?.code==="permission-denied"
+            ?"Firebase permission denied — Firestore Rules check करें."
+            :"User save नहीं हुआ. फिर से कोशिश करें."
+        );
+    }finally{
+        if(button)button.disabled=false;
     }
 }
 
@@ -1729,8 +1776,14 @@ async function renderKabirUsers(){
     const box=$("kabirUsersList");
     if(!box)return;
     try{
+        await authReady;
+        if(!user){
+            box.innerHTML='<div class="empty">Firebase authentication तैयार नहीं है.</div>';
+            return;
+        }
         const snap=await getDocs(collection(db,ACCESS_USERS_COL));
         const rows=snap.docs.map(d=>({id:d.id,...d.data()}));
+        if($("kabirUsersCount"))$("kabirUsersCount").textContent=String(rows.length);
         if(!rows.length){
             box.innerHTML='<div class="empty">अभी कोई Kabir ID नहीं बनी.</div>';
             return;
@@ -1762,6 +1815,8 @@ async function renderKabirUsers(){
 }
 
 async function getAuditRows(){
+    await authReady;
+    if(!user)return [];
     const snap=await getDocs(collection(db,AUDIT_COL));
     return snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>{
         const ta=a.createdAt?.toMillis?.()||0, tb=b.createdAt?.toMillis?.()||0;
@@ -2109,13 +2164,20 @@ function featureNav(){
 function init(){
     loadSharedPin();
 
-    if(currentPageIsAdmin()){
-        // Admin retains its existing PIN settings functionality and gains the new admin tools.
-        adminFeatureNav();
-    }else{
-        setupKabirLogin();
-        ensureAccessOnMain();
-    }
+    // Firebase authentication must finish before accessUsers/auditLogs are touched.
+    authInit().then(()=>{
+        if(currentPageIsAdmin()){
+            adminFeatureNav();
+        }else{
+            setupKabirLogin();
+            ensureAccessOnMain();
+        }
+    }).catch(e=>{
+        console.error("Firebase initialization failed:",e);
+        if(currentPageIsAdmin()){
+            msg("adminFirebaseStatus","Firebase initialization error.");
+        }
+    });
 
     nav();
 
@@ -2143,8 +2205,6 @@ function init(){
      */
     themeSystem();
     featureNav();
-
-    authInit();
 
     subscribe();
     subscribeRepairing();
