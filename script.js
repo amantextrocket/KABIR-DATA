@@ -1,7 +1,6 @@
 import {initializeApp} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
-import {getAuth,signInWithCustomToken,onAuthStateChanged,signOut} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js";
-import {getFirestore,collection,addDoc,updateDoc,deleteDoc,setDoc,getDoc,doc,onSnapshot,query,orderBy,serverTimestamp} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
-import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-functions.js";
+import {getAuth,signInAnonymously,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js";
+import {getFirestore,collection,addDoc,updateDoc,deleteDoc,setDoc,getDoc,doc,onSnapshot,query,orderBy,serverTimestamp,getDocs} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
 
 const firebaseConfig={
     apiKey:"AIzaSyDWD2S7Zvcy-T_Ddr8Ytbqwv9tNEBNIJg4",
@@ -25,6 +24,13 @@ const REPAIR_COL="repairing";
 const SETTINGS_COL="settings";
 const SETTINGS_DOC="security";
 const REMOTE_DEVICES_URL="https://cdn.jsdelivr.net/gh/bsthen/device-models/devices.json";
+const ACCESS_USERS_COL="accessUsers";
+const AUDIT_COL="auditLogs";
+const ACCESS_SESSION_KEY="kabir_access_session";
+let kabirAccessUser=null;
+let kabirAccessSessionId=null;
+let accessHeartbeatTimer=null;
+let accessSessionUnsubscribe=null;
 
 let user=null;
 let customers=[];
@@ -355,94 +361,226 @@ function showSuccessToast(title="Successfully Saved",text="Data saved successful
 }
 
 /* =========================================================
-   PIN SYSTEM
+   KABIR ID / PASSWORD ACCESS
+   One active session per Kabir ID.
 ========================================================= */
 
-function dots(v){
-    document
-        .querySelectorAll("#pinDots i")
-        .forEach((e,i)=>{
-            e.classList.toggle("filled",i<v.length);
+function currentPageIsAdmin(){
+    return /admin\.html?$/i.test(location.pathname) || document.querySelector(".admin");
+}
+
+function accessNow(){
+    return new Date();
+}
+
+function accessDateTime(v){
+    if(!v)return "—";
+    try{
+        const d=v?.toDate?.() || new Date(v);
+        return isNaN(d.getTime()) ? "—" : new Intl.DateTimeFormat("en-IN",{dateStyle:"medium",timeStyle:"medium"}).format(d);
+    }catch(_){return "—";}
+}
+
+function normalizeKabirId(v){
+    return String(v||"").trim().toUpperCase().replace(/\s+/g,"");
+}
+
+function accessMessage(t,ok=false){
+    msg("kabirLoginMessage",t,ok);
+}
+
+function accessSessionIsValid(){
+    return !!sessionStorage.getItem(ACCESS_SESSION_KEY);
+}
+
+async function getAccessUserById(id){
+    const snap=await getDoc(doc(db,ACCESS_USERS_COL,id));
+    return snap.exists()?{id:snap.id,...snap.data()}:null;
+}
+
+async function audit(action,details={}){
+    try{
+        if(!kabirAccessUser && !user)return;
+        await addDoc(collection(db,AUDIT_COL),{
+            action,
+            userId:kabirAccessUser?.id||null,
+            userName:kabirAccessUser?.name||null,
+            authUid:user?.uid||null,
+            details,
+            createdAt:serverTimestamp()
         });
+    }catch(e){console.warn("Audit log failed:",e)}
 }
 
-function unlock(){
-    sessionStorage.setItem("kabir_unlocked","1");
+async function claimAccessSession(record){
+    const sessionId=crypto.randomUUID ? crypto.randomUUID() : ("S"+Date.now()+Math.random().toString(36).slice(2));
+    const now=new Date();
+    const ref=doc(db,ACCESS_USERS_COL,record.id);
 
-    $("pinScreen")?.classList.add("hidden");
-    $("appScreen")?.classList.remove("hidden");
+    const latest=await getDoc(ref);
+    const data=latest.exists()?latest.data():record;
 
-    $("pinInput")?.blur();
-}
-
-function lock(){
-    sessionStorage.removeItem("kabir_unlocked");
-
-    $("appScreen")?.classList.add("hidden");
-    $("pinScreen")?.classList.remove("hidden");
-
-    let e=$("pinInput");
-
-    if(e){
-        e.value="";
-        dots("");
-
-        setTimeout(()=>{
-            e.focus();
-        },150);
-    }
-}
-
-function pinError(){
-    const card=document.querySelector(".pin-card");
-    const input=$("pinInput");
-    card?.classList.remove("pin-shake");
-    void card?.offsetWidth;
-    card?.classList.add("pin-shake");
-
-    if(navigator.vibrate){
-        try{navigator.vibrate([90,35,90,35,140]);}catch(_){}
+    if(data.activeSessionId && data.activeSessionId!=="" && data.activeSessionId!==sessionId){
+        // A session is considered active until its explicit logout or until
+        // the heartbeat expires for more than 90 seconds.
+        const hb=data.lastHeartbeat?.toDate?.()?.getTime?.()||0;
+        if(hb && (Date.now()-hb)<90000){
+            throw Error("यह Kabir ID अभी किसी दूसरे device/browser में login है.");
+        }
     }
 
-    input?.select();
-    setTimeout(()=>card?.classList.remove("pin-shake"),500);
+    await updateDoc(ref,{
+        activeSessionId:sessionId,
+        status:"online",
+        lastLoginAt:serverTimestamp(),
+        lastHeartbeat:serverTimestamp(),
+        lastLoginDevice:navigator.userAgent.slice(0,180)
+    });
+
+    kabirAccessSessionId=sessionId;
+    kabirAccessUser={...data,id:record.id};
+    sessionStorage.setItem(ACCESS_SESSION_KEY,JSON.stringify({
+        id:record.id,
+        sessionId
+    }));
+
+    await audit("LOGIN",{loginAt:new Date().toISOString()});
+    startAccessHeartbeat();
+    updateAccessIdentityUI();
 }
 
-function setupPin(){
-    const e=$("pinInput");
-    if(!e)return;
-
-    e.addEventListener("input",async()=>{
-        e.value=e.value.replace(/\D/g,"").slice(0,4);
-        dots(e.value);
-        msg("pinMessage","");
-
-        if(e.value.length===4){
-            const entered=e.value;
-
-            if(!pinLoaded) await loadSharedPin();
-
-            if(entered===pin()){
-                unlock();
-            }else{
-                msg("pinMessage","Incorrect PIN");
-                pinError();
-                setTimeout(()=>{
-                    e.value="";
-                    dots("");
-                    msg("pinMessage","");
-                    e.focus();
-                },500);
+function startAccessHeartbeat(){
+    clearInterval(accessHeartbeatTimer);
+    accessHeartbeatTimer=setInterval(async()=>{
+        if(!kabirAccessUser || !kabirAccessSessionId)return;
+        try{
+            const ref=doc(db,ACCESS_USERS_COL,kabirAccessUser.id);
+            const snap=await getDoc(ref);
+            if(!snap.exists())return forceAccessLogout("User access removed.");
+            const data=snap.data();
+            if(data.activeSessionId!==kabirAccessSessionId){
+                forceAccessLogout("यह Kabir ID किसी दूसरे login में इस्तेमाल हो रही है.");
+                return;
             }
+            await updateDoc(ref,{status:"online",lastHeartbeat:serverTimestamp()});
+        }catch(e){console.warn("Heartbeat failed:",e)}
+    },30000);
+}
+
+async function releaseAccessSession(log=true){
+    if(!kabirAccessUser)return;
+    try{
+        await updateDoc(doc(db,ACCESS_USERS_COL,kabirAccessUser.id),{
+            status:"offline",
+            activeSessionId:"",
+            lastLogoutAt:serverTimestamp(),
+            lastHeartbeat:serverTimestamp()
+        });
+        if(log)await audit("LOGOUT",{logoutAt:new Date().toISOString()});
+    }catch(e){console.warn("Logout update failed:",e)}
+    clearInterval(accessHeartbeatTimer);
+    kabirAccessUser=null;
+    kabirAccessSessionId=null;
+    sessionStorage.removeItem(ACCESS_SESSION_KEY);
+}
+
+function forceAccessLogout(message){
+    clearInterval(accessHeartbeatTimer);
+    kabirAccessUser=null;
+    kabirAccessSessionId=null;
+    sessionStorage.removeItem(ACCESS_SESSION_KEY);
+    $("appScreen")?.classList.add("hidden");
+    $("kabirLoginScreen")?.classList.remove("hidden");
+    accessMessage(message||"Session ended.");
+}
+
+async function logoutAccess(){
+    await releaseAccessSession(true);
+    $("appScreen")?.classList.add("hidden");
+    $("kabirLoginScreen")?.classList.remove("hidden");
+    $("kabirLoginId")?.focus();
+}
+
+function updateAccessIdentityUI(){
+    if($("kabirCurrentUser")){
+        $("kabirCurrentUser").textContent=
+            kabirAccessUser ? `${kabirAccessUser.id} • ${kabirAccessUser.name||""}` : "";
+    }
+}
+
+async function restoreAccessSession(){
+    const raw=sessionStorage.getItem(ACCESS_SESSION_KEY);
+    if(!raw)return false;
+    try{
+        const s=JSON.parse(raw);
+        const rec=await getAccessUserById(s.id);
+        if(!rec || rec.activeSessionId!==s.sessionId || rec.status!=="online"){
+            sessionStorage.removeItem(ACCESS_SESSION_KEY);
+            return false;
+        }
+        kabirAccessUser=rec;
+        kabirAccessSessionId=s.sessionId;
+        updateAccessIdentityUI();
+        startAccessHeartbeat();
+        $("kabirLoginScreen")?.classList.add("hidden");
+        $("appScreen")?.classList.remove("hidden");
+        return true;
+    }catch(e){
+        console.warn(e);
+        sessionStorage.removeItem(ACCESS_SESSION_KEY);
+        return false;
+    }
+}
+
+function setupKabirLogin(){
+    const button=$("kabirLoginButton");
+    if(!button)return;
+
+    button.addEventListener("click",async()=>{
+        const id=normalizeKabirId(val("kabirLoginId"));
+        const password=val("kabirLoginPassword");
+
+        if(!id || !password){
+            accessMessage("Kabir ID और Password दोनों भरें.");
+            return;
+        }
+
+        button.disabled=true;
+        accessMessage("Login हो रहा है…",true);
+
+        try{
+            const rec=await getAccessUserById(id);
+            if(!rec || rec.enabled===false)throw Error("Kabir ID या Password गलत है.");
+            if(String(rec.password)!==password)throw Error("Kabir ID या Password गलत है.");
+
+            await claimAccessSession(rec);
+            accessMessage("");
+            $("kabirLoginScreen")?.classList.add("hidden");
+            $("appScreen")?.classList.remove("hidden");
+        }catch(e){
+            console.error(e);
+            accessMessage(e?.message||"Login नहीं हुआ.");
+        }finally{
+            button.disabled=false;
         }
     });
 
-    $("lockButton")?.addEventListener("click",lock);
+    $("kabirLoginPassword")?.addEventListener("keydown",e=>{
+        if(e.key==="Enter")button.click();
+    });
+    $("kabirLoginId")?.addEventListener("keydown",e=>{
+        if(e.key==="Enter")$("kabirLoginPassword")?.focus();
+    });
+    $("kabirLogoutButton")?.addEventListener("click",logoutAccess);
+}
 
-    if(sessionStorage.getItem("kabir_unlocked")==="1")
-        unlock();
-    else
-        setTimeout(()=>e.focus(),250);
+async function ensureAccessOnMain(){
+    if(currentPageIsAdmin())return;
+    $("appScreen")?.classList.add("hidden");
+    $("kabirLoginScreen")?.classList.remove("hidden");
+    if(!(await restoreAccessSession())){
+        $("kabirLoginId")?.focus();
+    }
 }
 
 /* =========================================================
@@ -1139,8 +1277,10 @@ async function save(e){
             delete customerData.createdAt;
             delete customerData.createdBy;
             await updateDoc(doc(db,COL,editId),customerData);
+            await audit("CUSTOMER_EDITED",{customerId:editId,customerName:customerData.customerName});
         }else{
             await addDoc(collection(db,COL),customerData);
+            await audit("CUSTOMER_ADDED",{customerCode:customerData.customerCode,customerName:customerData.customerName});
         }
 
 
@@ -1318,7 +1458,7 @@ function closeCustomerDetail(){activeCustomerId=null;$("customerDetailModal")?.c
 async function deleteCustomer(){
     const c=customers.find(x=>x.id===activeCustomerId);if(!c)return;
     if(!confirm(`Delete ${c.customerName||"this customer"} (${c.customerCode||""}) permanently?`))return;
-    try{await deleteDoc(doc(db,COL,c.id));closeCustomerDetail()}
+    try{await deleteDoc(doc(db,COL,c.id));await audit("CUSTOMER_DELETED",{customerId:c.id,customerName:c.customerName,customerCode:c.customerCode});closeCustomerDetail()}
     catch(e){console.error(e);alert("Customer delete नहीं हुआ. Firebase Rules check करें.")}
 }
 function editCustomer(){
@@ -1527,6 +1667,184 @@ function scanner(){
 }
 
 
+
+/* =========================================================
+   ADMIN: KABIR USERS / LIVE STATUS / ANALYSIS / TODAY WORK
+========================================================= */
+
+function adminToday(){
+    return new Intl.DateTimeFormat("en-CA").format(new Date());
+}
+
+function formatAuditDate(v){
+    return accessDateTime(v);
+}
+
+async function adminSaveKabirUser(e){
+    e.preventDefault();
+    const name=val("kabirUserName");
+    const id=normalizeKabirId(val("kabirUserId"));
+    const password=val("kabirUserPassword");
+    if(!name||!id||!password)return msg("kabirUserMessage","Name, Kabir ID और Password भरें.");
+    if(!/^KABIR[A-Z0-9_-]{2,30}$/.test(id))return msg("kabirUserMessage","Kabir ID KABIR से शुरू होना चाहिए.");
+    try{
+        await setDoc(doc(db,ACCESS_USERS_COL,id),{
+            name,password,enabled:true,
+            status:"offline",
+            activeSessionId:"",
+            updatedAt:serverTimestamp()
+        },{merge:true});
+        msg("kabirUserMessage","Kabir user saved successfully ✓",true);
+        $("kabirUserForm").reset();
+        await renderKabirUsers();
+    }catch(e){
+        console.error(e);
+        msg("kabirUserMessage","User save नहीं हुआ. Firebase Rules check करें.");
+    }
+}
+
+async function renderKabirUsers(){
+    const box=$("kabirUsersList");
+    if(!box)return;
+    try{
+        const snap=await getDocs(collection(db,ACCESS_USERS_COL));
+        const rows=snap.docs.map(d=>({id:d.id,...d.data()}));
+        if(!rows.length){box.innerHTML='<div class="empty">अभी कोई Kabir ID नहीं बनी.</div>';return;}
+        box.innerHTML=rows.map(r=>{
+            const online=r.status==="online" && r.activeSessionId;
+            return `<article class="result">
+                <div class="result-top">
+                    <div><div class="result-name">${esc(r.id)}</div><div class="result-meta">${esc(r.name||"")}</div></div>
+                    <strong>${online?"🟢 ONLINE":"⚪ OFFLINE"}</strong>
+                </div>
+                <div class="result-grid">
+                    ${item("Status",online?"Online":"Offline")}
+                    ${item("Last Login",accessDateTime(r.lastLoginAt))}
+                    ${item("Last Logout",accessDateTime(r.lastLogoutAt))}
+                    ${item("Last Heartbeat",accessDateTime(r.lastHeartbeat))}
+                </div>
+            </article>`;
+        }).join("");
+    }catch(e){
+        console.error(e);
+        box.innerHTML='<div class="empty">User status load नहीं हुआ. Firebase Rules check करें.</div>';
+    }
+}
+
+async function getAuditRows(){
+    const snap=await getDocs(collection(db,AUDIT_COL));
+    return snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>{
+        const ta=a.createdAt?.toMillis?.()||0, tb=b.createdAt?.toMillis?.()||0;
+        return tb-ta;
+    });
+}
+
+function inDateRange(row,from,to){
+    const d=row.createdAt?.toDate?.();
+    if(!d)return false;
+    const ds=new Intl.DateTimeFormat("en-CA").format(d);
+    return (!from||ds>=from)&&(!to||ds<=to);
+}
+
+function actionLabel(a){
+    return ({
+        LOGIN:"Login",
+        LOGOUT:"Logout",
+        CUSTOMER_ADDED:"Customer Added",
+        CUSTOMER_EDITED:"Customer Edited",
+        CUSTOMER_DELETED:"Customer Deleted",
+        REPAIR_ADDED:"Repair Added"
+    })[a]||a||"Work";
+}
+
+async function renderTraffic(){
+    const box=$("trafficAnalysis");if(!box)return;
+    const date=val("analysisDate");
+    if(!date){box.innerHTML='<div class="empty">Select a date.</div>';return;}
+    try{
+        const rows=(await getAuditRows()).filter(r=>inDateRange(r,date,date));
+        const counts={};
+        rows.forEach(r=>counts[r.action]=(counts[r.action]||0)+1);
+        const users={};
+        rows.forEach(r=>{
+            const k=r.userId||"Unknown";
+            users[k]=(users[k]||0)+1;
+        });
+        box.innerHTML=`
+          <div class="mini-grid">
+            <div><span>Total Activities</span><strong>${rows.length}</strong></div>
+            <div><span>Active Members</span><strong>${Object.keys(users).length}</strong></div>
+          </div>
+          <div class="result-grid">
+            ${Object.entries(counts).map(([k,v])=>item(actionLabel(k),v)).join("")||'<div class="empty">No work recorded.</div>'}
+          </div>`;
+    }catch(e){console.error(e);box.innerHTML='<div class="empty">Analysis load नहीं हुआ.</div>'}
+}
+
+async function renderTodayWork(){
+    const box=$("todayWorkResults");if(!box)return;
+    const from=val("workFromDate")||adminToday();
+    const to=val("workToDate")||from;
+    try{
+        const rows=(await getAuditRows()).filter(r=>inDateRange(r,from,to));
+        if(!rows.length){box.innerHTML='<div class="empty">इस date range में कोई work नहीं मिला.</div>';return;}
+        box.innerHTML=rows.map(r=>`<article class="result">
+            <div class="result-top">
+                <div><div class="result-name">${esc(r.userId||"Unknown")}</div>
+                <div class="result-meta">${esc(r.userName||"")} • ${esc(formatAuditDate(r.createdAt))}</div></div>
+                <strong>${esc(actionLabel(r.action))}</strong>
+            </div>
+            <div class="result-grid">${item("Work",actionLabel(r.action))}${item("Details",JSON.stringify(r.details||{}))}</div>
+        </article>`).join("");
+    }catch(e){console.error(e);box.innerHTML='<div class="empty">Work history load नहीं हुआ.</div>'}
+}
+
+async function downloadAuditRows(rows,filename){
+    const data=rows.map(r=>({
+        "Date & Time":formatAuditDate(r.createdAt),
+        "Kabir ID":r.userId||"",
+        "Name":r.userName||"",
+        "Work":actionLabel(r.action),
+        "Details":JSON.stringify(r.details||{})
+    }));
+    if(!data.length){alert("Download के लिए data नहीं है.");return}
+    await exportXlsx(data,filename,"Work");
+}
+
+function adminFeatureNav(){
+    $("kabirUserForm")?.addEventListener("submit",adminSaveKabirUser);
+    $("analysisDate")?.addEventListener("change",renderTraffic);
+    $("workFromDate")?.addEventListener("change",renderTodayWork);
+    $("workToDate")?.addEventListener("change",renderTodayWork);
+
+    $("downloadTrafficButton")?.addEventListener("click",async()=>{
+        const date=val("analysisDate");
+        const rows=(await getAuditRows()).filter(r=>inDateRange(r,date,date));
+        await downloadAuditRows(rows,`Kabir_Traffic_${date||adminToday()}.xlsx`);
+    });
+
+    $("downloadTodayWorkButton")?.addEventListener("click",async()=>{
+        const from=val("workFromDate")||adminToday();
+        const to=val("workToDate")||from;
+        const rows=(await getAuditRows()).filter(r=>inDateRange(r,from,to));
+        await downloadAuditRows(rows,`Kabir_Work_${from}_to_${to}.xlsx`);
+    });
+
+    const today=adminToday();
+    if($("analysisDate"))$("analysisDate").value=today;
+    if($("workFromDate"))$("workFromDate").value=today;
+    if($("workToDate"))$("workToDate").value=today;
+    renderTraffic();
+    renderTodayWork();
+    renderKabirUsers();
+
+    setInterval(()=>{
+        renderKabirUsers();
+        renderTraffic();
+        renderTodayWork();
+    },30000);
+}
+
 /* =========================================================
    CHANGE PIN
 ========================================================= */
@@ -1624,7 +1942,13 @@ function subscribeRepairing(){
 function renderRepairing(){
     const box=$("repairResults");if(!box)return;
     const s=val("repairSearchInput").toLowerCase();
-    const arr=repairing.filter(r=>!s||[r.customerName,r.phone,r.device,r.problem,r.repairBy,r.payment,formatDateTime(r)].join(" ").toLowerCase().includes(s));
+    const date=val("repairSearchDate");
+    const arr=repairing.filter(r=>{
+        const text=[r.customerName,r.phone,r.device,r.problem,r.repairBy,r.payment,formatDateTime(r)].join(" ").toLowerCase();
+        const created=r.createdAt?.toDate?.();
+        const rowDate=created?new Intl.DateTimeFormat("en-CA").format(created):"";
+        return (!s||text.includes(s)) && (!date||rowDate===date);
+    });
     if(!arr.length){box.innerHTML=`<div class="empty">${s?"No repairing record found.":"No repairing records yet."}</div>`;return}
     box.innerHTML=arr.map(r=>`<article class="result">
       <div class="result-name">${esc(r.customerName||"")}</div><div class="result-meta">${esc(r.phone||"")} • ${esc(formatDateTime(r))}</div>
@@ -1651,6 +1975,7 @@ async function saveRepair(e){
             createdAt:serverTimestamp(),
             createdBy:user?.uid||null
         });
+        await audit("REPAIR_ADDED",{customerName:val("repairCustomerName"),problem:val("repairProblem"),payment:Number(val("repairPayment"))});
 
         $("repairForm").reset();
         msg("repairMessage","");
@@ -1737,6 +2062,7 @@ function featureNav(){
     $("addRepairingCard")?.addEventListener("click",()=>show("repairAddSection"));
     $("searchRepairingCard")?.addEventListener("click",()=>{show("repairSearchSection");renderRepairing();$("repairSearchInput")?.focus()});
     $("repairSearchInput")?.addEventListener("input",renderRepairing);
+    $("repairSearchDate")?.addEventListener("change",renderRepairing);
     $("repairForm")?.addEventListener("submit",saveRepair);
     $("exportCustomersButton")?.addEventListener("click",exportCustomers);
     $("exportRepairingButton")?.addEventListener("click",exportRepairing);
@@ -1753,7 +2079,13 @@ function featureNav(){
 function init(){
     loadSharedPin();
 
-    setupPin();
+    if(currentPageIsAdmin()){
+        // Admin retains its existing PIN settings functionality and gains the new admin tools.
+        adminFeatureNav();
+    }else{
+        setupKabirLogin();
+        ensureAccessOnMain();
+    }
 
     nav();
 
@@ -1795,369 +2127,8 @@ function init(){
 }
 
 
-/* =====================================================================
-   KABIR MOBILE DATA — SECURE AI / USER LOGIN UPGRADE
-   This block intentionally overrides only the authentication, write,
-   admin, AI and initialization layer. Existing customer UI/brand/search
-   functions above remain available and are reused.
-===================================================================== */
-
-let kabirFunctions=null;
-let kabirRole=null;
-let kabirUserId="";
-let kabirSessionId="";
-let kabirAdminListenersStarted=false;
-let kabirEmployeeListenerStarted=false;
-let kabirLogListenerStarted=false;
-let kabirAdminUnsubEmployees=null;
-let kabirAdminUnsubLogs=null;
-let kabirVoiceRecognition=null;
-
-function isAdminPage(){return document.body?.dataset?.page==="admin";}
-function isLoggedIn(){return !!user && !!kabirRole;}
-function isWriteLocked(){
-    const d=new Date();
-    const h=d.getHours();
-    return h>=0 && h<10;
-}
-function lockMessage(){return "🔒 अभी रात 12:00 AM से सुबह 10:00 AM तक database write lock active है। Add / Edit / Delete सुबह 10:00 AM के बाद उपलब्ध होगा।";}
-function showLoginScreen(){
-    if(isAdminPage()){
-        $("adminLoginScreen")?.classList.remove("hidden");
-        $("adminAppScreen")?.classList.add("hidden");
-    }else{
-        $("loginScreen")?.classList.remove("hidden");
-        $("appScreen")?.classList.add("hidden");
-    }
-}
-function showAppScreen(){
-    if(isAdminPage()){
-        $("adminLoginScreen")?.classList.add("hidden");
-        $("adminAppScreen")?.classList.remove("hidden");
-    }else{
-        $("loginScreen")?.classList.add("hidden");
-        $("appScreen")?.classList.remove("hidden");
-    }
-    applyWriteLockUI();
-}
-function currentActor(){return {uid:user?.uid||null,userId:kabirUserId||user?.displayName||"unknown",role:kabirRole||"unknown"};}
-function setStatus(text,ok=true){
-    const e=$("adminFirebaseStatus");
-    if(e){e.textContent=text;e.classList.toggle("ok",!!ok);e.classList.toggle("bad",!ok);}
-}
-function writeDenied(target="formMessage"){
-    msg(target,lockMessage());
-    applyWriteLockUI();
-    return true;
-}
-function applyWriteLockUI(){
-    const locked=isWriteLocked();
-    const banners=[$("writeLockBanner"),$("adminLockBanner")];
-    banners.forEach(b=>b?.classList.toggle("hidden",!locked));
-    const ids=["addCustomerCard","addRepairingCard","saveCustomerButton","repairForm","editCustomerButton","deleteCustomerButton"];
-    ids.forEach(id=>{
-        const e=$(id); if(!e)return;
-        e.classList.toggle("write-disabled",locked);
-        if("disabled" in e && id!=="repairForm")e.disabled=locked;
-        if(id==="repairForm")e.querySelectorAll("input,select,button,textarea").forEach(x=>x.disabled=locked);
-    });
-    document.querySelectorAll("[data-bill]").forEach(x=>x.disabled=locked);
-}
-function startWriteClock(){
-    applyWriteLockUI();
-    clearInterval(window.__kabirWriteClock);
-    window.__kabirWriteClock=setInterval(applyWriteLockUI,15000);
-}
-
-async function callKabir(name,data={}){
-    if(!kabirFunctions)throw new Error("Firebase Functions अभी तैयार नहीं है.");
-    const fn=httpsCallable(kabirFunctions,name);
-    const res=await fn(data);
-    return res.data;
-}
-
-function appendAiMessage(boxId,text,who){
-    const box=$(boxId);if(!box)return;
-    const div=document.createElement("div");
-    div.className=`ai-msg ${who}`;
-    div.textContent=text;
-    box.appendChild(div);
-    box.scrollTop=box.scrollHeight;
-}
-function aiBusy(boxId,busy){
-    const box=$(boxId);if(!box)return;
-    let e=box.querySelector(".ai-thinking");
-    if(busy && !e){e=document.createElement("div");e.className="ai-msg bot ai-thinking";e.textContent="Kabir AI सोच रहा है…";box.appendChild(e);box.scrollTop=box.scrollHeight;}
-    if(!busy)e?.remove();
-}
-function speechInput(inputId,voiceBtnId){
-    const btn=$(voiceBtnId),input=$(inputId);if(!btn||!input)return;
-    const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-    if(!SR){btn.title="इस browser में voice input available नहीं है";return;}
-    btn.addEventListener("click",()=>{
-        if(kabirVoiceRecognition){try{kabirVoiceRecognition.stop();}catch(_){}kabirVoiceRecognition=null;btn.textContent="🎙️";return;}
-        const r=new SR();kabirVoiceRecognition=r;r.lang="hi-IN";r.interimResults=false;r.continuous=false;
-        btn.textContent="⏺️";
-        r.onresult=e=>{input.value=e.results?.[0]?.[0]?.transcript||"";input.focus();};
-        r.onerror=()=>{btn.textContent="🎙️";kabirVoiceRecognition=null;};
-        r.onend=()=>{btn.textContent="🎙️";kabirVoiceRecognition=null;};
-        try{r.start();}catch(e){btn.textContent="🎙️";kabirVoiceRecognition=null;}
-    });
-}
-function speakHindi(text){
-    if(!("speechSynthesis" in window))return;
-    try{
-        window.speechSynthesis.cancel();
-        const u=new SpeechSynthesisUtterance(text.replace(/[*_#`]/g,""));
-        u.lang=/[\u0900-\u097F]/.test(text)?"hi-IN":"en-IN";
-        u.rate=.96;window.speechSynthesis.speak(u);
-    }catch(_){}
-}
-
-async function askAi(inputId,boxId,admin=false){
-    const input=$(inputId);if(!input)return;
-    const q=input.value.trim();if(!q)return;
-    input.value="";
-    appendAiMessage(boxId,q,"user");
-    aiBusy(boxId,true);
-    try{
-        const data=await callKabir("askKabirAI",{question:q,admin:!!admin});
-        aiBusy(boxId,false);
-        appendAiMessage(boxId,data?.answer||"AI ने कोई जवाब नहीं दिया.","bot");
-        if(data?.answer)speakHindi(data.answer);
-    }catch(e){
-        aiBusy(boxId,false);
-        const message=e?.message||"AI service अभी उपलब्ध नहीं है.";
-        appendAiMessage(boxId,"⚠️ "+message,"bot");
-    }
-}
-function setupMainAI(){
-    $("aiButton")?.addEventListener("click",()=>$("aiModal")?.classList.remove("hidden"));
-    $("closeAiButton")?.addEventListener("click",()=>$("aiModal")?.classList.add("hidden"));
-    $("aiSendButton")?.addEventListener("click",()=>askAi("aiInput","aiMessages",false));
-    $("aiInput")?.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();askAi("aiInput","aiMessages",false);}});
-    $("aiVoiceButton")&&speechInput("aiInput","aiVoiceButton");
-    $("aiSuggestions")?.addEventListener("click",e=>{const b=e.target.closest("[data-ai]");if(b){$("aiInput").value=b.dataset.ai;askAi("aiInput","aiMessages",false);}});
-    document.querySelectorAll("#aiModal [data-ai]").forEach(b=>b.addEventListener("click",()=>{$("aiInput").value=b.dataset.ai;askAi("aiInput","aiMessages",false);}));
-}
-
-async function employeeLogin(e){
-    e.preventDefault();
-    const id=val("employeeIdInput").toUpperCase();const password=val("employeePasswordInput");
-    if(!id||!password){msg("loginMessage","ID और Password दोनों डालना जरूरी है.");return;}
-    const btn=e.currentTarget.querySelector("button[type='submit']");if(btn)btn.disabled=true;
-    try{
-        const data=await callKabir("employeeLogin",{userId:id,password});
-        await signInWithCustomToken(auth,data.token);
-        sessionStorage.setItem("kabir_login_id",data.userId||id);
-        msg("loginMessage","Login successful ✓",true);
-    }catch(err){
-        console.error(err);msg("loginMessage",err?.message||"Login failed.");
-    }finally{if(btn)btn.disabled=false;}
-}
-async function adminLogin(e){
-    e.preventDefault();const pin=val("adminPinInput");
-    if(!pin){msg("adminLoginMessage","Admin PIN डालें.");return;}
-    const btn=e.currentTarget.querySelector("button[type='submit']");if(btn)btn.disabled=true;
-    try{
-        const data=await callKabir("adminLogin",{pin});
-        await signInWithCustomToken(auth,data.token);
-        msg("adminLoginMessage","Login successful ✓",true);
-    }catch(err){console.error(err);msg("adminLoginMessage",err?.message||"Admin login failed.");}
-    finally{if(btn)btn.disabled=false;}
-}
-
-/* New secure PIN compatibility functions — old shared PIN storage is no longer used for website access. */
-async function loadSharedPin(){pinLoaded=true;sharedPin=DEFAULT_PIN;return sharedPin;}
-function pin(){return sharedPin;}
-async function changeSharedPin(newPin){
-    const data=await callKabir("changeAdminPin",{newPin});
-    return data;
-}
-function setupPin(){
-    $("employeeLoginForm")?.addEventListener("submit",employeeLogin);
-    $("adminLoginForm")?.addEventListener("submit",adminLogin);
-    $("lockButton")?.addEventListener("click",async()=>{try{await callKabir("logout");}catch(_){}await signOut(auth);sessionStorage.removeItem("kabir_login_id");showLoginScreen();});
-    $("adminLogoutButton")?.addEventListener("click",async()=>{try{await callKabir("logout");}catch(_){}await signOut(auth);showLoginScreen();});
-}
-
-async function authInit(){
-    try{kabirFunctions=getFunctions(app,"asia-south1");}catch(e){console.error(e);}
-    onAuthStateChanged(auth,async u=>{
-        user=u;kabirRole=null;kabirUserId="";kabirSessionId="";
-        if(!u){showLoginScreen();setStatus("Login required",false);return;}
-        try{
-            const token=await u.getIdTokenResult(true);
-            kabirRole=token.claims?.role||null;
-            kabirUserId=token.claims?.userId||u.displayName||"";
-            kabirSessionId=token.claims?.sessionId||"";
-            if(isAdminPage() && kabirRole!=="admin"){await signOut(auth);showLoginScreen();return;}
-            if(!isAdminPage() && !["employee","admin"].includes(kabirRole)){await signOut(auth);showLoginScreen();return;}
-            showAppScreen();setStatus(`Firebase connected • ${kabirUserId||kabirRole}`,true);
-            if(isAdminPage())startAdminPanel();
-            else startEmployeePanel();
-        }catch(e){console.error(e);await signOut(auth);showLoginScreen();setStatus("Authentication error",false);}
-    });
-}
-
-function startEmployeePanel(){
-    if(kabirEmployeeListenerStarted)return;
-    kabirEmployeeListenerStarted=true;
-    subscribe();subscribeRepairing();setupMainAI();startWriteClock();
-    $("customerForm")?.addEventListener("submit",save);
-}
-
-/* Secure customer save replacement. Existing form structure is unchanged. */
-async function save(e){
-    e.preventDefault();
-    if(!isLoggedIn()){msg("formMessage","पहले login करें.");return;}
-    if(isWriteLocked()){writeDenied();return;}
-    const ids=["customerName","address","pincode","city","state","phone","brand","model","imei","colour","storage","phoneAmount","downPayment"];
-    for(const id of ids){if(!val(id)){$(id)?.focus();msg("formMessage","सभी जरूरी fields भरें.");return;}}
-    const phone=val("phone").replace(/\D/g,"");const imei=val("imei").replace(/\D/g,"");
-    if(!/^\d{10}$/.test(phone)){msg("formMessage","10 digit mobile number डालें.");return;}
-    if(!/^\d{15}$/.test(imei)){msg("formMessage","15 digit IMEI डालें.");return;}
-    const saveBtn=$("saveCustomerButton");saveBtn.disabled=true;$('saveSpinner')?.classList.remove("hidden");msg("formMessage","Saving…",true);
-    try{
-        const editId=$("customerForm").dataset.editId;
-        const base={customerName:val("customerName"),address:val("address"),pincode:val("pincode"),city:val("city"),state:val("state"),phone,brand:val("brand"),model:val("model"),imei,colour:val("colour"),storage:val("storage"),financeCompany:val("financeCompany"),phoneAmount:Number(val("phoneAmount"))||0,downPayment:Number(val("downPayment"))||0,emiAmount:Number(val("emiAmount"))||0,emiMonths:Number(val("emiMonths"))||0,lockName:val("lockName"),stock:val("stock"),counter:val("counter"),financerName:val("financerName"),bill:{status:"NO",dueDate:billDate()},billYes:false,deviceCount:1,documents:{aadhaar:null,pan:null,customerPhoto:null},updatedByUserId:kabirUserId,updatedByUid:user.uid};
-        if(editId){await updateDoc(doc(db,COL,editId),base);}else{await addDoc(collection(db,COL),{...base,customerCode:await uniqueCustomerCode(),createdAt:serverTimestamp(),createdBy:user.uid,createdByUserId:kabirUserId});}
-        $("customerForm").reset();delete $("customerForm").dataset.editId;$('customerCode').value="";$('saveCustomerButton').textContent="22. SAVE CUSTOMER";$('financeCompany').value="";
-        $("model").innerHTML='<option value="">Select brand first</option>';$("model").disabled=true;$("colour").innerHTML='<option value="">Select model first</option>';$("colour").disabled=true;$("storage").innerHTML='<option value="">Select model first</option>';$("storage").disabled=true;billDate();msg("formMessage","");showSuccessToast(editId?"Updated Successfully":"Successfully Saved",editId?"Customer data updated successfully":"Customer data saved successfully");
-        setTimeout(()=>$("addSection")?.classList.add("hidden"),900);
-    }catch(err){console.error(err);msg("formMessage",err?.message||"Customer save नहीं हुआ.");}
-    finally{$('saveCustomerButton').disabled=isWriteLocked();$('saveSpinner')?.classList.add("hidden");}
-}
-
-async function saveRepair(e){
-    e.preventDefault();if(!isLoggedIn()){msg("repairMessage","पहले login करें.");return;}if(isWriteLocked()){writeDenied("repairMessage");return;}
-    const ids=["repairCustomerName","repairPhone","repairDevice","repairProblem","repairBy","repairPayment"];for(const id of ids)if(!val(id)){$(id)?.focus();msg("repairMessage","सभी fields भरना जरूरी है.");return;}
-    const phone=val("repairPhone").replace(/\D/g,"");if(!/^\d{10}$/.test(phone)){msg("repairMessage","10 digit customer phone number डालें.");return;}
-    const btn=$("repairForm")?.querySelector("button[type='submit']");if(btn)btn.disabled=true;
-    try{await addDoc(collection(db,REPAIR_COL),{customerName:val("repairCustomerName"),phone,device:val("repairDevice"),problem:val("repairProblem"),repairBy:val("repairBy"),payment:Number(val("repairPayment"))||0,createdAt:serverTimestamp(),createdBy:user.uid,createdByUserId:kabirUserId});$("repairForm").reset();msg("repairMessage","");showSuccessToast("Successfully Saved","Repairing data saved successfully");}
-    catch(err){console.error(err);msg("repairMessage",err?.message||"Repairing save नहीं हुआ.");}
-    finally{if(btn)btn.disabled=isWriteLocked();}
-}
-
-async function deleteCustomer(){
-    const c=customers.find(x=>x.id===activeCustomerId);if(!c)return;if(isWriteLocked()){alert(lockMessage());return;}
-    if(!confirm(`Delete ${c.customerName||"this customer"} (${c.customerCode||""}) permanently?`))return;
-    try{await deleteDoc(doc(db,COL,c.id));closeCustomerDetail();}catch(e){console.error(e);alert(e?.message||"Customer delete नहीं हुआ.");}
-}
-function editCustomer(){
-    const c=customers.find(x=>x.id===activeCustomerId);if(!c)return;if(isWriteLocked()){alert(lockMessage());return;}
-    closeCustomerDetail();show("addSection");
-    const map={customerName:"customerName",address:"address",pincode:"pincode",city:"city",state:"state",phone:"phone",brand:"brand",model:"model",imei:"imei",colour:"colour",storage:"storage",financeCompany:"financeCompany",phoneAmount:"phoneAmount",downPayment:"downPayment",emiAmount:"emiAmount",emiMonths:"emiMonths",lockName:"lockName",stock:"stock",counter:"counter",financerName:"financerName"};
-    Object.entries(map).forEach(([k,id])=>{if($(id))$(id).value=c[k]??""});$("customerCode").value=c.customerCode||"";$("saveCustomerButton").textContent="UPDATE CUSTOMER";$("customerForm").dataset.editId=c.id;$("brand").dispatchEvent(new Event("change"));setTimeout(()=>{$("model").value=c.model||"";$('model').dispatchEvent(new Event("change"));setTimeout(()=>{$("colour").value=c.colour||"";$('storage').value=c.storage||""},0)},100);applyWriteLockUI();
-}
-
-/* Bill switch write guard: the original renderer remains intact, but the server rules also enforce the lock. */
-function featureNav(){
-    $("addRepairingCard")?.addEventListener("click",()=>{if(isWriteLocked()){alert(lockMessage());return;}show("repairAddSection");});
-    $("searchRepairingCard")?.addEventListener("click",()=>{show("repairSearchSection");renderRepairing();$("repairSearchInput")?.focus();});
-    $("repairSearchInput")?.addEventListener("input",renderRepairing);
-    $("repairForm")?.addEventListener("submit",saveRepair);
-    $("exportCustomersButton")?.addEventListener("click",exportCustomers);
-    $("exportRepairingButton")?.addEventListener("click",exportRepairing);
-    $("downloadCustomerPdf")?.addEventListener("click",downloadCustomerPdf);
-    $("deleteCustomerButton")?.addEventListener("click",deleteCustomer);
-    $("editCustomerButton")?.addEventListener("click",editCustomer);
-    $("closeDetailButton")?.addEventListener("click",closeCustomerDetail);
-}
-
-/* Admin panel */
-function startAdminPanel(){
-    if(kabirAdminListenersStarted)return;kabirAdminListenersStarted=true;
-    setupAdminAI();loadAdminEmployees();loadAdminLogs();startWriteClock();
-    $("createEmployeeForm")?.addEventListener("submit",createEmployee);
-    $("adminQuickAnalysisButton")?.addEventListener("click",()=>runAdminReport());
-    $("refreshLogsButton")?.addEventListener("click",loadAdminLogs);
-    $("copyCredentialsButton")?.addEventListener("click",copyCredentials);
-    $("adminAiOpenButton")?.addEventListener("click",()=>$("adminAiModal")?.classList.remove("hidden"));
-}
-async function loadAdminEmployees(){
-    const box=$("employeeList");if(!box)return;
-    try{
-        if(kabirAdminUnsubEmployees)kabirAdminUnsubEmployees();
-        kabirAdminUnsubEmployees=onSnapshot(collection(db,"employees"),snap=>{
-            const arr=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(a.userId||"").localeCompare(String(b.userId||"")));
-            if(!arr.length){box.innerHTML='<div class="empty">अभी कोई website user नहीं है। ऊपर से पहला user बनाइए।</div>';return;}
-            box.innerHTML=arr.map(u=>{const online=u.activeSession===true;return `<article class="user-row"><div class="user-row-top"><div><strong>${esc(u.userId||"")}</strong><div class="user-meta">${esc(u.name||"Website User")} • Created ${esc(u.createdAt?.toDate?formatDateTime({createdAt:u.createdAt}):"-")}</div></div><span class="status-pill ${online?'online':'offline'}">${online?'🟢 ONLINE':'⚪ OFFLINE'}</span></div><div class="user-meta">Last active: ${esc(u.lastActiveAt?.toDate?formatDateTime({createdAt:u.lastActiveAt}):"-")} • ${u.disabled?'DISABLED':'ACTIVE'}</div><div class="row-actions">${u.disabled?`<button data-user-enable="${esc(u.id)}">ENABLE</button>`:`<button data-user-disable="${esc(u.id)}">DISABLE</button>`}${online?`<button data-user-logout="${esc(u.id)}">FORCE LOGOUT</button>`:''}<button class="danger" data-user-delete="${esc(u.id)}">DELETE</button></div></article>`}).join("");
-            box.querySelectorAll("[data-user-enable]").forEach(b=>b.onclick=()=>manageEmployee(b.dataset.userEnable,"enableEmployee"));
-            box.querySelectorAll("[data-user-disable]").forEach(b=>b.onclick=()=>manageEmployee(b.dataset.userDisable,"disableEmployee"));
-            box.querySelectorAll("[data-user-logout]").forEach(b=>b.onclick=()=>manageEmployee(b.dataset.userLogout,"forceLogoutEmployee"));
-            box.querySelectorAll("[data-user-delete]").forEach(b=>b.onclick=()=>manageEmployee(b.dataset.userDelete,"deleteEmployee"));
-        },e=>{console.error(e);box.innerHTML='<div class="empty">Users load नहीं हुए. Firebase Rules/Functions check करें.</div>';});
-    }catch(e){console.error(e);}
-}
-async function createEmployee(e){
-    e.preventDefault();const msgId="createEmployeeMessage";
-    const userId=val("newEmployeeId").toUpperCase();const name=val("newEmployeeName");const password=val("newEmployeePassword");
-    if(userId && !/^[A-Z0-9_\-]{4,32}$/.test(userId)){msg(msgId,"ID 4-32 characters की हो: A-Z, 0-9, _ या -");return;}
-    const btn=e.currentTarget.querySelector("button[type='submit']");if(btn)btn.disabled=true;
-    try{
-        const data=await callKabir("createEmployee",{userId,name,password});
-        $("createdUserId").textContent=data.userId;$("createdUserPassword").textContent=data.password;$("newCredentialsBox").classList.remove("hidden");$("createEmployeeForm").reset();msg(msgId,"User successfully बनाया गया ✓",true);loadAdminEmployees();
-    }catch(err){console.error(err);msg(msgId,err?.message||"User create नहीं हुआ.");}
-    finally{if(btn)btn.disabled=false;}
-}
-async function manageEmployee(uid,action){
-    try{await callKabir(action,{uid});loadAdminEmployees();}catch(e){alert(e?.message||"Action failed.");}
-}
-function copyCredentials(){
-    const text=`Kabir Mobile Data Login\nID: ${$("createdUserId")?.textContent||""}\nPassword: ${$("createdUserPassword")?.textContent||""}`;
-    navigator.clipboard?.writeText(text).then(()=>showSuccessToast("Copied","Login details copied"));
-}
-async function loadAdminLogs(){
-    const box=$("adminLogs");if(!box)return;
-    try{
-        if(kabirAdminUnsubLogs)kabirAdminUnsubLogs();
-        kabirAdminUnsubLogs=onSnapshot(collection(db,"auditLogs"),snap=>{
-            const arr=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>{const ta=a.timestamp?.toMillis?.()||0,tb=b.timestamp?.toMillis?.()||0;return tb-ta}).slice(0,80);
-            if(!arr.length){box.innerHTML='<div class="empty">अभी activity logs नहीं हैं।</div>';return;}
-            box.innerHTML=arr.map(l=>`<article class="log-row"><div class="log-row-top"><div><strong>${esc(l.userId||l.uid||"Unknown")}</strong><div class="log-meta">${esc(l.action||"WORK")} • ${esc(l.collection||"")} • ${esc(l.documentId||"")}</div></div><span class="status-pill">${esc(l.timestamp?.toDate?formatDateTime({createdAt:l.timestamp}):"Pending")}</span></div><div class="log-meta">${esc(l.summary||"")}</div></article>`).join("");
-        },e=>{console.error(e);box.innerHTML='<div class="empty">Activity logs load नहीं हुए.</div>';});
-    }catch(e){console.error(e);}
-}
-async function runAdminReport(){
-    const box=$("adminAnalysisResult");if(!box)return;box.classList.remove("hidden");box.textContent="AI report बन रही है…";
-    try{const d=await callKabir("askKabirAI",{question:"आज की पूरी activity report दो। किस user ने क्या किया, कितने customer/repairing add/edit/delete हुए और कोई महत्वपूर्ण बात हो तो बताओ।",admin:true});box.textContent=d?.answer||"Report नहीं मिली.";speakHindi(d?.answer||"");}
-    catch(e){box.textContent="⚠️ "+(e?.message||"AI report नहीं बन पाई.");}
-}
-function setupAdminAI(){
-    $("adminAiSendButton")?.addEventListener("click",()=>askAi("adminAiInput","adminAiMessages",true));
-    $("adminAiInput")?.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();askAi("adminAiInput","adminAiMessages",true);}});
-    speechInput("adminAiInput","adminAiVoiceButton");
-    $("closeAdminAiButton")?.addEventListener("click",()=>$("adminAiModal")?.classList.add("hidden"));
-    document.querySelectorAll("#adminAiModal [data-admin-ai]").forEach(b=>b.addEventListener("click",()=>{$("adminAiInput").value=b.dataset.adminAi;askAi("adminAiInput","adminAiMessages",true);}));
-}
-
-function init(){
-    setupPin();changePin();
-    nav();brands();setupFinanceCompany();pincode();amounts();billDate();search();scanner();themeSystem();featureNav();authInit();
-    applyWriteLockUI();startWriteClock();
-}
-document.addEventListener("DOMContentLoaded",init);
-
-
-/* Admin PIN form for the new secure backend. */
-function changePin(){
-    const f=$("changePinForm");if(!f)return;
-    f.addEventListener("submit",async e=>{
-        e.preventDefault();
-        const a=val("newPin"),b=val("confirmPin");
-        if(!/^\d{4,12}$/.test(a)){msg("pinSettingsMessage","PIN 4 से 12 digits का होना चाहिए.");return;}
-        if(a!==b){msg("pinSettingsMessage","दोनों PIN match नहीं हैं.");return;}
-        try{await changeSharedPin(a);f.reset();msg("pinSettingsMessage","Admin PIN successfully updated ✓",true);}catch(err){msg("pinSettingsMessage",err?.message||"PIN update नहीं हुआ.");}
-    });
-}
-
-function nav(){
-    $("searchCustomerCard")?.addEventListener("click",()=>{show("searchSection");$("searchInput")?.focus();renderSearch();});
-    $("addCustomerCard")?.addEventListener("click",()=>{if(isWriteLocked()){alert(lockMessage());return;}show("addSection");});
-    $("totalCustomersCard")?.addEventListener("click",()=>{show("searchSection");renderSearch();});
-    $("totalDevicesCard")?.addEventListener("click",()=>{show("searchSection");renderSearch();});
-    $("repairTotalCustomersCard")?.addEventListener("click",()=>{show("repairSearchSection");renderRepairing();});
-    $("repairTotalDevicesCard")?.addEventListener("click",()=>{show("repairSearchSection");renderRepairing();});
-    document.querySelectorAll("[data-close]").forEach(b=>b.addEventListener("click",()=>$(b.dataset.close)?.classList.add("hidden")));
-}
+document.addEventListener(
+    "DOMContentLoaded",
+    init
+);
+\nwindow.addEventListener("beforeunload",()=>{\n    // Do not automatically mark offline here: refreshes should not log the user out.\n});\n
