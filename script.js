@@ -2221,7 +2221,7 @@ function addWorkDeviceDetails(){
         const box=$('workHistoryResults');if(!box)return;const q=val('workSearchInput').toLowerCase();const rows=auditLogs.filter(x=>!q||[x.label,x.action,x.userName,x.userUid,x.section,x.customerCode,x.customerName,x.description,JSON.stringify(x.details||{}),auditTime(x)].join(' ').toLowerCase().includes(q));
         if(!rows.length){box.innerHTML='<div class="empty">अभी कोई work history उपलब्ध नहीं है.</div>';return;}
         const iconMap={customer_add:'👤',customer_edit:'✏️',customer_delete:'🗑️',repairing_add:'🛠️',customer_search:'🔎',repairing_search:'🔎',customer_export:'📥',repairing_export:'📥',customer_pdf:'🔵',login_success:'🟢',login_failed:'🔴',page_open:'🟡',second_hand_add:'📱',accessory_add:'🎧',pin_change:'🔐'};
-        box.innerHTML=rows.slice(0,300).map((x,i)=>{const d=x.details||{};const device=[d.brand,d.model,d.device].filter(Boolean).join(' ');const status=x.action==='customer_pdf'?'🔵 PDF Download':(x.action==='customer_export'||x.action==='repairing_export'?'🔵 PDF/Export': '🟡 Website');return `<article class="result work-log"><div class="work-log-head"><div class="work-log-icon">${iconMap[x.action]||'⚡'}</div><div class="work-log-title"><b>${esc(x.label||auditLabel(x.action))}</b><small>${esc(x.section||'Kabir Mobile Data')} • ${esc(x.userName||x.userUid||'Kabir User')}</small></div><time class="work-log-time">${esc(auditTime(x))}</time></div><div class="work-log-desc">${esc(x.description||auditLabel(x.action))}</div><div class="work-log-tags"><span class="work-log-tag">${status}</span>${device?`<span class="work-log-tag">📱 ${esc(device)}</span>`:''}${x.customerCode?`<span class="work-log-tag">${esc(x.customerCode)}</span>`:''}${x.customerName?`<span class="work-log-tag">${esc(x.customerName)}</span>`:''}<span class="work-log-tag">#${i+1}</span></div></article>`;}).join('');
+        box.innerHTML=rows.slice(0,300).map((x,i)=>{const d=x.details||{};const extra=d.extra||{};const device=[d.brand,d.model,d.device,extra.brand,extra.model,extra.device].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(' ');const status=x.action==='customer_pdf'?'🔵 PDF Download':(x.action==='customer_export'||x.action==='repairing_export'?'🔵 PDF/Export': '🟡 Website');return `<article class="result work-log"><div class="work-log-head"><div class="work-log-icon">${iconMap[x.action]||'⚡'}</div><div class="work-log-title"><b>${esc(x.label||auditLabel(x.action))}</b><small>${esc(x.section||'Kabir Mobile Data')} • ${esc(x.userName||x.userUid||'Kabir User')}</small></div><time class="work-log-time">${esc(auditTime(x))}</time></div><div class="work-log-desc">${esc(x.description||auditLabel(x.action))}</div><div class="work-log-tags"><span class="work-log-tag">${status}</span>${device?`<span class="work-log-tag">📱 ${esc(device)}</span>`:''}${x.customerCode?`<span class="work-log-tag">${esc(x.customerCode)}</span>`:''}${x.customerName?`<span class="work-log-tag">${esc(x.customerName)}</span>`:''}<span class="work-log-tag">#${i+1}</span></div></article>`;}).join('');
     };
 }
 function setupHomePdf(){
@@ -2248,9 +2248,24 @@ function auditWithDevice(action,details={}){return __oldAudit(action,{...details
 function setupPinSettingsPage(){const b=$('openPinChangeButton'),p=$('pinChangePanel');b?.addEventListener('click',()=>p?.classList.toggle('hidden'));}
 function setupAdminPages(){
     if(!$('appScreen')?.classList.contains('admin'))return;
-    const open=(id)=>{$(id)?.classList.add('admin-page-open');};
-    const close=(id)=>{$(id)?.classList.remove('admin-page-open');window.scrollTo({top:0,behavior:'smooth'});};
-    $('workHistoryButton')?.addEventListener('click',()=>open('workHistorySection'));
+    const open=(id)=>{
+        document.querySelectorAll('#workHistorySection,#trafficSection').forEach(el=>{
+            el.classList.add('hidden');
+            el.classList.remove('admin-page-open');
+        });
+        const el=$(id);
+        if(!el)return;
+        el.classList.remove('hidden');
+        el.classList.add('admin-page-open');
+        setTimeout(()=>el.scrollIntoView({behavior:'smooth',block:'start'}),20);
+    };
+    const close=(id)=>{
+        const el=$(id);
+        el?.classList.add('hidden');
+        el?.classList.remove('admin-page-open');
+        window.scrollTo({top:0,behavior:'smooth'});
+    };
+    $('workHistoryButton')?.addEventListener('click',()=>{open('workHistorySection');renderWorkHistory();});
     $('trafficButton')?.addEventListener('click',()=>{open('trafficSection');renderTraffic();renderTrafficManagementCounts();});
     $('closeWorkPageButton')?.addEventListener('click',()=>close('workHistorySection'));
     $('closeTrafficPageButton')?.addEventListener('click',()=>close('trafficSection'));
