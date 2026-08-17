@@ -1924,72 +1924,6 @@ async function downloadCustomerPdf(){
         pdf.save(`${c.customerCode||"customer"}_${(c.customerName||"customer").replace(/\s+/g,"_")}.pdf`);
     }catch(e){console.error(e);alert("PDF बन नहीं पाया.")}
 }
-async function downloadCompletePdf(){
-    try{
-        if(!window.jspdf)await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
-        const {jsPDF}=window.jspdf;
-        const pdf=new jsPDF({unit:"mm",format:"a4"});
-        const pageW=210,pageH=297,margin=14;
-        let y=18;
-        const fmt=v=>String(v??"-");
-        const money=v=>`Rs. ${Number(v||0).toLocaleString("en-IN")}`;
-        const newPage=()=>{pdf.addPage();y=18;drawHeader();};
-        const drawHeader=()=>{
-            pdf.setFillColor(12,14,20);pdf.roundedRect(10,8,190,22,5,5,"F");
-            pdf.setTextColor(255,255,255);pdf.setFont("helvetica","bold");pdf.setFontSize(16);pdf.text("KABIR DATA",18,20);
-            pdf.setFont("helvetica","normal");pdf.setFontSize(8);pdf.text("COMPLETE BUSINESS REPORT",18,26);
-            pdf.text(new Date().toLocaleString("en-IN"),142,21);
-            pdf.setTextColor(20,22,28);y=38;
-        };
-        const section=(title,subtitle="")=>{
-            if(y>260)newPage();
-            pdf.setFillColor(238,240,245);pdf.roundedRect(margin,y,182,12,3,3,"F");
-            pdf.setTextColor(15,17,22);pdf.setFont("helvetica","bold");pdf.setFontSize(11);pdf.text(title,margin+5,y+7.5);
-            if(subtitle){pdf.setFont("helvetica","normal");pdf.setFontSize(7);pdf.text(subtitle,margin+105,y+7.5,{maxWidth:72});}
-            y+=17;
-        };
-        const row=(label,value)=>{
-            const text=fmt(value); const lines=pdf.splitTextToSize(text,128); const h=Math.max(8,lines.length*4.5+3);
-            if(y+h>285)newPage();
-            pdf.setFillColor(248,249,251);pdf.roundedRect(margin,y,182,h,2,2,"F");
-            pdf.setTextColor(85,88,96);pdf.setFont("helvetica","bold");pdf.setFontSize(7);pdf.text(fmt(label),margin+4,y+5);
-            pdf.setTextColor(20,22,28);pdf.setFont("helvetica","normal");pdf.setFontSize(8);pdf.text(lines,margin+52,y+5,{maxWidth:126});
-            y+=h+2;
-        };
-        const card=(label,value,x,w)=>{
-            pdf.setFillColor(246,247,250);pdf.roundedRect(x,y,w,17,4,4,"F");
-            pdf.setTextColor(95,98,106);pdf.setFont("helvetica","normal");pdf.setFontSize(7);pdf.text(label,x+4,y+6);
-            pdf.setTextColor(15,17,22);pdf.setFont("helvetica","bold");pdf.setFontSize(11);pdf.text(String(value),x+4,y+13);
-        };
-        drawHeader();
-        pdf.setFont("helvetica","bold");pdf.setFontSize(20);pdf.setTextColor(15,17,22);pdf.text("Kabir Mobile Data",margin,y);y+=9;
-        pdf.setFont("helvetica","normal");pdf.setFontSize(9);pdf.setTextColor(90,93,101);pdf.text("Premium complete data export",margin,y);y+=10;
-        card("CUSTOMERS",customers.length,margin,56);card("DEVICES",customers.reduce((n,c)=>n+(Number(c.deviceCount)||1),0),margin+63,56);card("REPAIRING",Array.isArray(repairing)?repairing.length:0,margin+126,56);y+=24;
-        section("1. KABIR MOBILE DATA",`${customers.length} customer records`);
-        if(!customers.length){row("Status","No customer records available.");}
-        customers.forEach((c,i)=>{
-            if(y>250)newPage();
-            pdf.setFont("helvetica","bold");pdf.setFontSize(10);pdf.setTextColor(20,22,28);pdf.text(`${i+1}. ${fmt(c.customerName||"Customer")}  •  ${fmt(c.customerCode||"")}`,margin,y);y+=6;
-            row("Date & Time",formatDateTime(c));row("Phone",c.phone);row("Address",c.address);row("PIN / City / State",`${c.pincode||""} / ${c.city||""} / ${c.state||""}`);
-            row("Brand / Model",`${c.brand||""} / ${c.model||""}`);row("IMEI",c.imei);row("Colour / Storage",`${c.colour||""} / ${c.storage||""}`);
-            row("Finance Company",c.financeCompany);row("Phone Amount",money(c.phoneAmount));row("Down Payment",money(c.downPayment));
-            row("EMI",`${money(c.emiAmount)} × ${c.emiMonths||0} months`);row("Lock / Stock / Counter",`${c.lockName||""} / ${c.stock||""} / ${c.counter||""}`);
-            row("Financer / Bill",`${c.financerName||""} / ${c.billYes?"YES":"NO"}`);y+=3;
-        });
-        section("2. KABIR REPAIRING DATA",`${Array.isArray(repairing)?repairing.length:0} repairing records`);
-        if(!Array.isArray(repairing)||!repairing.length){row("Status","No repairing records available.");}
-        (repairing||[]).forEach((r,i)=>{
-            if(y>250)newPage();
-            pdf.setFont("helvetica","bold");pdf.setFontSize(10);pdf.setTextColor(20,22,28);pdf.text(`${i+1}. ${fmt(r.customerName||"Customer")}`,margin,y);y+=6;
-            row("Date & Time",formatDateTime(r));row("Phone",r.phone);row("Device",r.device);row("Problem",r.problem);row("Repairing By",r.repairBy);row("Payment",money(r.payment));y+=3;
-        });
-        const pages=pdf.internal.getNumberOfPages();
-        for(let p=1;p<=pages;p++){pdf.setPage(p);pdf.setFont("helvetica","normal");pdf.setFontSize(7);pdf.setTextColor(120,123,130);pdf.text(`Kabir Data • Confidential • Page ${p} of ${pages}`,margin,290);}
-        await audit("complete_pdf",{section:"Kabir Mobile Data",description:`Complete PDF downloaded (${customers.length} customers, ${(repairing||[]).length} repairing records)`});
-        pdf.save(`Kabir_Data_Complete_${new Date().toISOString().slice(0,10)}.pdf`);
-    }catch(e){console.error(e);alert("PDF बन नहीं पाया. कृपया फिर कोशिश करें.");}
-}
-
 function applyTheme(theme){
     const allowed=["dark","light","midnight","silver","glass"];
     if(!allowed.includes(theme)) theme="dark";
@@ -2022,11 +1956,13 @@ function themeSystem(){
 }
 
 function featureNav(){
-    $("homePdfButton")?.addEventListener("click",downloadCompletePdf);
     $("addRepairingCard")?.addEventListener("click",()=>show("repairAddSection"));
     $("searchRepairingCard")?.addEventListener("click",()=>{show("repairSearchSection");renderRepairing();$("repairSearchInput")?.focus();audit("repairing_search",{section:"Kabir Repairing Data",description:"Repairing search opened"})});
     $("repairSearchInput")?.addEventListener("input",renderRepairing);
     $("repairForm")?.addEventListener("submit",saveRepair);
+    $("exportCustomersButton")?.addEventListener("click",exportCustomers);
+    $("exportRepairingButton")?.addEventListener("click",exportRepairing);
+    $("downloadCustomerPdf")?.addEventListener("click",downloadCustomerPdf);
     $("deleteCustomerButton")?.addEventListener("click",deleteCustomer);
     $("editCustomerButton")?.addEventListener("click",editCustomer);
     $("closeDetailButton")?.addEventListener("click",closeCustomerDetail);
