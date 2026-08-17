@@ -32,11 +32,50 @@
   </div>
 </header>
 
-<section class="dashboard">
-  <button id="totalCustomersCard" class="glass stat" type="button"><span class="icon">👥</span><span>Total Customers</span><strong id="totalCustomers">0</strong></button>
-  <button id="totalDevicesCard" class="glass stat" type="button"><span class="icon">📱</span><span>Total Devices</span><strong id="totalDevices">0</strong></button>
-  <button id="searchCustomerCard" class="glass action" type="button"><span class="icon">⌕</span><strong>Search Customer</strong><small>Name, mobile, IMEI, date…</small></button>
-  <button id="addCustomerCard" class="glass action" type="button"><span class="icon">＋</span><strong>Add Customer</strong><small>Create a new customer record</small></button>
+<section class="home-modules">
+  <button id="financeModule" class="glass module-card" type="button"><span class="module-icon">💳</span><span><b>FINANCE</b><small>Customer finance & mobile data</small></span><em>›</em></button>
+  <div id="financeBox" class="module-box hidden">
+    <div class="module-box-head"><div><div class="eyebrow">FINANCE</div><h3>Finance Management</h3></div><button class="module-close" data-module-close="financeBox" type="button">×</button></div>
+    <div class="module-grid">
+      <button id="totalCustomersCard" class="glass stat" type="button"><span class="icon">👥</span><span>Total Customers</span><strong id="totalCustomers">0</strong></button>
+      <button id="totalDevicesCard" class="glass stat" type="button"><span class="icon">📱</span><span>Total Devices</span><strong id="totalDevices">0</strong></button>
+      <button id="searchCustomerCard" class="glass action" type="button"><span class="icon">⌕</span><strong>Search Customer</strong><small>Name, mobile, IMEI, date…</small></button>
+      <button id="addCustomerCard" class="glass action" type="button"><span class="icon">＋</span><strong>Add Customer</strong><small>Create a new customer record</small></button>
+    </div>
+  </div>
+
+  <button id="repairingModule" class="glass module-card" type="button"><span class="module-icon">🛠️</span><span><b>REPAIRING</b><small>Repairing customer & device data</small></span><em>›</em></button>
+  <div id="repairingBox" class="module-box hidden">
+    <div class="module-box-head"><div><div class="eyebrow">REPAIRING</div><h3>Repairing Management</h3></div><button class="module-close" data-module-close="repairingBox" type="button">×</button></div>
+    <div class="module-grid">
+      <button id="repairTotalCustomersCard" class="glass stat" type="button"><span class="icon">👥</span><span>Total Customers</span><strong id="repairTotalCustomers">0</strong></button>
+      <button id="repairTotalDevicesCard" class="glass stat" type="button"><span class="icon">📱</span><span>Total Devices</span><strong id="repairTotalDevices">0</strong></button>
+      <button id="addRepairingCard" class="glass action" type="button"><span class="icon">🛠</span><strong>Add Repairing</strong><small>New repairing record</small></button>
+      <button id="searchRepairingCard" class="glass action" type="button"><span class="icon">⌕</span><strong>Search Repairing</strong><small>Name, phone, problem, payment…</small></button>
+    </div>
+  </div>
+
+  <button id="secondHandModule" class="glass module-card" type="button"><span class="module-icon">📦</span><span><b>SECOND HAND</b><small>Second-hand phone inventory</small></span><em>›</em></button>
+  <div id="secondHandBox" class="module-box hidden">
+    <div class="module-box-head"><div><div class="eyebrow">SECOND HAND</div><h3>Second Hand Phone Management</h3></div><button class="module-close" data-module-close="secondHandBox" type="button">×</button></div>
+    <div class="module-grid">
+      <button id="secondCustomerListCard" class="glass action" type="button"><span class="icon">👥</span><strong>Customer List</strong><small>Second-hand customer records</small></button>
+      <button id="secondStockCard" class="glass stat" type="button"><span class="icon">📱</span><span>Total Stock</span><strong id="secondStockCount">0</strong></button>
+      <button id="secondSearchCard" class="glass action" type="button"><span class="icon">⌕</span><strong>Search</strong><small>Name, phone, IMEI, model…</small></button>
+      <button id="secondAddCard" class="glass action" type="button"><span class="icon">＋</span><strong>Add Phone</strong><small>Add second-hand phone to stock</small></button>
+    </div>
+  </div>
+
+  <button id="accessoriesModule" class="glass module-card" type="button"><span class="module-icon">🎧</span><span><b>ACCESSORIES</b><small>Accessories stock & sales data</small></span><em>›</em></button>
+  <div id="accessoriesBox" class="module-box hidden">
+    <div class="module-box-head"><div><div class="eyebrow">ACCESSORIES</div><h3>Accessories Management</h3></div><button class="module-close" data-module-close="accessoriesBox" type="button">×</button></div>
+    <div class="module-grid">
+      <button id="accessoryListCard" class="glass action" type="button"><span class="icon">📋</span><strong>Item List</strong><small>All accessories records</small></button>
+      <button id="accessoryStockCard" class="glass stat" type="button"><span class="icon">📦</span><span>Total Stock</span><strong id="accessoryStockCount">0</strong></button>
+      <button id="accessorySearchCard" class="glass action" type="button"><span class="icon">⌕</span><strong>Search</strong><small>Name, category, stock…</small></button>
+      <button id="accessoryAddCard" class="glass action" type="button"><span class="icon">＋</span><strong>Add Accessory</strong><small>Add new accessory stock</small></button>
+    </div>
+  </div>
 </section>
 
 <section id="homeDateWorkSection" class="glass panel hidden date-work-panel">
@@ -45,18 +84,12 @@
   <div id="homeDateResults" class="date-work-results"></div>
 </section>
 
-<section id="repairingHome" class="repairing-home">
-  <div class="section-head"><div><div class="eyebrow">KABIR REPAIRING DATA</div><h2>Kabir Repairing Data</h2></div><button id="exportRepairingButton" class="round" type="button">⇩</button></div>
-  <div class="repairing-stats">
-    <button id="repairTotalCustomersCard" class="glass stat" type="button"><span class="icon">👥</span><span>Total Customers</span><strong id="repairTotalCustomers">0</strong></button>
-    <button id="repairTotalDevicesCard" class="glass stat" type="button"><span class="icon">📱</span><span>Total Devices</span><strong id="repairTotalDevices">0</strong></button>
-  </div>
-  <div class="repairing-actions">
-    <button id="addRepairingCard" class="glass action" type="button"><span class="icon">🛠</span><strong>Add Repairing</strong><small>New repairing record</small></button>
-    <button id="searchRepairingCard" class="glass action" type="button"><span class="icon">⌕</span><strong>Search Repairing</strong><small>Name, phone, problem, payment…</small></button>
-  </div>
-</section>
 
+
+<section id="secondAddSection" class="glass panel hidden"><div class="section-head"><div><div class="eyebrow">SECOND HAND</div><h2>Add Second Hand Phone</h2></div><button class="close" data-close="secondAddSection">×</button></div><form id="secondHandForm"><label>Customer Name<input id="secondCustomerName" required></label><label>Customer Phone<input id="secondPhone" type="tel" inputmode="tel" maxlength="10" required></label><label>Phone Brand / Model<input id="secondDevice" required></label><label>IMEI<input id="secondImei" inputmode="numeric" maxlength="15"></label><label>Condition<input id="secondCondition" placeholder="Good / Excellent / Used"></label><label>Purchase Price<input id="secondPrice" type="number" inputmode="decimal" min="0" required></label><label>Sale Price<input id="secondSalePrice" type="number" inputmode="decimal" min="0"></label><button class="save" type="submit">ADD SECOND HAND PHONE</button><p id="secondMessage" class="message"></p></form></section>
+<section id="secondListSection" class="glass panel hidden"><div class="section-head"><div><div class="eyebrow">SECOND HAND DATABASE</div><h2>Second Hand Phone List</h2></div><button class="close" data-close="secondListSection">×</button></div><div class="search"><span>⌕</span><input id="secondSearchInput" type="search" placeholder="Name, phone, IMEI, model…"></div><div id="secondResults" class="results"></div></section>
+<section id="accessoryAddSection" class="glass panel hidden"><div class="section-head"><div><div class="eyebrow">ACCESSORIES</div><h2>Add Accessory</h2></div><button class="close" data-close="accessoryAddSection">×</button></div><form id="accessoryForm"><label>Accessory Name<input id="accessoryName" required placeholder="Charger / Cable / Cover…"></label><label>Category<input id="accessoryCategory" required></label><label>Quantity<input id="accessoryQty" type="number" inputmode="numeric" min="1" required></label><label>Purchase Price<input id="accessoryPrice" type="number" inputmode="decimal" min="0"></label><label>Sale Price<input id="accessorySalePrice" type="number" inputmode="decimal" min="0"></label><button class="save" type="submit">ADD ACCESSORY</button><p id="accessoryMessage" class="message"></p></form></section>
+<section id="accessoryListSection" class="glass panel hidden"><div class="section-head"><div><div class="eyebrow">ACCESSORIES DATABASE</div><h2>Accessories List</h2></div><button class="close" data-close="accessoryListSection">×</button></div><div class="search"><span>⌕</span><input id="accessorySearchInput" type="search" placeholder="Name, category…"></div><div id="accessoryResults" class="results"></div></section>
 <section id="searchSection" class="glass panel hidden">
   <div class="section-head"><div><div class="eyebrow">DATABASE</div><h2>Search Customer</h2></div><button class="close" data-close="searchSection">×</button></div>
   <div class="search"><span>⌕</span><input id="searchInput" type="search" placeholder="Name, mobile, IMEI, date, city…" autocomplete="off"></div>
