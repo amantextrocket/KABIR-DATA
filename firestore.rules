@@ -1,0 +1,37 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+
+    function writeWindowOpen() {
+      let t = request.time + duration.value(5, 'h') + duration.value(30, 'm');
+      return t.hours() >= 10 && t.hours() < 24;
+    }
+
+    match /customers/{customerId} {
+      allow read: if signedIn();
+      allow create, update, delete: if signedIn() && writeWindowOpen();
+    }
+
+    match /repairing/{repairId} {
+      allow read: if signedIn();
+      allow create, update, delete: if signedIn() && writeWindowOpen();
+    }
+
+    match /settings/{docId} {
+      allow read, write: if signedIn();
+    }
+
+    // Work History is written by the signed-in app and is read by the Admin panel.
+    // Each log can only be created for the same authenticated user who sent it.
+    match /auditLogs/{logId} {
+      allow create: if signedIn() && request.resource.data.userUid == request.auth.uid;
+      allow read: if signedIn();
+      allow update, delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
