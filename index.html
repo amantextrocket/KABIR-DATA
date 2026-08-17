@@ -25,6 +25,7 @@
 <header class="glass topbar">
   <div><div class="eyebrow">KABIR MOBILE</div><h2>Kabir Mobile Data</h2></div>
   <div class="top-actions">
+    <button id="homeDateWorkButton" class="round" type="button" title="Date Wise Work">📅</button>
     <button id="exportCustomersButton" class="round" type="button" title="Download Customer Excel">⇩</button>
     <button id="themeButton" class="round" type="button" title="Theme">◐</button>
     <button id="lockButton" class="round" type="button">⌑</button>
@@ -36,6 +37,12 @@
   <button id="totalDevicesCard" class="glass stat" type="button"><span class="icon">📱</span><span>Total Devices</span><strong id="totalDevices">0</strong></button>
   <button id="searchCustomerCard" class="glass action" type="button"><span class="icon">⌕</span><strong>Search Customer</strong><small>Name, mobile, IMEI, date…</small></button>
   <button id="addCustomerCard" class="glass action" type="button"><span class="icon">＋</span><strong>Add Customer</strong><small>Create a new customer record</small></button>
+</section>
+
+<section id="homeDateWorkSection" class="glass panel hidden date-work-panel">
+  <div class="section-head"><div><div class="eyebrow">DATE WISE HOME</div><h2>उस तारीख का पूरा Work</h2></div><button class="close" data-close="homeDateWorkSection">×</button></div>
+  <div class="date-filter-row"><label>काम की तारीख<input id="homeWorkDate" type="date"></label><div class="date-filter-stats"><div><span>Customers</span><strong id="homeDateCustomerCount">0</strong></div><div><span>Repairing</span><strong id="homeDateRepairCount">0</strong></div></div></div>
+  <div id="homeDateResults" class="date-work-results"></div>
 </section>
 
 <section id="repairingHome" class="repairing-home">
