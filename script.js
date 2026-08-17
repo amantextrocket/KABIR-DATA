@@ -41,6 +41,7 @@ let scanTimer=null;
 
 const $=id=>document.getElementById(id);
 const val=id=>($(id)?.value||"").trim();
+const isAdminPage=/admin\.html$/i.test(location.pathname) || document.body?.dataset?.page==="admin";
 
 const FINANCE_COMPANIES=[
     "Bajaj Finance","HDB Financial Services","TVS Credit","Home Credit India",
@@ -425,8 +426,8 @@ async function loadSharedPin(){
     if(pinLoadPromise)return pinLoadPromise;
     pinLoadPromise=(async()=>{
         try{
-            // Firebase reads must happen after anonymous authentication.
-            await authReady;
+            // Firebase reads happen after auth; a timeout must not freeze the PIN screen.
+            await Promise.race([authReady,new Promise(r=>setTimeout(r,6500))]);
             const securityRef=doc(db,SETTINGS_COL,SETTINGS_DOC);
             const securitySnap=await getDoc(securityRef);
             if(securitySnap.exists()){
@@ -457,7 +458,15 @@ async function loadSharedPin(){
             return sharedPin;
         }catch(e){
             console.error("Shared PIN load failed:",e);
-            throw Error("PIN load नहीं हुआ. Firebase connection check करें.");
+            const cachedPin=localStorage.getItem(PIN_KEY);
+            if(/^\d{4}$/.test(cachedPin||"")){
+                sharedPin=cachedPin;
+                return sharedPin;
+            }
+            // First-run fallback only; Firebase will sync when available.
+            sharedPin=DEFAULT_PIN;
+            localStorage.setItem(PIN_KEY,sharedPin);
+            return sharedPin;
         }finally{
             pinLoaded=true;
         }
@@ -743,27 +752,52 @@ function setupPin(){
 ========================================================= */
 
 let authReadyResolve;
+let authReadyState="processing";
 const authReady=new Promise(resolve=>{authReadyResolve=resolve});
 
 async function authInit(){
     let resolved=false;
-    const finish=()=>{if(!resolved){resolved=true;authReadyResolve(user)}};
-    onAuthStateChanged(auth,u=>{
-        user=u;
+    const finish=(u=null,state="ready")=>{
+        if(resolved)return;
+        resolved=true;
+        user=u||user||null;
+        authReadyState=state;
+        authReadyResolve(user);
         updateAdmin();
-        finish();
+    };
+
+    const timeout=setTimeout(()=>{
+        if(!resolved){
+            console.warn("Firebase auth timeout");
+            const text="Firebase connection timeout — PIN can still use saved PIN.";
+            if($("adminFirebaseStatus"))msg("adminFirebaseStatus",text);
+            if($("connectionStatus"))$("connectionStatus").textContent=text;
+            finish(null,"timeout");
+        }
+    },7000);
+
+    onAuthStateChanged(auth,u=>{
+        clearTimeout(timeout);
+        user=u||null;
+        finish(user,"ready");
     },e=>{
+        clearTimeout(timeout);
         console.error("Auth state error:",e);
-        finish();
+        const text="Firebase authentication error: "+(e?.message||"Check Anonymous Authentication");
+        if($("adminFirebaseStatus"))msg("adminFirebaseStatus",text);
+        if($("connectionStatus"))$("connectionStatus").textContent=text;
+        finish(null,"error");
     });
+
     try{
         await signInAnonymously(auth);
     }catch(e){
         console.error(e);
+        clearTimeout(timeout);
         const text="Firebase authentication error: "+(e?.message||"Check Anonymous Authentication");
         if($("adminFirebaseStatus"))msg("adminFirebaseStatus",text);
         if($("connectionStatus"))$("connectionStatus").textContent=text;
-        finish();
+        finish(null,"error");
     }
     return authReady;
 }
@@ -849,9 +883,9 @@ function updateAdmin(){
             );
 
     if($("adminFirebaseStatus"))
-        $("adminFirebaseStatus").textContent=user?"Firebase connected":"Connecting to Firebase…";
+        $("adminFirebaseStatus").textContent=user?"Firebase connected":"Firebase processing…";
     if($("connectionStatus"))
-        $("connectionStatus").textContent=user?"Firebase connected ✓":"Firebase connecting…";
+        $("connectionStatus").textContent=user?"Firebase connected ✓":(authReadyState==="timeout"?"Firebase timeout — offline PIN mode":"Firebase processing…");
 }
 
 
