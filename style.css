@@ -124,3 +124,19 @@ button:disabled,.save:disabled{opacity:.58!important;cursor:not-allowed!importan
 .admin.app.admin-locked{display:none!important}
 
 .firebase-status{font-size:11px;color:var(--muted);margin-top:8px;text-align:center}.pin-card.pin-shake{will-change:transform}@media(prefers-reduced-motion:reduce){.pin-shake{animation:none!important}}
+
+/* ===== ADMIN WORK HISTORY + TRAFFIC ANALYTICS ===== */
+.admin-action-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.admin-action-grid .action{min-height:135px}
+.work-log{cursor:default}
+.traffic-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+.traffic-block{margin-top:16px;padding:15px;border:1px solid var(--border);border-radius:20px;background:rgba(255,255,255,.035)}
+.traffic-block>b{display:block;margin-bottom:12px}
+.traffic-hours,.traffic-types{display:grid;gap:8px}
+.traffic-hour,.traffic-type{display:grid;grid-template-columns:34px 1fr 35px;gap:8px;align-items:center;font-size:11px}
+.traffic-type{grid-template-columns:minmax(100px,150px) 1fr 35px}
+.traffic-hour>span,.traffic-type>span{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.traffic-hour>div,.traffic-type>div{height:9px;border-radius:99px;background:rgba(255,255,255,.06);overflow:hidden}
+.traffic-hour i,.traffic-type i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,rgba(115,130,255,.45),rgba(115,130,255,.95))}
+.traffic-hour>b,.traffic-type>b{text-align:right}
+@media(max-width:430px){.admin-action-grid{grid-template-columns:1fr 1fr}.traffic-stats{grid-template-columns:1fr 1fr}.traffic-type{grid-template-columns:105px 1fr 30px}}
