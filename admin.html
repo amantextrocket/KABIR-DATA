@@ -51,7 +51,7 @@
     <p id="adminPinMessage" class="message"></p>
   </div>
 </section>
-<main class="admin app">
+<main class="admin app admin-locked">
 <header class="glass topbar">
   <div><div class="eyebrow">KABIR MOBILE</div><h2>Admin Settings</h2></div>
   <a class="round" href="index.html">‹</a>
@@ -142,7 +142,7 @@
       }
       await new Promise(r=>setTimeout(r,100));
     }
-    return "0000";
+    return null;
   }
 
   async function checkPin(){
@@ -154,6 +154,11 @@
 
     try{
       const pin=await getSharedPin();
+
+      if(!pin){
+        setMessage("PIN load नहीं हुआ. Firebase connection check करें.");
+        return;
+      }
 
       if(String(entered)===String(pin)){
         input.value="";
