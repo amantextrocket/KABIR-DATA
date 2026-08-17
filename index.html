@@ -26,14 +26,13 @@
   <div><div class="eyebrow">KABIR MOBILE</div><h2>Kabir Mobile Data</h2></div>
   <div class="top-actions">
     <button id="homeDateWorkButton" class="round" type="button" title="Date Wise Work">📅</button>
-    <button id="recentlyDeletedButton" class="round compact-round" type="button" title="Recently Deleted">🗑️</button>
-    <button id="allDataPdfButton" class="round compact-round" type="button" title="Premium PDF">📄</button>
+    <button id="exportCustomersButton" class="round" type="button" title="Download Customer Excel">⇩</button>
     <button id="themeButton" class="round" type="button" title="Theme">◐</button>
     <button id="lockButton" class="round" type="button">⌑</button>
   </div>
 </header>
 
-<section id="homeModules" class="home-modules">
+<section class="home-modules">
   <button id="financeModule" class="glass module-card" type="button"><span class="module-icon">💳</span><span><b>FINANCE</b><small>Customer finance & mobile data</small></span><em>›</em></button>
   <div id="financeBox" class="module-box hidden">
     <div class="module-box-head"><div><div class="eyebrow">FINANCE</div><h3>Finance Management</h3></div><button class="module-close" data-module-close="financeBox" type="button">×</button></div>
@@ -85,11 +84,7 @@
   <div id="homeDateResults" class="date-work-results"></div>
 </section>
 
-<section id="recentlyDeletedSection" class="glass panel hidden recently-deleted-panel">
-  <div class="section-head"><div><div class="eyebrow">TRASH • 30 DAYS</div><h2>Recently Deleted</h2><span class="section-subtitle">Deleted items are automatically removed after 30 days.</span></div><button class="close" data-close="recentlyDeletedSection">×</button></div>
-  <div class="trash-summary"><div><span>Total</span><strong id="recentDeletedCount">0</strong></div><button id="trashPdfButton" class="glass trash-pdf" type="button">📄 PDF</button></div>
-  <div id="recentlyDeletedResults" class="results"></div>
-</section>
+
 
 <section id="secondAddSection" class="glass panel hidden"><div class="section-head"><div><div class="eyebrow">SECOND HAND</div><h2>Add Second Hand Phone</h2></div><button class="close" data-close="secondAddSection">×</button></div><form id="secondHandForm"><label>Customer Name<input id="secondCustomerName" required></label><label>Customer Phone<input id="secondPhone" type="tel" inputmode="tel" maxlength="10" required></label><label>Phone Brand / Model<input id="secondDevice" required></label><label>IMEI<input id="secondImei" inputmode="numeric" maxlength="15"></label><label>Condition<input id="secondCondition" placeholder="Good / Excellent / Used"></label><label>Purchase Price<input id="secondPrice" type="number" inputmode="decimal" min="0" required></label><label>Sale Price<input id="secondSalePrice" type="number" inputmode="decimal" min="0"></label><button class="save" type="submit">ADD SECOND HAND PHONE</button><p id="secondMessage" class="message"></p></form></section>
 <section id="secondListSection" class="glass panel hidden"><div class="section-head"><div><div class="eyebrow">SECOND HAND DATABASE</div><h2>Second Hand Phone List</h2></div><button class="close" data-close="secondListSection">×</button></div><div class="search"><span>⌕</span><input id="secondSearchInput" type="search" placeholder="Name, phone, IMEI, model…"></div><div id="secondResults" class="results"></div></section>
@@ -162,7 +157,7 @@
 <div id="customerDetailModal" class="modal hidden"><div class="glass modal-card detail-card">
   <div class="section-head"><div><div class="eyebrow">CUSTOMER DETAILS</div><h2 id="detailTitle">Customer</h2></div><button id="closeDetailButton" class="close">×</button></div>
   <div id="customerDetailBody"></div>
-  <div class="detail-actions"><button id="editCustomerButton" class="glass save secondary" type="button">EDIT CUSTOMER</button><button id="deleteCustomerButton" class="glass save danger-btn" type="button">DELETE CUSTOMER</button></div>
+  <div class="detail-actions"><button id="downloadCustomerPdf" class="save" type="button">DOWNLOAD PDF</button><button id="editCustomerButton" class="glass save secondary" type="button">EDIT CUSTOMER</button><button id="deleteCustomerButton" class="glass save danger-btn" type="button">DELETE CUSTOMER</button></div>
 </div></div>
 <div id="themeModal" class="modal hidden"><div class="glass modal-card">
   <div class="section-head"><div><div class="eyebrow">APPEARANCE</div><h2>Choose Theme</h2></div><button id="closeThemeButton" class="close">×</button></div>
