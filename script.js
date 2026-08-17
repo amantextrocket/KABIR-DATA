@@ -21,12 +21,16 @@ const PIN_KEY="kabir_mobile_pin";
 const DEFAULT_PIN="0000";
 const COL="customers";
 const REPAIR_COL="repairing";
+const AUDIT_COL="auditLogs";
 const SETTINGS_COL="settings";
 const SETTINGS_DOC="security";
 const REMOTE_DEVICES_URL="https://cdn.jsdelivr.net/gh/bsthen/device-models/devices.json";
 
 let user=null;
 let customers=[];
+let repairing=[];
+let auditLogs=[];
+let auditListenerStarted=false;
 let scanStream=null;
 let scanTimer=null;
 
@@ -357,6 +361,142 @@ async function changeSharedPin(newPin){
     sharedPin=newPin;
     localStorage.setItem(PIN_KEY,newPin);
     pinLoaded=true;
+    await audit("pin_change",{section:"Admin Panel",description:"Shared PIN changed from Admin Panel"});
+}
+
+
+/* =========================================================
+   WORK HISTORY / AUDIT LOGS
+========================================================= */
+function auditLabel(action){
+    const labels={
+        customer_add:"Customer Add",
+        customer_edit:"Customer Edit",
+        customer_delete:"Customer Delete",
+        customer_bill_update:"Customer Bill Update",
+        repairing_add:"Repairing Add",
+        customer_search:"Customer Search",
+        repairing_search:"Repairing Search",
+        customer_export:"Customer Excel Download",
+        repairing_export:"Repairing Excel Download",
+        customer_pdf:"Customer PDF Download",
+        pin_change:"PIN Changed",
+        login_success:"Login Success",
+        login_failed:"Login Failed",
+        page_open:"Website Opened"
+    };
+    return labels[action]||String(action||"Work").replaceAll("_"," ");
+}
+async function audit(action,details={}){
+    try{
+        await addDoc(collection(db,AUDIT_COL),{
+            action:String(action||"work"),
+            label:auditLabel(action),
+            userUid:user?.uid||"unknown",
+            userName:localStorage.getItem("kabir_current_user")||"Kabir User",
+            section:details.section||"Kabir Mobile Data",
+            customerId:details.customerId||null,
+            customerCode:details.customerCode||null,
+            customerName:details.customerName||null,
+            description:details.description||auditLabel(action),
+            details:details.extra||null,
+            clientTime:new Date().toISOString(),
+            createdAt:serverTimestamp()
+        });
+    }catch(e){
+        // Audit failure must never block the actual customer/repairing operation.
+        console.warn("Audit log failed:",e?.message||e);
+    }
+}
+
+function auditTime(x){
+    const d=x?.createdAt?.toDate?.() || (x?.clientTime?new Date(x.clientTime):null);
+    if(!d || Number.isNaN(d.getTime())) return "Time pending";
+    return d.toLocaleString("en-IN",{dateStyle:"medium",timeStyle:"medium"});
+}
+function auditDay(x){
+    const d=x?.createdAt?.toDate?.() || (x?.clientTime?new Date(x.clientTime):null);
+    return d&&!Number.isNaN(d.getTime())?d.toLocaleDateString("en-CA"):"";
+}
+function auditHour(x){
+    const d=x?.createdAt?.toDate?.() || (x?.clientTime?new Date(x.clientTime):null);
+    return d&&!Number.isNaN(d.getTime())?d.getHours():-1;
+}
+function sortAudit(){
+    auditLogs.sort((a,b)=>{
+        const ta=a.createdAt?.toMillis?.()||Date.parse(a.clientTime||"")||0;
+        const tb=b.createdAt?.toMillis?.()||Date.parse(b.clientTime||"")||0;
+        return tb-ta;
+    });
+}
+function subscribeAuditLogs(){
+    if(auditListenerStarted || !$('workHistoryResults')) return;
+    auditListenerStarted=true;
+    onSnapshot(collection(db,AUDIT_COL),snap=>{
+        auditLogs=snap.docs.map(d=>({id:d.id,...d.data()}));
+        sortAudit();
+        renderWorkHistory();
+        renderTraffic();
+    },e=>{
+        console.error("Audit listener:",e);
+        if($('workHistoryResults'))$('workHistoryResults').innerHTML='<div class="empty">Work History load नहीं हुआ. Firebase Rules में auditLogs read permission check करें.</div>';
+    });
+}
+function renderWorkHistory(){
+    const box=$('workHistoryResults'); if(!box)return;
+    const q=val('workSearchInput').toLowerCase();
+    const rows=auditLogs.filter(x=>!q||[x.label,x.action,x.userName,x.userUid,x.section,x.customerCode,x.customerName,x.description,auditTime(x)].join(' ').toLowerCase().includes(q));
+    if(!rows.length){box.innerHTML='<div class="empty">अभी कोई work history उपलब्ध नहीं है.</div>';return;}
+    box.innerHTML=rows.slice(0,300).map(x=>`<article class="result work-log">
+      <div class="result-name">${esc(x.label||auditLabel(x.action))}</div>
+      <div class="result-meta">${esc(auditTime(x))} • ${esc(x.section||'Kabir Mobile Data')}</div>
+      <div class="result-grid">${item('User',x.userName||x.userUid||'Unknown')}${item('Customer',x.customerName||x.customerCode||'-')}${item('Details',x.description||'-')}${item('Action',x.action||'-')}</div>
+    </article>`).join('');
+}
+function renderTraffic(){
+    const total=auditLogs.length;
+    const today=new Date().toLocaleDateString('en-CA');
+    const todayRows=auditLogs.filter(x=>auditDay(x)===today);
+    const count=a=>auditLogs.filter(x=>x.action===a).length;
+    const users=new Set(auditLogs.map(x=>x.userUid).filter(Boolean));
+    $('trafficTotal')&&($('trafficTotal').textContent=String(total));
+    $('trafficToday')&&($('trafficToday').textContent=String(todayRows.length));
+    $('trafficAdds')&&($('trafficAdds').textContent=String(count('customer_add')));
+    $('trafficEdits')&&($('trafficEdits').textContent=String(count('customer_edit')));
+    $('trafficDeletes')&&($('trafficDeletes').textContent=String(count('customer_delete')));
+    $('trafficRepairs')&&($('trafficRepairs').textContent=String(count('repairing_add')));
+    $('trafficUsers')&&($('trafficUsers').textContent=String(users.size));
+    const hours=Array.from({length:24},(_,h)=>auditLogs.filter(x=>auditHour(x)===h).length);
+    const peak=Math.max(...hours,0),peakHour=peak?hours.indexOf(peak):-1;
+    $('trafficPeak')&&($('trafficPeak').textContent=peakHour<0?'—':`${String(peakHour).padStart(2,'0')}:00 (${peak})`);
+    const hb=$('trafficHours');
+    if(hb){
+        const max=Math.max(...hours,1);
+        hb.innerHTML=hours.map((n,h)=>`<div class="traffic-hour"><span>${String(h).padStart(2,'0')}</span><div><i style="width:${Math.round(n/max*100)}%"></i></div><b>${n}</b></div>`).join('');
+    }
+    const types={};
+    auditLogs.forEach(x=>types[x.action||'other']=(types[x.action||'other']||0)+1);
+    const tb=$('trafficTypes');
+    if(tb){
+        const list=Object.entries(types).sort((a,b)=>b[1]-a[1]);
+        const max=Math.max(list[0]?.[1]||1,1);
+        tb.innerHTML=list.slice(0,15).map(([a,n])=>`<div class="traffic-type"><span>${esc(auditLabel(a))}</span><div><i style="width:${Math.round(n/max*100)}%"></i></div><b>${n}</b></div>`).join('')||'<div class="empty">No traffic data.</div>';
+    }
+}
+function adminAnalytics(){
+    if(!$('workHistoryButton'))return;
+    const open=id=>{
+        $('workHistorySection')?.classList.add('hidden');
+        $('trafficSection')?.classList.add('hidden');
+        $(id)?.classList.remove('hidden');
+        setTimeout(()=>$(id)?.scrollIntoView({behavior:'smooth',block:'start'}),20);
+    };
+    $('workHistoryButton').addEventListener('click',()=>{open('workHistorySection');renderWorkHistory();});
+    $('trafficButton').addEventListener('click',()=>{open('trafficSection');renderTraffic();});
+    $('refreshWorkButton')?.addEventListener('click',renderWorkHistory);
+    $('refreshTrafficButton')?.addEventListener('click',renderTraffic);
+    $('workSearchInput')?.addEventListener('input',renderWorkHistory);
+    subscribeAuditLogs();
 }
 
 function msg(id,t,ok=false){
@@ -448,9 +588,11 @@ function setupPin(){
             msg("pinMessage","PIN verify हो रहा है…",true);
             await loadSharedPin();
             if(entered===pin()){
+                await audit("login_success",{section:$('appScreen')?.classList.contains('admin')?'Admin Panel':'Kabir Mobile Data',description:'PIN login successful'});
                 unlock();
                 msg("pinMessage","");
             }else{
+                await audit("login_failed",{section:$('appScreen')?.classList.contains('admin')?'Admin Panel':'Kabir Mobile Data',description:'Incorrect PIN entered'});
                 msg("pinMessage","Incorrect PIN");
                 pinError();
                 setTimeout(()=>{e.value="";dots("");msg("pinMessage","");e.focus()},520);
@@ -618,6 +760,7 @@ function nav(){
             show("searchSection");
             $("searchInput")?.focus();
             renderSearch();
+            audit("customer_search",{section:"Kabir Mobile Data",description:"Customer search opened"});
         }
     );
 
@@ -1167,8 +1310,10 @@ async function save(e){
             delete customerData.createdAt;
             delete customerData.createdBy;
             await updateDoc(doc(db,COL,editId),customerData);
+            await audit("customer_edit",{section:"Kabir Mobile Data",customerId:editId,customerCode:existing?.customerCode,customerName:customerData.customerName,description:`Customer ${customerData.customerName||existing?.customerCode||editId} edited`});
         }else{
-            await addDoc(collection(db,COL),customerData);
+            const added=await addDoc(collection(db,COL),customerData);
+            await audit("customer_add",{section:"Kabir Mobile Data",customerId:added.id,customerCode:customerData.customerCode,customerName:customerData.customerName,description:`Customer ${customerData.customerName||customerData.customerCode||added.id} added`});
         }
 
 
@@ -1311,7 +1456,7 @@ function renderSearch(){
     box.querySelectorAll("[data-bill]").forEach(i=>{
         i.onchange=async()=>{
             if(enforceWriteLock()){i.checked=!i.checked;return;}
-            try{await updateDoc(doc(db,COL,i.dataset.bill),{billYes:i.checked,"bill.status":i.checked?"YES":"NO"})}
+            try{await updateDoc(doc(db,COL,i.dataset.bill),{billYes:i.checked,"bill.status":i.checked?"YES":"NO"}); const bc=customers.find(x=>x.id===i.dataset.bill); await audit("customer_bill_update",{section:"Kabir Mobile Data",customerId:i.dataset.bill,customerCode:bc?.customerCode,customerName:bc?.customerName,description:`Bill marked ${i.checked?"YES":"NO"}`})}
             catch(x){i.checked=!i.checked;console.error(x)}
         };
     });
@@ -1348,7 +1493,7 @@ async function deleteCustomer(){
     if(enforceWriteLock("pinMessage"))return;
     const c=customers.find(x=>x.id===activeCustomerId);if(!c)return;
     if(!confirm(`Delete ${c.customerName||"this customer"} (${c.customerCode||""}) permanently?`))return;
-    try{await deleteDoc(doc(db,COL,c.id));closeCustomerDetail()}
+    try{await deleteDoc(doc(db,COL,c.id)); await audit("customer_delete",{section:"Kabir Mobile Data",customerId:c.id,customerCode:c.customerCode,customerName:c.customerName,description:`Customer ${c.customerName||c.customerCode||c.id} deleted`}); closeCustomerDetail()}
     catch(e){console.error(e);alert("Customer delete नहीं हुआ. Firebase Rules check करें.")}
 }
 function editCustomer(){
@@ -1585,7 +1730,6 @@ function changePin(){
 }
 
 
-let repairing=[];
 let repairListenerStarted=false;
 function subscribeRepairing(){
     if(repairListenerStarted)return;
@@ -1637,7 +1781,7 @@ async function saveRepair(e){
     if(saveBtn) saveBtn.disabled=true;
 
     try{
-        await addDoc(collection(db,REPAIR_COL),{
+        const repairRef=await addDoc(collection(db,REPAIR_COL),{
             customerName:val("repairCustomerName"),
             phone,
             device:val("repairDevice"),
@@ -1647,6 +1791,7 @@ async function saveRepair(e){
             createdAt:serverTimestamp(),
             createdBy:user?.uid||null
         });
+        await audit("repairing_add",{section:"Kabir Repairing Data",customerId:repairRef.id,customerName:val("repairCustomerName"),description:`Repairing added: ${val("repairProblem")||"Problem"}`,extra:{phone,device:val("repairDevice"),problem:val("repairProblem"),payment:Number(val("repairPayment"))}});
 
         $("repairForm").reset();
         msg("repairMessage","");
@@ -1668,6 +1813,7 @@ async function exportXlsx(rows,filename,sheet){
 }
 function exportCustomers(){
     if(!customers.length){alert("Customer data अभी उपलब्ध नहीं है.");return}
+    audit("customer_export",{section:"Kabir Mobile Data",description:`Customer Excel downloaded (${customers.length} records)`});
     exportXlsx(customers.map(c=>({"Customer Code":c.customerCode||"","Date & Time":formatDateTime(c),"Customer Name":c.customerName||"",
       "Phone":c.phone||"","Address":c.address||"","PIN Code":c.pincode||"","City":c.city||"","State":c.state||"",
       "Brand":c.brand||"","Model":c.model||"","IMEI":c.imei||"","Colour":c.colour||"","RAM + Storage":c.storage||"",
@@ -1677,6 +1823,7 @@ function exportCustomers(){
 }
 function exportRepairing(){
     if(!repairing.length){alert("Repairing data अभी उपलब्ध नहीं है.");return}
+    audit("repairing_export",{section:"Kabir Repairing Data",description:`Repairing Excel downloaded (${repairing.length} records)`});
     exportXlsx(repairing.map(r=>({"Date & Time":formatDateTime(r),"Customer Name":r.customerName||"","Phone":r.phone||"",
       "Brand / Model":r.device||"","Problem":r.problem||"","Repairing By":r.repairBy||"","Payment":r.payment||0})),
       "Kabir_Repairing_Data.xlsx","Repairing");
@@ -1684,6 +1831,7 @@ function exportRepairing(){
 async function downloadCustomerPdf(){
     const c=customers.find(x=>x.id===activeCustomerId);if(!c)return;
     try{
+        await audit("customer_pdf",{section:"Kabir Mobile Data",customerId:c.id,customerCode:c.customerCode,customerName:c.customerName,description:`PDF downloaded for ${c.customerName||c.customerCode||c.id}`});
         if(!window.jspdf)await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
         const pdf=new window.jspdf.jsPDF();let y=18;
         pdf.setFontSize(18);pdf.text("KABIR MOBILE DATA",14,y);y+=10;pdf.setFontSize(10);
@@ -1731,7 +1879,7 @@ function themeSystem(){
 
 function featureNav(){
     $("addRepairingCard")?.addEventListener("click",()=>show("repairAddSection"));
-    $("searchRepairingCard")?.addEventListener("click",()=>{show("repairSearchSection");renderRepairing();$("repairSearchInput")?.focus()});
+    $("searchRepairingCard")?.addEventListener("click",()=>{show("repairSearchSection");renderRepairing();$("repairSearchInput")?.focus();audit("repairing_search",{section:"Kabir Repairing Data",description:"Repairing search opened"})});
     $("repairSearchInput")?.addEventListener("input",renderRepairing);
     $("repairForm")?.addEventListener("submit",saveRepair);
     $("exportCustomersButton")?.addEventListener("click",exportCustomers);
@@ -1777,6 +1925,8 @@ async function init(){
      */
     themeSystem();
     featureNav();
+    adminAnalytics();
+    if($('appScreen')?.classList.contains('admin')) audit('page_open',{section:'Admin Panel',description:'Admin Panel opened'});
 
     authReady.then(()=>{
         subscribe();
