@@ -19,36 +19,16 @@
 
 <main id="appScreen" class="admin app hidden">
 <header class="glass topbar"><div><div class="eyebrow">KABIR MOBILE</div><h2>Admin Settings</h2></div><a class="round" href="index.html">‹</a></header>
-<section class="glass panel">
-<div class="section-head"><div><div class="eyebrow">SECURITY</div><h2>PIN Settings</h2></div></div>
-<p class="muted">Main website और Admin Panel दोनों में यही एक shared PIN काम करेगा.</p>
-<form id="changePinForm"><label>Current PIN<input id="currentPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></label><label>New PIN<input id="newPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></label><label>Confirm New PIN<input id="confirmPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></label><button class="save" type="submit">SAVE NEW PIN</button><p id="pinSettingsMessage" class="message"></p></form>
-</section>
-<section class="glass panel"><div class="section-head"><div><div class="eyebrow">KABIR MOBILE DATA</div><h2>Live Status</h2></div></div><div class="mini-grid"><div><span>Total Customers</span><strong id="adminCustomers">0</strong></div><div><span>Total Devices</span><strong id="adminDevices">0</strong></div></div><p id="adminFirebaseStatus" class="firebase-status">Connecting to Firebase…</p></section>
-<section class="glass panel admin-nav-panel">
-<div class="section-head"><div><div class="eyebrow">ADMIN ANALYTICS</div><h2>Work & Traffic</h2></div></div>
-<div class="admin-action-grid">
-<button id="workHistoryButton" class="glass action" type="button"><span class="icon">🕘</span><strong>Work History</strong><small>हर काम, user और exact time</small></button>
-<button id="trafficButton" class="glass action" type="button"><span class="icon">📊</span><strong>Traffic Analysis</strong><small>पूरा activity analysis</small></button>
-</div>
-</section>
+<section class="glass panel"><div class="section-head"><div><div class="eyebrow">SECURITY</div><h2>PIN Settings</h2></div></div><button id="openPinChangeButton" class="glass action pin-settings-button" type="button"><span class="icon">🔐</span><strong>Change PIN</strong><small>Main website और Admin Panel का shared PIN</small></button><div id="pinChangePanel" class="hidden pin-change-panel"><p class="muted">नया 4-digit PIN set करें. Save होने के बाद दोनों जगह वही PIN काम करेगा.</p><form id="changePinForm"><label>Current PIN<input id="currentPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></label><label>New PIN<input id="newPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></label><label>Confirm New PIN<input id="confirmPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></label><button class="save" type="submit">SAVE NEW PIN</button><p id="pinSettingsMessage" class="message"></p></form></div></section>
+<section class="glass panel admin-nav-panel"><div class="section-head"><div><div class="eyebrow">ADMIN ANALYTICS</div><h2>Work & Traffic</h2></div></div><div class="admin-action-grid"><button id="workHistoryButton" class="glass action" type="button"><span class="icon">🕘</span><strong>Work History</strong><small>हर activity का पूरा record</small></button><button id="trafficButton" class="glass action" type="button"><span class="icon">📊</span><strong>Traffic Analysis</strong><small>Management-wise analysis</small></button></div></section>
 <section id="workHistorySection" class="glass panel hidden">
-<div class="section-head"><div><div class="eyebrow">WORK HISTORY</div><h2>Website Work Timeline</h2><small class="section-subtitle">हर activity का time, user और पूरा विवरण</small></div><button id="refreshWorkButton" class="round" type="button">↻</button></div>
+<div class="section-head"><div><div class="eyebrow">WORK HISTORY</div><h2>Website Work Timeline</h2><small class="section-subtitle">हर activity का time, user और पूरा विवरण</small></div><div class="admin-page-actions"><button id="refreshWorkButton" class="round" type="button">↻</button><button id="closeWorkPageButton" class="round" type="button">×</button></div></div>
 <div class="work-filter-bar"><div class="search"><span>⌕</span><input id="workSearchInput" type="search" placeholder="Customer, काम, user…" autocomplete="off"></div><div class="work-filter-hint">LIVE • NEWEST FIRST</div></div>
 <div id="workHistoryResults" class="work-history-list"><div class="empty">Loading work history…</div></div>
 </section>
 <section id="trafficSection" class="glass panel hidden">
-<div class="section-head"><div><div class="eyebrow">TRAFFIC ANALYSIS</div><h2>Complete Data Analysis</h2></div><button id="refreshTrafficButton" class="round" type="button">↻</button></div>
-<div class="mini-grid traffic-stats">
-<div><span>Total Work</span><strong id="trafficTotal">0</strong></div>
-<div><span>Today</span><strong id="trafficToday">0</strong></div>
-<div><span>Customers Added</span><strong id="trafficAdds">0</strong></div>
-<div><span>Customers Edited</span><strong id="trafficEdits">0</strong></div>
-<div><span>Customers Deleted</span><strong id="trafficDeletes">0</strong></div>
-<div><span>Repairing Added</span><strong id="trafficRepairs">0</strong></div>
-<div><span>Active Users</span><strong id="trafficUsers">0</strong></div>
-<div><span>Peak Hour</span><strong id="trafficPeak">—</strong></div>
-</div>
+<div class="section-head"><div><div class="eyebrow">TRAFFIC ANALYSIS</div><h2>Complete Data Analysis</h2></div><div class="admin-page-actions"><button id="refreshTrafficButton" class="round" type="button">↻</button><button id="closeTrafficPageButton" class="round" type="button">×</button></div></div>
+<div class="management-traffic-grid"><button class="glass action traffic-management-button" data-management="finance"><span class="icon">💳</span><strong>Finance Management</strong><small id="trafficFinanceCount">0 records</small></button><button class="glass action traffic-management-button" data-management="repairing"><span class="icon">🛠️</span><strong>Repairing Management</strong><small id="trafficRepairingCount">0 records</small></button><button class="glass action traffic-management-button" data-management="secondHand"><span class="icon">📦</span><strong>Second Hand Management</strong><small id="trafficSecondCount">0 records</small></button><button class="glass action traffic-management-button" data-management="accessories"><span class="icon">🎧</span><strong>Accessories Management</strong><small id="trafficAccessoryCount">0 records</small></button></div><div id="trafficManagementData" class="traffic-management-data hidden"></div>
 <div class="traffic-block graph-card"><div class="graph-head"><div><b>Customer Graph — Date Wise</b><small>हर तारीख को कितने नए customer add हुए</small></div><select id="customerGraphRange"><option value="7">Last 7 Days</option><option value="30" selected>Last 30 Days</option><option value="90">Last 90 Days</option></select></div><div id="customerDateGraph" class="customer-date-graph"></div></div>
 <div class="traffic-block"><b>Activity by Hour</b><div id="trafficHours" class="traffic-hours"></div></div>
 <div class="traffic-block"><b>Work Type Analysis</b><div id="trafficTypes" class="traffic-types"></div></div>
