@@ -18,7 +18,7 @@ const auth=getAuth(app);
 
 window.kabirGetSharedPin = async function(){
     try{
-        const ref=doc(db,"settings","app");
+        const ref=doc(db,"settings","security");
         const snap=await getDoc(ref);
         if(snap.exists() && snap.data().pin){
             const p=String(snap.data().pin);
@@ -47,7 +47,13 @@ let kabirAccessSessionId=null;
 let accessHeartbeatTimer=null;
 let accessSessionUnsubscribe=null;
 let authReadyResolve;
+let authReadyResolved=false;
 const authReady=new Promise(resolve=>{authReadyResolve=resolve;});
+function resolveAuthReady(){
+    if(authReadyResolved)return;
+    authReadyResolved=true;
+    authReadyResolve?.();
+}
 
 let user=null;
 let customers=[];
@@ -628,11 +634,13 @@ async function authInit(){
     }
 
     onAuthStateChanged(auth,u=>{
-
         user=u;
-
         updateAdmin();
+        resolveAuthReady();
     });
+    // If anonymous authentication is disabled/fails, do not leave the app
+    // waiting forever on authReady.
+    if(!user) resolveAuthReady();
 }
 
 
@@ -786,16 +794,18 @@ function nav(){
     $("repairTotalCustomersCard")?.addEventListener(
         "click",
         ()=>{
-            show("searchSection");
-            renderSearch();
+            show("repairSearchSection");
+            renderRepairing();
+            $("repairSearchInput")?.focus();
         }
     );
 
     $("repairTotalDevicesCard")?.addEventListener(
         "click",
         ()=>{
-            show("searchSection");
-            renderSearch();
+            show("repairSearchSection");
+            renderRepairing();
+            $("repairSearchInput")?.focus();
         }
     );
 
@@ -892,6 +902,9 @@ function brands(){
         let s=$("storage");
 
         let cs=d?.models?.[m.value]||[];
+        if(!cs.length && m.value){
+            cs=["Black","White","Blue","Green","Other"];
+        }
 
         c.innerHTML=
             '<option value="">Select colour</option>';
@@ -1080,6 +1093,20 @@ function formatDateTime(c){
     return d?new Intl.DateTimeFormat("en-IN",{dateStyle:"medium",timeStyle:"short"}).format(d):"Date pending";
 }
 
+/* Business rule: add/edit/delete is blocked from 12:00 AM to 10:00 AM. */
+function isBusinessBlocked(){
+    const h=new Date().getHours();
+    return h>=0 && h<10;
+}
+function businessBlockedMessage(){
+    return "12:00 AM से 10:00 AM तक Add, Edit और Delete बंद है. 10:00 AM के बाद फिर कोशिश करें.";
+}
+function ensureBusinessHours(messageId){
+    if(!isBusinessBlocked())return true;
+    msg(messageId,businessBlockedMessage());
+    return false;
+}
+
 async function save(e){
 
     e.preventDefault();
@@ -1094,6 +1121,7 @@ async function save(e){
         return;
     }
 
+    if(!ensureBusinessHours("formMessage"))return;
 
     /* Required fields */
 
@@ -1192,7 +1220,9 @@ async function save(e){
 
         let customerData={
 
-            customerCode:await uniqueCustomerCode(),
+            customerCode:$("customerForm")?.dataset?.editId
+                ? (val("customerCode") || await uniqueCustomerCode())
+                : await uniqueCustomerCode(),
             customerName:
                 val("customerName"),
 
@@ -1296,7 +1326,10 @@ async function save(e){
 
         const editId=$("customerForm").dataset.editId;
         if(editId){
-            delete customerData.customerCode;
+            const existing=customers.find(c=>c.id===editId);
+            customerData.customerCode=existing?.customerCode || customerData.customerCode;
+            customerData.bill=existing?.bill || customerData.bill;
+            customerData.billYes=existing?.billYes ?? customerData.billYes;
             delete customerData.createdAt;
             delete customerData.createdBy;
             await updateDoc(doc(db,COL,editId),customerData);
@@ -1480,12 +1513,17 @@ function showCustomerDetail(c){
 function closeCustomerDetail(){activeCustomerId=null;$("customerDetailModal")?.classList.add("hidden")}
 async function deleteCustomer(){
     const c=customers.find(x=>x.id===activeCustomerId);if(!c)return;
+    if(isBusinessBlocked()){
+        alert(businessBlockedMessage());
+        return;
+    }
     if(!confirm(`Delete ${c.customerName||"this customer"} (${c.customerCode||""}) permanently?`))return;
     try{await deleteDoc(doc(db,COL,c.id));await audit("CUSTOMER_DELETED",{customerId:c.id,customerName:c.customerName,customerCode:c.customerCode});closeCustomerDetail()}
     catch(e){console.error(e);alert("Customer delete नहीं हुआ. Firebase Rules check करें.")}
 }
 function editCustomer(){
     const c=customers.find(x=>x.id===activeCustomerId);if(!c)return;
+    if(!ensureBusinessHours("formMessage"))return;
     closeCustomerDetail();show("addSection");
     const map={customerName:"customerName",address:"address",pincode:"pincode",city:"city",state:"state",phone:"phone",
       brand:"brand",model:"model",imei:"imei",colour:"colour",storage:"storage",financeCompany:"financeCompany",
@@ -1741,18 +1779,24 @@ async function adminSaveKabirUser(e){
         await authReady;
         if(!user)throw Error("Firebase authentication तैयार नहीं है.");
 
-        await setDoc(doc(db,ACCESS_USERS_COL,id),{
+        const existing=await getDoc(doc(db,ACCESS_USERS_COL,id));
+        const updateData={
             id:id,
             name:name,
             password:password,
             enabled:true,
-            status:"offline",
-            activeSessionId:"",
-            lastLoginAt:null,
-            lastLogoutAt:null,
-            lastHeartbeat:null,
             updatedAt:serverTimestamp()
-        },{merge:true});
+        };
+        if(!existing.exists()){
+            Object.assign(updateData,{
+                status:"offline",
+                activeSessionId:"",
+                lastLoginAt:null,
+                lastLogoutAt:null,
+                lastHeartbeat:null
+            });
+        }
+        await setDoc(doc(db,ACCESS_USERS_COL,id),updateData,{merge:true});
 
         await renderKabirUsers();
 
@@ -1811,6 +1855,41 @@ async function renderKabirUsers(){
     }catch(e){
         console.error(e);
         box.innerHTML='<div class="empty">User list load नहीं हुआ. Firebase Rules check करें.</div>';
+    }
+}
+
+async function renderLiveUsers(){
+    const box=$("kabirLiveUsers");
+    if(!box)return;
+    try{
+        await authReady;
+        if(!user){
+            box.innerHTML='<div class="empty">Firebase authentication तैयार नहीं है.</div>';
+            return;
+        }
+        const snap=await getDocs(collection(db,ACCESS_USERS_COL));
+        const rows=snap.docs.map(d=>({id:d.id,...d.data()}));
+        const online=rows.filter(r=>r.status==="online" && !!r.activeSessionId);
+        if(!online.length){
+            box.innerHTML='<div class="empty">अभी कोई Kabir user online नहीं है.</div>';
+            return;
+        }
+        box.innerHTML=online.map(r=>`<article class="result">
+            <div class="result-top">
+                <div>
+                    <div class="result-name">${esc(r.id||"")}</div>
+                    <div class="result-meta">${esc(r.name||"Name not set")}</div>
+                </div>
+                <strong>🟢 ONLINE</strong>
+            </div>
+            <div class="result-grid">
+                ${item("Last Login",accessDateTime(r.lastLoginAt))}
+                ${item("Last Heartbeat",accessDateTime(r.lastHeartbeat))}
+            </div>
+        </article>`).join("");
+    }catch(e){
+        console.error(e);
+        box.innerHTML='<div class="empty">Live user status load नहीं हुआ.</div>';
     }
 }
 
@@ -1922,9 +2001,11 @@ function adminFeatureNav(){
     renderTraffic();
     renderTodayWork();
     renderKabirUsers();
+    renderLiveUsers();
 
     setInterval(()=>{
         renderKabirUsers();
+        renderLiveUsers();
         renderTraffic();
         renderTodayWork();
     },30000);
@@ -1941,10 +2022,11 @@ function changePin(){
     if(!f)return;
 
 
-    f.onsubmit=e=>{
+    f.onsubmit=async e=>{
 
         e.preventDefault();
 
+        await loadSharedPin();
 
         let a=val("currentPin");
         let b=val("newPin");
@@ -2042,6 +2124,7 @@ function renderRepairing(){
 }
 async function saveRepair(e){
     e.preventDefault();
+    if(!ensureBusinessHours("repairMessage"))return;
     const ids=["repairCustomerName","repairPhone","repairDevice","repairProblem","repairBy","repairPayment"];
     for(const id of ids)if(!val(id)){ $(id)?.focus();msg("repairMessage","सभी fields भरना जरूरी है.");return }
     const phone=val("repairPhone").replace(/\D/g,"");
@@ -2165,7 +2248,13 @@ function init(){
     loadSharedPin();
 
     // Firebase authentication must finish before accessUsers/auditLogs are touched.
-    authInit().then(()=>{
+    authInit().then(async()=>{
+        await authReady;
+        if(user){
+            subscribe();
+            subscribeRepairing();
+        }
+
         if(currentPageIsAdmin()){
             adminFeatureNav();
         }else{
@@ -2205,9 +2294,6 @@ function init(){
      */
     themeSystem();
     featureNav();
-
-    subscribe();
-    subscribeRepairing();
 
     $("customerForm")
         ?.addEventListener(
