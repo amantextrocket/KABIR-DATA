@@ -6,8 +6,27 @@
 <meta name="theme-color" content="#08090d">
 <title>Admin — Kabir Mobile Data</title>
 <link rel="stylesheet" href="style.css">
+<style id="kabirAdminPinGateStyles">
+#adminPinScreen{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(5,7,12,.92);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+#adminPinScreen.hidden{display:none!important}
+.admin.app.admin-locked{display:none!important}
+.pin-card{width:min(430px,100%);padding:28px;text-align:center}
+.pin-input{width:100%;box-sizing:border-box;margin:10px 0;padding:15px;border-radius:16px;font-size:20px;text-align:center}
+#adminPinMessage{min-height:22px}
+</style>
 </head>
 <body>
+<section id="adminPinScreen" class="pin-screen">
+  <div class="glass pin-card">
+    <div class="logo">KM</div>
+    <div class="eyebrow">KABIR MOBILE</div>
+    <h1>Admin Access</h1>
+    <p class="muted">Enter Admin PIN to continue</p>
+    <input id="adminPinInput" class="pin-input" type="password" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="••••">
+    <button id="adminPinButton" class="save" type="button">UNLOCK ADMIN</button>
+    <p id="adminPinMessage" class="message"></p>
+  </div>
+</section>
 <main class="admin app">
 <header class="glass topbar">
   <div><div class="eyebrow">KABIR MOBILE</div><h2>Admin Settings</h2></div>
@@ -35,7 +54,7 @@
     <button class="save" type="submit">CREATE / UPDATE USER</button>
     <p id="kabirUserMessage" class="message"></p>
   </form>
-  <div id="kabirUsersList" class="results"></div>
+  <h3>Saved Kabir Users</h3><div id="kabirUsersList" class="results"></div>
 </section>
 
 <section class="glass panel">
@@ -72,4 +91,83 @@
 <footer>Copyright © 2026 Kabir Data powered by AMAN</footer>
 </main>
 <script type="module" src="script.js"></script>
+
+<script>
+(function(){
+  const ADMIN_PIN_KEY = "kabir_admin_pin_unlocked";
+
+  function adminEl(id){ return document.getElementById(id); }
+
+  function adminSetMessage(text, ok){
+    const el=adminEl("adminPinMessage");
+    if(!el)return;
+    el.textContent=text||"";
+    el.style.color=ok ? "" : "#ff5c5c";
+  }
+
+  function unlockAdmin(){
+    adminEl("adminPinScreen")?.classList.add("hidden");
+    document.querySelector("main.admin.app")?.classList.remove("admin-locked");
+    sessionStorage.setItem(ADMIN_PIN_KEY,"1");
+  }
+
+  async function getSharedPin(){
+    if(window.kabirGetSharedPin) return await window.kabirGetSharedPin();
+
+    // Admin page loads script.js after this page; use its exposed reader when available.
+    for(let i=0;i<40;i++){
+      if(window.kabirGetSharedPin) return await window.kabirGetSharedPin();
+      await new Promise(r=>setTimeout(r,100));
+    }
+    return localStorage.getItem("kabirSharedPin") || "0000";
+  }
+
+  async function checkPin(){
+    const input=adminEl("adminPinInput");
+    const entered=(input?.value||"").trim();
+    if(!entered)return adminSetMessage("PIN डालें.");
+
+    try{
+      const pin=await getSharedPin();
+      if(String(entered)===String(pin)){
+        adminSetMessage("");
+        unlockAdmin();
+      }else{
+        adminSetMessage("Wrong PIN");
+        if(input){
+          input.classList.remove("pin-input-error");
+          void input.offsetWidth;
+          input.classList.add("pin-input-error");
+        }
+        if(navigator.vibrate)try{navigator.vibrate([90,35,90,35,140])}catch(_){}
+      }
+    }catch(e){
+      console.error(e);
+      adminSetMessage("PIN verify नहीं हो पाया.");
+    }
+  }
+
+  function bootAdminPin(){
+    const main=document.querySelector("main.admin.app");
+    const screen=adminEl("adminPinScreen");
+    if(!main||!screen)return;
+
+    if(sessionStorage.getItem(ADMIN_PIN_KEY)==="1"){
+      unlockAdmin();
+    }else{
+      main.classList.add("admin-locked");
+      screen.classList.remove("hidden");
+      adminEl("adminPinInput")?.focus();
+    }
+
+    adminEl("adminPinButton")?.addEventListener("click",checkPin);
+    adminEl("adminPinInput")?.addEventListener("keydown",e=>{
+      if(e.key==="Enter")checkPin();
+    });
+  }
+
+  document.addEventListener("DOMContentLoaded",bootAdminPin);
+})();
+</script>
+
 </body></html>
