@@ -25,6 +25,34 @@
 <form id="changePinForm"><label>Current PIN<input id="currentPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></label><label>New PIN<input id="newPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></label><label>Confirm New PIN<input id="confirmPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></label><button class="save" type="submit">SAVE NEW PIN</button><p id="pinSettingsMessage" class="message"></p></form>
 </section>
 <section class="glass panel"><div class="section-head"><div><div class="eyebrow">KABIR MOBILE DATA</div><h2>Live Status</h2></div></div><div class="mini-grid"><div><span>Total Customers</span><strong id="adminCustomers">0</strong></div><div><span>Total Devices</span><strong id="adminDevices">0</strong></div></div><p id="adminFirebaseStatus" class="firebase-status">Connecting to Firebase…</p></section>
+<section class="glass panel admin-nav-panel">
+<div class="section-head"><div><div class="eyebrow">ADMIN ANALYTICS</div><h2>Work & Traffic</h2></div></div>
+<div class="admin-action-grid">
+<button id="workHistoryButton" class="glass action" type="button"><span class="icon">🕘</span><strong>Work History</strong><small>हर काम, user और exact time</small></button>
+<button id="trafficButton" class="glass action" type="button"><span class="icon">📊</span><strong>Traffic Analysis</strong><small>पूरा activity analysis</small></button>
+</div>
+</section>
+<section id="workHistorySection" class="glass panel hidden">
+<div class="section-head"><div><div class="eyebrow">WORK HISTORY</div><h2>All Website Work</h2></div><button id="refreshWorkButton" class="round" type="button">↻</button></div>
+<div class="search"><span>⌕</span><input id="workSearchInput" type="search" placeholder="काम, user, customer, time…" autocomplete="off"></div>
+<div id="workHistoryResults" class="results"><div class="empty">Loading work history…</div></div>
+</section>
+<section id="trafficSection" class="glass panel hidden">
+<div class="section-head"><div><div class="eyebrow">TRAFFIC ANALYSIS</div><h2>Complete Data Analysis</h2></div><button id="refreshTrafficButton" class="round" type="button">↻</button></div>
+<div class="mini-grid traffic-stats">
+<div><span>Total Work</span><strong id="trafficTotal">0</strong></div>
+<div><span>Today</span><strong id="trafficToday">0</strong></div>
+<div><span>Customers Added</span><strong id="trafficAdds">0</strong></div>
+<div><span>Customers Edited</span><strong id="trafficEdits">0</strong></div>
+<div><span>Customers Deleted</span><strong id="trafficDeletes">0</strong></div>
+<div><span>Repairing Added</span><strong id="trafficRepairs">0</strong></div>
+<div><span>Active Users</span><strong id="trafficUsers">0</strong></div>
+<div><span>Peak Hour</span><strong id="trafficPeak">—</strong></div>
+</div>
+<div class="traffic-block"><b>Activity by Hour</b><div id="trafficHours" class="traffic-hours"></div></div>
+<div class="traffic-block"><b>Work Type Analysis</b><div id="trafficTypes" class="traffic-types"></div></div>
+</section>
+
 <footer>Copyright © 2026 Kabir Data powered by AMAN</footer>
 </main>
 <script type="module" src="script.js"></script>
