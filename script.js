@@ -396,23 +396,48 @@ let pinLoaded=/^\d{4}$/.test(localStorage.getItem(PIN_KEY)||"");
 let pinLoadPromise=null;
 
 async function loadSharedPin(){
+    // Fast path: if this device already has the last valid PIN, never block the keypad.
+    const cached=localStorage.getItem(PIN_KEY);
+    if(/^\d{4}$/.test(cached||"")){
+        sharedPin=cached;
+        pinLoaded=true;
+        // Refresh from Firebase in the background after auth is ready.
+        if(!pinLoadPromise){
+            pinLoadPromise=(async()=>{
+                try{
+                    await authReady;
+                    const ref=doc(db,SETTINGS_COL,SETTINGS_DOC);
+                    const snap=await getDoc(ref);
+                    if(snap.exists()){
+                        const p=String(snap.data()?.pin||"");
+                        if(/^\d{4}$/.test(p)){
+                            sharedPin=p;
+                            localStorage.setItem(PIN_KEY,p);
+                        }
+                    }
+                }catch(e){ console.warn("Background PIN refresh failed:",e); }
+                return sharedPin;
+            })();
+        }
+        return sharedPin;
+    }
+
     if(pinLoadPromise)return pinLoadPromise;
     pinLoadPromise=(async()=>{
-        const securityRef=doc(db,SETTINGS_COL,SETTINGS_DOC);
         try{
-            // Primary location used by both Main Website and Admin Panel.
+            // Firebase reads must happen after anonymous authentication.
+            await authReady;
+            const securityRef=doc(db,SETTINGS_COL,SETTINGS_DOC);
             const securitySnap=await getDoc(securityRef);
             if(securitySnap.exists()){
                 const p=String(securitySnap.data()?.pin||"");
                 if(/^\d{4}$/.test(p)){
                     sharedPin=p;
                     localStorage.setItem(PIN_KEY,p);
-                    pinLoaded=true;
                     return p;
                 }
             }
 
-            // Backward compatibility with the earlier settings/app document.
             const legacyRef=doc(db,SETTINGS_COL,"app");
             const legacySnap=await getDoc(legacyRef);
             if(legacySnap.exists()){
@@ -421,28 +446,17 @@ async function loadSharedPin(){
                     sharedPin=p;
                     localStorage.setItem(PIN_KEY,p);
                     await setDoc(securityRef,{pin:p,updatedAt:serverTimestamp()},{merge:true});
-                    pinLoaded=true;
                     return p;
                 }
             }
 
-            const cached=localStorage.getItem(PIN_KEY);
-            if(/^\d{4}$/.test(cached||"")){
-                sharedPin=cached;
-                await setDoc(securityRef,{pin:sharedPin,updatedAt:serverTimestamp()},{merge:true});
-            }else{
-                sharedPin=DEFAULT_PIN;
-                await setDoc(securityRef,{pin:sharedPin,updatedAt:serverTimestamp()},{merge:true});
-                localStorage.setItem(PIN_KEY,sharedPin);
-            }
+            // First installation: create the default PIN only after Firebase auth succeeds.
+            sharedPin=DEFAULT_PIN;
+            await setDoc(securityRef,{pin:sharedPin,updatedAt:serverTimestamp()},{merge:true});
+            localStorage.setItem(PIN_KEY,sharedPin);
             return sharedPin;
         }catch(e){
             console.error("Shared PIN load failed:",e);
-            const cached=localStorage.getItem(PIN_KEY);
-            if(/^\d{4}$/.test(cached||"")){
-                sharedPin=cached;
-                return sharedPin;
-            }
             throw Error("PIN load नहीं हुआ. Firebase connection check करें.");
         }finally{
             pinLoaded=true;
@@ -696,29 +710,32 @@ function setupPin(){
         dots(e.value);
         if(e.value.length!==4)return;
         const entered=e.value;
-        const finish=async()=>{
+        const finish=()=>{
             if(e.value!==entered)return;
             if(entered===pin()){
-                audit("login_success",{section:$('appScreen')?.classList.contains('admin')?'Admin Panel':'Kabir Mobile Data',description:'PIN login successful'});
+                audit("login_success",{section:isAdminPage?"Admin Panel":"Kabir Mobile Data",description:"PIN login successful"});
                 unlock();
                 msg("pinMessage","");
             }else{
-                audit("login_failed",{section:$('appScreen')?.classList.contains('admin')?'Admin Panel':'Kabir Mobile Data',description:'Incorrect PIN entered'});
+                audit("login_failed",{section:isAdminPage?"Admin Panel":"Kabir Mobile Data",description:"Incorrect PIN entered"});
                 msg("pinMessage","Incorrect PIN");
                 pinError();
                 setTimeout(()=>{e.value="";dots("");msg("pinMessage","");e.focus()},240);
             }
         };
-        // Fast path: cached PIN is checked immediately. Firebase refresh never blocks the keypad.
-        finish();
-        if(!pinLoaded){
-            loadSharedPin().then(()=>{if(e.value===entered)finish()}).catch(()=>{});
-        }
+
+        // Cached PIN: unlock immediately. Never wait for Firebase here.
+        if(pinLoaded){ finish(); return; }
+
+        // No cached PIN: wait for Firebase only once, then verify.
+        loadSharedPin().then(()=>{if(e.value===entered)finish()})
+            .catch(()=>msg("pinMessage","Firebase से PIN load नहीं हुआ"));
     };
     e.addEventListener("input",attempt);
     $("lockButton")?.addEventListener("click",lock);
-    if(sessionStorage.getItem("kabir_unlocked")==="1")unlock();
-    else setTimeout(()=>e.focus(),100);
+    // Always show the lock screen after a fresh page load.
+    sessionStorage.removeItem("kabir_unlocked");
+    setTimeout(()=>e.focus(),80);
 }
 
 /* =========================================================
@@ -743,7 +760,9 @@ async function authInit(){
         await signInAnonymously(auth);
     }catch(e){
         console.error(e);
-        if($("adminFirebaseStatus"))msg("adminFirebaseStatus","Firebase authentication error: "+(e?.message||""));
+        const text="Firebase authentication error: "+(e?.message||"Check Anonymous Authentication");
+        if($("adminFirebaseStatus"))msg("adminFirebaseStatus",text);
+        if($("connectionStatus"))$("connectionStatus").textContent=text;
         finish();
     }
     return authReady;
@@ -2123,8 +2142,10 @@ function featureNav(){
 
 async function init(){
     setupPin();
-    authInit();
-    loadSharedPin().catch(e=>console.warn(e));
+    authInit().then(()=>{
+        // Load/refresh shared PIN only after Firebase authentication is ready.
+        loadSharedPin().catch(e=>console.warn(e));
+    });
 
     nav();
 
