@@ -1,222 +1,31 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<meta name="theme-color" content="#08090d">
-<title>Admin — Kabir Mobile Data</title>
-<link rel="stylesheet" href="style.css">
-<style id="kabirAdminPinGateStyles">
-#adminPinScreen{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(5,7,12,.92);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
-#adminPinScreen.hidden{display:none!important}
-.admin.app.admin-locked{display:none!important}
-.pin-card{width:min(430px,100%);padding:28px;text-align:center}
-.pin-input{width:100%;box-sizing:border-box;margin:10px 0;padding:15px;border-radius:16px;font-size:20px;text-align:center}
-#adminPinMessage{min-height:22px}
-#adminPinScreen .pin-card{animation:none}
-.pin-input-error{animation:adminPinShake .48s cubic-bezier(.36,.07,.19,.97) both!important}
-@keyframes adminPinShake{
-  0%,100%{transform:translateX(0)}
-  20%{transform:translateX(-10px)}
-  40%{transform:translateX(9px)}
-  60%{transform:translateX(-7px)}
-  80%{transform:translateX(5px)}
-}
-.admin-success-popup{
-  position:fixed;left:50%;top:50%;transform:translate(-50%,-50%) scale(.88);
-  z-index:100000;display:flex;align-items:center;gap:14px;min-width:280px;
-  max-width:calc(100vw - 40px);padding:18px 20px;border-radius:22px;
-  background:rgba(20,24,32,.94);color:#fff;border:1px solid rgba(255,255,255,.16);
-  box-shadow:0 20px 60px rgba(0,0,0,.35);backdrop-filter:blur(20px);
-  opacity:0;pointer-events:none;transition:.25s ease;
-}
-.admin-success-popup.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
-.admin-success-popup.hidden{display:flex}
-.admin-success-icon{
-  width:42px;height:42px;border-radius:50%;display:grid;place-items:center;
-  background:#22c55e;color:#fff;font-size:24px;font-weight:800;
-}
-.admin-success-popup strong{display:block;font-size:16px}
-.admin-success-popup small{display:block;margin-top:4px;opacity:.78}
-</style>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><meta name="theme-color" content="#08090d"><title>Admin — Kabir Mobile Data</title><link rel="stylesheet" href="style.css">
 </head>
 <body>
-<section id="adminPinScreen" class="pin-screen">
+<section id="pinScreen" class="pin-screen">
   <div class="glass pin-card">
     <div class="logo">KM</div>
     <div class="eyebrow">KABIR MOBILE</div>
-    <h1>Admin Access</h1>
-    <p class="muted">Enter Admin PIN to continue</p>
-    <input id="adminPinInput" class="pin-input" type="password" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="••••">
-    <p id="adminPinMessage" class="message"></p>
+    <h1>Admin Panel</h1>
+    <p class="muted">Enter PIN</p>
+    <label class="pin-label" for="pinInput">Enter PIN</label>
+    <input id="pinInput" class="pin-input" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" placeholder="••••">
+    <div id="pinDots" class="pin-dots"><i></i><i></i><i></i><i></i></div>
+    <p id="pinMessage" class="message"></p><p id="connectionStatus" class="firebase-status">Firebase connecting…</p>
   </div>
 </section>
-<main class="admin app admin-locked">
-<header class="glass topbar">
-  <div><div class="eyebrow">KABIR MOBILE</div><h2>Admin Settings</h2></div>
-  <a class="round" href="index.html">‹</a>
-</header>
 
+<main id="appScreen" class="admin app hidden">
+<header class="glass topbar"><div><div class="eyebrow">KABIR MOBILE</div><h2>Admin Settings</h2></div><a class="round" href="index.html">‹</a></header>
 <section class="glass panel">
-  <div class="section-head"><div><div class="eyebrow">SECURITY</div><h2>PIN Settings</h2></div></div>
-  <p class="muted">Main website और Admin Panel के shared PIN की setting.</p>
-  <form id="changePinForm">
-    <label>Current PIN<input id="currentPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></label>
-    <label>New PIN<input id="newPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></label>
-    <label>Confirm New PIN<input id="confirmPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></label>
-    <button class="save" type="submit">SAVE NEW PIN</button>
-    <p id="pinSettingsMessage" class="message"></p>
-  </form>
+<div class="section-head"><div><div class="eyebrow">SECURITY</div><h2>PIN Settings</h2></div></div>
+<p class="muted">Main website और Admin Panel दोनों में यही एक shared PIN काम करेगा.</p>
+<form id="changePinForm"><label>Current PIN<input id="currentPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></label><label>New PIN<input id="newPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></label><label>Confirm New PIN<input id="confirmPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></label><button class="save" type="submit">SAVE NEW PIN</button><p id="pinSettingsMessage" class="message"></p></form>
 </section>
-
-<section class="glass panel">
-  <div class="section-head"><div><div class="eyebrow">KABIR ACCESS</div><h2>Generate Kabir ID & Password</h2></div></div>
-  <form id="kabirUserForm">
-    <label>Name<input id="kabirUserName" required placeholder="Member name"></label>
-    <label>Kabir ID<input id="kabirUserId" required placeholder="KABIR1234" autocapitalize="characters"></label>
-    <label>Password<input id="kabirUserPassword" required placeholder="Password"></label>
-    <button class="save" type="submit">CREATE / UPDATE USER</button>
-    <p id="kabirUserMessage" class="message"></p>
-  </form>
-  <h3>Saved Kabir Users <span id="kabirUsersCount" class="eyebrow">0</span></h3><div id="kabirUsersList" class="results"></div>
-</section>
-
-<section class="glass panel">
-  <div class="section-head"><div><div class="eyebrow">LIVE USERS</div><h2>Login Status</h2></div></div>
-  <div id="kabirLiveUsers" class="results"><div class="empty">Loading user status…</div></div>
-</section>
-
-<section class="glass panel">
-  <div class="section-head"><div><div class="eyebrow">TRAFFIC ANALYSIS</div><h2>Work Analysis</h2></div></div>
-  <label>Date<input id="analysisDate" type="date"></label>
-  <div id="trafficAnalysis" class="results"><div class="empty">Select a date.</div></div>
-  <button id="downloadTrafficButton" class="save" type="button">DOWNLOAD TRAFFIC DATA</button>
-</section>
-
-<section class="glass panel">
-  <div class="section-head"><div><div class="eyebrow">TODAY WORK</div><h2>Work History</h2></div></div>
-  <div class="cols">
-    <label>From Date<input id="workFromDate" type="date"></label>
-    <label>To Date<input id="workToDate" type="date"></label>
-  </div>
-  <div id="todayWorkResults" class="results"><div class="empty">Select date range.</div></div>
-  <button id="downloadTodayWorkButton" class="save" type="button">DOWNLOAD WORK DATA</button>
-</section>
-
-<section class="glass panel">
-  <div class="section-head"><div><div class="eyebrow">DATABASE</div><h2>Live Status</h2></div></div>
-  <div class="mini-grid">
-    <div><span>Customers</span><strong id="adminCustomers">0</strong></div>
-    <div><span>Devices</span><strong id="adminDevices">0</strong></div>
-  </div>
-  <p id="adminFirebaseStatus" class="firebase-status">Connecting to Firebase…</p>
-</section>
-
+<section class="glass panel"><div class="section-head"><div><div class="eyebrow">KABIR MOBILE DATA</div><h2>Live Status</h2></div></div><div class="mini-grid"><div><span>Total Customers</span><strong id="adminCustomers">0</strong></div><div><span>Total Devices</span><strong id="adminDevices">0</strong></div></div><p id="adminFirebaseStatus" class="firebase-status">Connecting to Firebase…</p></section>
 <footer>Copyright © 2026 Kabir Data powered by AMAN</footer>
 </main>
 <script type="module" src="script.js"></script>
-
-<script>
-(function(){
-  const ADMIN_PIN_KEY="kabir_admin_pin_unlocked";
-
-  const el=id=>document.getElementById(id);
-
-  function setMessage(text,ok=false){
-    const m=el("adminPinMessage");
-    if(!m)return;
-    m.textContent=text||"";
-    m.style.color=ok?"#22c55e":"";
-  }
-
-  function unlock(){
-    el("adminPinScreen")?.classList.add("hidden");
-    document.querySelector("main.admin.app")?.classList.remove("admin-locked");
-    sessionStorage.setItem(ADMIN_PIN_KEY,"1");
-  }
-
-  async function getSharedPin(){
-    for(let i=0;i<80;i++){
-      if(window.kabirGetSharedPin){
-        return await window.kabirGetSharedPin();
-      }
-      await new Promise(r=>setTimeout(r,100));
-    }
-    return null;
-  }
-
-  async function checkPin(){
-    const input=el("adminPinInput");
-    if(!input)return;
-
-    const entered=input.value.trim();
-    if(entered.length!==4)return;
-
-    try{
-      const pin=await getSharedPin();
-
-      if(!pin){
-        setMessage("PIN load नहीं हुआ. Firebase connection check करें.");
-        return;
-      }
-
-      if(String(entered)===String(pin)){
-        input.value="";
-        setMessage("");
-        unlock();
-        return;
-      }
-
-      setMessage("Wrong PIN");
-      input.classList.remove("pin-input-error");
-      void input.offsetWidth;
-      input.classList.add("pin-input-error");
-
-      if(navigator.vibrate){
-        try{navigator.vibrate([90,35,90,35,140]);}catch(_){}
-      }
-
-      // Wrong PIN is cleared automatically.
-      setTimeout(()=>{
-        input.value="";
-        input.focus();
-        input.classList.remove("pin-input-error");
-      },500);
-
-    }catch(e){
-      console.error(e);
-      setMessage("PIN verify नहीं हो पाया.");
-      input.value="";
-    }
-  }
-
-  function boot(){
-    const main=document.querySelector("main.admin.app");
-    const screen=el("adminPinScreen");
-    const input=el("adminPinInput");
-    if(!main||!screen||!input)return;
-
-    if(sessionStorage.getItem(ADMIN_PIN_KEY)==="1"){
-      unlock();
-    }else{
-      main.classList.add("admin-locked");
-      screen.classList.remove("hidden");
-      setTimeout(()=>input.focus(),100);
-    }
-
-    // No unlock button. Exactly 4 digits => automatic verification.
-    input.addEventListener("input",()=>{
-      input.value=input.value.replace(/\D/g,"").slice(0,4);
-      if(input.value.length===4)checkPin();
-    });
-  }
-
-  document.addEventListener("DOMContentLoaded",boot);
-})();
-</script>
-
-<div id="adminSuccessPopup" class="admin-success-popup hidden">
-  <div class="admin-success-icon">✓</div>
-  <div><strong id="adminSuccessTitle">Successfully Added</strong><small id="adminSuccessText">Kabir ID और Password saved.</small></div>
-</div>
 </body></html>
