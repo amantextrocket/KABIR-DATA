@@ -1889,41 +1889,210 @@ async function exportXlsx(rows,filename,sheet){
         XLSX.utils.book_append_sheet(wb,ws,sheet);XLSX.writeFile(wb,filename);
     }catch(e){console.error(e);alert("Excel file download नहीं हो पाया.")}
 }
-function exportCustomers(){
-    if(!customers.length){alert("Customer data अभी उपलब्ध नहीं है.");return}
-    audit("customer_export",{section:"Kabir Mobile Data",description:`Customer Excel downloaded (${customers.length} records)`});
-    exportXlsx(customers.map(c=>({"Customer Code":c.customerCode||"","Date & Time":formatDateTime(c),"Customer Name":c.customerName||"",
-      "Phone":c.phone||"","Address":c.address||"","PIN Code":c.pincode||"","City":c.city||"","State":c.state||"",
-      "Brand":c.brand||"","Model":c.model||"","IMEI":c.imei||"","Colour":c.colour||"","RAM + Storage":c.storage||"",
-      "Finance Company":c.financeCompany||"","Phone Amount":c.phoneAmount||0,"Down Payment":c.downPayment||0,
-      "EMI Amount":c.emiAmount||0,"EMI Months":c.emiMonths||0,"Lock":c.lockName||"","Stock":c.stock||"",
-      "Counter":c.counter||"","Financer":c.financerName||"","Bill":c.billYes?"YES":"NO"})),"Kabir_Mobile_Customers.xlsx","Customers");
+
+function pdfSafe(value){
+    return String(value??"").replace(/\s+/g," ").trim() || "—";
 }
-function exportRepairing(){
-    if(!repairing.length){alert("Repairing data अभी उपलब्ध नहीं है.");return}
-    audit("repairing_export",{section:"Kabir Repairing Data",description:`Repairing Excel downloaded (${repairing.length} records)`});
-    exportXlsx(repairing.map(r=>({"Date & Time":formatDateTime(r),"Customer Name":r.customerName||"","Phone":r.phone||"",
-      "Brand / Model":r.device||"","Problem":r.problem||"","Repairing By":r.repairBy||"","Payment":r.payment||0})),
-      "Kabir_Repairing_Data.xlsx","Repairing");
+function pdfDate(row){
+    try{return formatDateTime(row)||"—"}catch{return "—"}
 }
-async function downloadCustomerPdf(){
-    const c=customers.find(x=>x.id===activeCustomerId);if(!c)return;
-    try{
-        await audit("customer_pdf",{section:"Kabir Mobile Data",customerId:c.id,customerCode:c.customerCode,customerName:c.customerName,description:`PDF downloaded for ${c.customerName||c.customerCode||c.id}`});
-        if(!window.jspdf)await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
-        const pdf=new window.jspdf.jsPDF();let y=18;
-        pdf.setFontSize(18);pdf.text("KABIR MOBILE DATA",14,y);y+=10;pdf.setFontSize(10);
-        [["Customer Code",c.customerCode],["Date & Time",formatDateTime(c)],["Customer Name",c.customerName],["Phone",c.phone],
-        ["Address",c.address],["PIN Code",c.pincode],["City / State",`${c.city||""}, ${c.state||""}`],["Brand",c.brand],["Model",c.model],
-        ["IMEI",c.imei],["Colour",c.colour],["RAM + Storage",c.storage],["Finance Company",c.financeCompany],
-        ["Phone Amount",`₹${c.phoneAmount||0}`],["Down Payment",`₹${c.downPayment||0}`],["EMI",`₹${c.emiAmount||0} × ${c.emiMonths||0} months`],
-        ["Lock",c.lockName],["Stock",c.stock],["Counter",c.counter],["Financer",c.financerName],["Bill",c.billYes?"YES":"NO"]].forEach(([a,b])=>{
-            if(y>280){pdf.addPage();y=18}pdf.setFont(undefined,"bold");pdf.text(String(a||""),14,y);
-            pdf.setFont(undefined,"normal");pdf.text(String(b||"-"),65,y,{maxWidth:130});y+=8;
+function pdfSectionTitle(pdf,title,subtitle){
+    const pageW=pdf.internal.pageSize.getWidth();
+    pdf.setFillColor(12,15,22);pdf.roundedRect(14,18,pageW-28,22,5,5,"F");
+    pdf.setTextColor(255,255,255);pdf.setFontSize(16);pdf.setFont(undefined,"bold");pdf.text(title,22,32);
+    if(subtitle){pdf.setFontSize(8);pdf.setFont(undefined,"normal");pdf.setTextColor(185,190,205);pdf.text(subtitle,pageW-22,32,{align:"right"});}
+    pdf.setTextColor(20,22,28);
+}
+function pdfFieldGrid(pdf,rows,startY){
+    const pageW=pdf.internal.pageSize.getWidth();
+    const left=14,right=pageW-14,gap=7,colW=(right-left-gap)/2;
+    let y=startY;
+    for(let i=0;i<rows.length;i+=2){
+        const pair=rows.slice(i,i+2).map(([k,v])=>[pdfSafe(k),pdfSafe(v)]);
+        const prepared=pair.map(([k,v])=>{
+            pdf.setFontSize(7);const lines=pdf.splitTextToSize(v,colW-12);return {k,vLines:lines};
         });
-        pdf.save(`${c.customerCode||"customer"}_${(c.customerName||"customer").replace(/\s+/g,"_")}.pdf`);
-    }catch(e){console.error(e);alert("PDF बन नहीं पाया.")}
+        const h=Math.max(17,...prepared.map(x=>10+x.vLines.length*4.2));
+        if(y+h>190){pdf.addPage();pdfSectionTitle(pdf,"KABIR MOBILE DATA","CONTINUED");y=48;}
+        prepared.forEach((x,j)=>{
+            const x0=left+j*(colW+gap);
+            pdf.setFillColor(247,248,251);pdf.setDrawColor(225,228,235);pdf.roundedRect(x0,y,colW,h,3,3,"FD");
+            pdf.setTextColor(95,100,112);pdf.setFontSize(6.5);pdf.setFont(undefined,"bold");pdf.text(x.k,x0+6,y+7);
+            pdf.setTextColor(25,27,34);pdf.setFontSize(7.5);pdf.setFont(undefined,"normal");pdf.text(x.vLines,x0+6,y+12);
+        });
+        y+=h+4;
+    }
+    return y;
 }
+function pdfRecord(pdf,number,title,rows){
+    let y=45;
+    if(pdf.internal.getNumberOfPages()>1){
+        // Continue on the current page when space is available.
+        y=45;
+    }
+    pdf.setFillColor(231,234,242);pdf.roundedRect(14,y, pdf.internal.pageSize.getWidth()-28, 10, 3,3,"F");
+    pdf.setTextColor(35,38,48);pdf.setFontSize(9);pdf.setFont(undefined,"bold");pdf.text(`${number}. ${pdfSafe(title)}`,20,y+6.7);
+    y=pdfFieldGrid(pdf,rows,y+14);
+    return y;
+}
+
+async function downloadCompletePdf(){
+    try{
+        const total=customers.length+repairing.length+secondHand.length+accessories.length;
+        if(!total){alert("Abhi PDF banane ke liye koi data उपलब्ध नहीं है.");return;}
+        if(!window.jspdf)await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
+        if(!window.jspdf?.jsPDF?.API?.autoTable)await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.4/jspdf.plugin.autotable.min.js");
+        const pdf=new window.jspdf.jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
+        const pageW=pdf.internal.pageSize.getWidth(),pageH=pdf.internal.pageSize.getHeight();
+        const stamp=new Date().toLocaleString("en-IN",{dateStyle:"medium",timeStyle:"short"});
+
+        // Premium cover
+        pdf.setFillColor(7,8,12);pdf.rect(0,0,pageW,pageH,"F");
+        pdf.setFillColor(30,34,55);pdf.circle(28,28,38,"F");
+        pdf.setFillColor(70,75,125);pdf.circle(pageW-25,pageH-18,46,"F");
+        pdf.setTextColor(255,255,255);pdf.setFont(undefined,"bold");pdf.setFontSize(30);pdf.text("KABIR MOBILE DATA",20,70);
+        pdf.setFont(undefined,"normal");pdf.setFontSize(12);pdf.setTextColor(190,195,210);pdf.text("Complete Business Data • Premium PDF Report",20,80);
+        pdf.setDrawColor(90,95,125);pdf.line(20,88,pageW-20,88);
+        const summary=[
+            ["CUSTOMERS",customers.length],
+            ["REPAIRING",repairing.length],
+            ["SECOND HAND",secondHand.length],
+            ["ACCESSORIES",accessories.length]
+        ];
+        let sx=20;summary.forEach(([label,value])=>{
+            pdf.setFillColor(20,24,34);pdf.roundedRect(sx,102,58,32,6,6,"F");
+            pdf.setTextColor(150,155,175);pdf.setFontSize(7);pdf.text(label,sx+8,112);
+            pdf.setTextColor(255,255,255);pdf.setFontSize(19);pdf.setFont(undefined,"bold");pdf.text(String(value),sx+8,126);
+            sx+=64;
+        });
+        pdf.setFont(undefined,"normal");pdf.setFontSize(8);pdf.setTextColor(145,150,165);pdf.text(`Generated: ${stamp}`,20,pageH-20);
+        pdf.text("Copyright © 2026 Kabir Data powered by AMAN",pageW-20,pageH-20,{align:"right"});
+
+        // Customers
+        if(customers.length){
+            customers.forEach((c,idx)=>{
+                pdf.addPage();pdfSectionTitle(pdf,"CUSTOMER DATABASE",`${idx+1} / ${customers.length}`);
+                const rows=[
+                    ["Customer Code",c.customerCode],["Date & Time",pdfDate(c)],["Customer Name",c.customerName],["Mobile Number",c.phone],
+                    ["Address",c.address],["PIN Code",c.pincode],["City / Village",c.city],["State",c.state],
+                    ["Phone Brand",c.brand],["Phone Model",c.model],["IMEI",c.imei],["Colour",c.colour],["RAM + Storage",c.storage],
+                    ["Finance Company",c.financeCompany],["Phone Amount",`₹${Number(c.phoneAmount||0).toLocaleString("en-IN")}`],
+                    ["Down Payment",`₹${Number(c.downPayment||0).toLocaleString("en-IN")}`],
+                    ["EMI Amount",`₹${Number(c.emiAmount||0).toLocaleString("en-IN")} × ${Number(c.emiMonths||0)} months`],
+                    ["Lock",c.lockName],["Stock",c.stock],["Counter",c.counter],["Financer Name",c.financerName],
+                    ["Bill",c.billYes?"YES":"NO"],["Aadhaar Document",c.documents?.aadhaar?"Available":"Not attached"],
+                    ["PAN Document",c.documents?.pan?"Available":"Not attached"],["Customer Photo",c.documents?.customerPhoto?"Available":"Not attached"]
+                ];
+                pdfFieldGrid(pdf,rows,48);
+            });
+        }
+        // Repairing
+        if(repairing.length){
+            pdf.addPage();pdfSectionTitle(pdf,"REPAIRING DATABASE",`${repairing.length} records`);
+            const rows=repairing.map((r,i)=>[
+                String(i+1),pdfDate(r),pdfSafe(r.customerName),pdfSafe(r.phone),pdfSafe(r.device),pdfSafe(r.problem),pdfSafe(r.repairBy),`₹${Number(r.payment||0).toLocaleString("en-IN")}`
+            ]);
+            pdf.autoTable?.({startY:48,head:[["#","Date & Time","Customer","Phone","Brand / Model","Problem","Repairing By","Payment"]],body:rows,theme:"grid",styles:{fontSize:7,cellPadding:3},headStyles:{fillColor:[20,24,34],textColor:[255,255,255],fontStyle:"bold"},alternateRowStyles:{fillColor:[247,248,251]},margin:{left:14,right:14}});
+            if(!pdf.autoTable){
+                let y=48;rows.forEach(r=>{pdf.setFontSize(7);pdf.text(r.map(pdfSafe).join("  |  "),14,y,{maxWidth:pageW-28});y+=5;if(y>190){pdf.addPage();y=22;}});
+            }
+        }
+        // Second hand
+        if(secondHand.length){
+            pdf.addPage();pdfSectionTitle(pdf,"SECOND HAND INVENTORY",`${secondHand.length} records`);
+            const rows=secondHand.map((r,i)=>[String(i+1),pdfDate(r),pdfSafe(r.customerName),pdfSafe(r.phone),pdfSafe(r.device),pdfSafe(r.imei),pdfSafe(r.condition),`₹${Number(r.price||0).toLocaleString("en-IN")}`,`₹${Number(r.salePrice||0).toLocaleString("en-IN")}`]);
+            if(!pdf.autoTable){
+                let y=48;rows.forEach(r=>{pdf.setFontSize(7);pdf.text(r.map(pdfSafe).join("  |  "),14,y,{maxWidth:pageW-28});y+=5;if(y>190){pdf.addPage();y=22;}});
+            }else pdf.autoTable({startY:48,head:[["#","Date & Time","Customer","Phone","Device","IMEI","Condition","Purchase","Sale"]],body:rows,theme:"grid",styles:{fontSize:7,cellPadding:3},headStyles:{fillColor:[20,24,34],textColor:[255,255,255],fontStyle:"bold"},alternateRowStyles:{fillColor:[247,248,251]},margin:{left:14,right:14}});
+        }
+        // Accessories
+        if(accessories.length){
+            pdf.addPage();pdfSectionTitle(pdf,"ACCESSORIES INVENTORY",`${accessories.length} records`);
+            const rows=accessories.map((r,i)=>[String(i+1),pdfDate(r),pdfSafe(r.name),pdfSafe(r.category),String(r.quantity||0),`₹${Number(r.price||0).toLocaleString("en-IN")}`,`₹${Number(r.salePrice||0).toLocaleString("en-IN")}`]);
+            if(!pdf.autoTable){
+                let y=48;rows.forEach(r=>{pdf.setFontSize(7);pdf.text(r.map(pdfSafe).join("  |  "),14,y,{maxWidth:pageW-28});y+=5;if(y>190){pdf.addPage();y=22;}});
+            }else pdf.autoTable({startY:48,head:[["#","Date & Time","Item","Category","Qty","Purchase","Sale"]],body:rows,theme:"grid",styles:{fontSize:7,cellPadding:3},headStyles:{fillColor:[20,24,34],textColor:[255,255,255],fontStyle:"bold"},alternateRowStyles:{fillColor:[247,248,251]},margin:{left:14,right:14}});
+        }
+        // Footer every page
+        const pages=pdf.getNumberOfPages();
+        for(let i=1;i<=pages;i++){
+            pdf.setPage(i);pdf.setDrawColor(225,228,235);pdf.line(14,pageH-10,pageW-14,pageH-10);
+            pdf.setFontSize(6.5);pdf.setTextColor(125,130,142);pdf.setFont(undefined,"normal");
+            pdf.text("KABIR MOBILE DATA • Confidential Business Report",14,pageH-5);
+            pdf.text(`Page ${i} / ${pages}`,pageW-14,pageH-5,{align:"right"});
+        }
+        await audit("customer_pdf",{section:"Kabir Mobile Data",description:`Complete PDF downloaded (${total} total records)`});
+        pdf.save(`Kabir_Mobile_Data_Complete_${new Date().toISOString().slice(0,10)}.pdf`);
+    }catch(e){
+        console.error("Complete PDF error:",e);
+        alert("Complete PDF बन नहीं पाया. Internet connection check करके फिर कोशिश करें.");
+    }
+}
+
+function setupHomePdf(){
+    $("homePdfButton")?.addEventListener("click",downloadCompletePdf);
+}
+
+function setupHomeModuleReorder(){
+    const container=$("homeModules");
+    if(!container)return;
+    const key="kabir_home_module_order";
+    const ids=["financeModule","repairingModule","secondHandModule","accessoriesModule"];
+    const boxes={financeModule:"financeBox",repairingModule:"repairingBox",secondHandModule:"secondHandBox",accessoriesModule:"accessoriesBox"};
+    const getCards=()=>ids.map(id=>$(id)).filter(Boolean);
+    const getOrder=()=>{try{const a=JSON.parse(localStorage.getItem(key)||"[]");return Array.isArray(a)?a.filter(x=>ids.includes(x)):[]}catch{return []}};
+    const saveOrder=order=>localStorage.setItem(key,JSON.stringify(order));
+    const applyOrder=order=>{
+        const normalized=[...order,...ids.filter(x=>!order.includes(x))];
+        normalized.forEach(id=>{const card=$(id),box=$(boxes[id]);if(card)container.appendChild(card);if(box)container.appendChild(box);});
+        saveOrder(normalized);
+    };
+    applyOrder(getOrder());
+
+    let dragging=null,longPress=null,startY=0,moved=false,suppressClick=false;
+    const group=(id)=>({card:$(id),box:$(boxes[id])});
+    const reorder=(sourceId,targetId)=>{
+        if(!sourceId||!targetId||sourceId===targetId)return;
+        const order=[...container.querySelectorAll(":scope > .module-card")].map(x=>x.id);
+        const a=order.indexOf(sourceId),b=order.indexOf(targetId);
+        if(a<0||b<0)return;
+        order.splice(a,1);order.splice(b,0,sourceId);applyOrder(order);
+    };
+    const clearTimer=()=>{if(longPress){clearTimeout(longPress);longPress=null;}};
+    getCards().forEach(card=>{
+        card.style.touchAction="pan-y";
+        card.addEventListener("pointerdown",e=>{
+            if(e.pointerType==="mouse"&&e.button!==0)return;
+            clearTimer();moved=false;startY=e.clientY;
+            longPress=setTimeout(()=>{
+                dragging=card.id;card.classList.add("module-dragging");
+                try{card.setPointerCapture(e.pointerId)}catch{}
+                navigator.vibrate?.(20);
+            },480);
+        });
+        card.addEventListener("pointermove",e=>{
+            if(!dragging){if(Math.abs(e.clientY-startY)>8){moved=true;clearTimer();}return;}
+            e.preventDefault();moved=true;
+            const target=e.target.closest?.(".module-card");
+            if(!target||target.id===dragging)return;
+            const rect=target.getBoundingClientRect();
+            const before=e.clientY<rect.top+rect.height/2;
+            const source=group(dragging),dest=group(target.id);
+            if(!source.card||!dest.card)return;
+            const order=[...container.querySelectorAll(":scope > .module-card")].map(x=>x.id);
+            const si=order.indexOf(dragging),ti=order.indexOf(target.id);
+            if(si===ti)return;
+            order.splice(si,1);
+            let insert=order.indexOf(target.id)+(before?0:1);
+            order.splice(insert,0,dragging);
+            applyOrder(order);
+        });
+        card.addEventListener("pointerup",()=>{clearTimer();if(dragging){$(dragging)?.classList.remove("module-dragging");dragging=null;suppressClick=true;setTimeout(()=>suppressClick=false,80);}});
+        card.addEventListener("pointercancel",()=>{clearTimer();if(dragging){$(dragging)?.classList.remove("module-dragging");dragging=null;suppressClick=true;setTimeout(()=>suppressClick=false,80);}});
+        card.addEventListener("click",e=>{if(suppressClick){e.preventDefault();e.stopImmediatePropagation();suppressClick=false;}} ,true);
+    });
+}
+
 function applyTheme(theme){
     const allowed=["dark","light","midnight","silver","glass"];
     if(!allowed.includes(theme)) theme="dark";
@@ -1960,9 +2129,6 @@ function featureNav(){
     $("searchRepairingCard")?.addEventListener("click",()=>{show("repairSearchSection");renderRepairing();$("repairSearchInput")?.focus();audit("repairing_search",{section:"Kabir Repairing Data",description:"Repairing search opened"})});
     $("repairSearchInput")?.addEventListener("input",renderRepairing);
     $("repairForm")?.addEventListener("submit",saveRepair);
-    $("exportCustomersButton")?.addEventListener("click",exportCustomers);
-    $("exportRepairingButton")?.addEventListener("click",exportRepairing);
-    $("downloadCustomerPdf")?.addEventListener("click",downloadCustomerPdf);
     $("deleteCustomerButton")?.addEventListener("click",deleteCustomer);
     $("editCustomerButton")?.addEventListener("click",editCustomer);
     $("closeDetailButton")?.addEventListener("click",closeCustomerDetail);
@@ -2003,6 +2169,8 @@ async function init(){
      */
     themeSystem();
     featureNav();
+    setupHomePdf();
+    setupHomeModuleReorder();
     setupHomeDateFilter();
     adminAnalytics();
     if($('appScreen')?.classList.contains('admin')) audit('page_open',{section:'Admin Panel',description:'Admin Panel opened'});
