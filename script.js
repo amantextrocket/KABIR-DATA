@@ -21,6 +21,8 @@ const PIN_KEY="kabir_mobile_pin";
 const DEFAULT_PIN="0000";
 const COL="customers";
 const REPAIR_COL="repairing";
+const SECOND_COL="secondHand";
+const ACCESSORY_COL="accessories";
 const AUDIT_COL="auditLogs";
 const SETTINGS_COL="settings";
 const SETTINGS_DOC="security";
@@ -29,6 +31,8 @@ const REMOTE_DEVICES_URL="https://cdn.jsdelivr.net/gh/bsthen/device-models/devic
 let user=null;
 let customers=[];
 let repairing=[];
+let secondHand=[];
+let accessories=[];
 let auditLogs=[];
 let auditListenerStarted=false;
 let scanStream=null;
@@ -383,7 +387,9 @@ function auditLabel(action){
         pin_change:"PIN Changed",
         login_success:"Login Success",
         login_failed:"Login Failed",
-        page_open:"Website Opened"
+        page_open:"Website Opened",
+        second_hand_add:"Second Hand Phone Added",
+        accessory_add:"Accessory Added"
     };
     return labels[action]||String(action||"Work").replaceAll("_"," ");
 }
@@ -447,7 +453,7 @@ function renderWorkHistory(){
     const q=val("workSearchInput").toLowerCase();
     const rows=auditLogs.filter(x=>!q||[x.label,x.action,x.userName,x.userUid,x.section,x.customerCode,x.customerName,x.description,auditTime(x)].join(" ").toLowerCase().includes(q));
     if(!rows.length){box.innerHTML='<div class="empty">अभी कोई work history उपलब्ध नहीं है.</div>';return;}
-    const iconMap={customer_add:"👤",customer_edit:"✏️",customer_delete:"🗑️",customer_bill_update:"🧾",repairing_add:"🛠️",customer_search:"🔎",repairing_search:"🔎",customer_export:"📥",repairing_export:"📥",customer_pdf:"📄",pin_change:"🔐",login_success:"🔓",login_failed:"⚠️",page_open:"🏠"};
+    const iconMap={customer_add:"👤",customer_edit:"✏️",customer_delete:"🗑️",customer_bill_update:"🧾",repairing_add:"🛠️",customer_search:"🔎",repairing_search:"🔎",customer_export:"📥",repairing_export:"📥",customer_pdf:"📄",pin_change:"🔐",login_success:"🟢",login_failed:"🔴",page_open:"🏠",second_hand_add:"📱",accessory_add:"🎧"};
     box.innerHTML=rows.slice(0,300).map((x,i)=>`<article class="result work-log">
       <div class="work-log-head"><div class="work-log-icon">${iconMap[x.action]||"⚡"}</div><div class="work-log-title"><b>${esc(x.label||auditLabel(x.action))}</b><small>${esc(x.section||"Kabir Mobile Data")} • ${esc(x.userName||x.userUid||"Kabir User")}</small></div><time class="work-log-time">${esc(auditTime(x))}</time></div>
       <div class="work-log-desc">${esc(x.description||auditLabel(x.action))}</div>
@@ -809,6 +815,25 @@ function nav(){
         renderRepairing();
         $("repairSearchInput")?.focus();
     });
+
+    const toggleModule=id=>{const el=$(id);if(el)el.classList.toggle("hidden");};
+    $("financeModule")?.addEventListener("click",()=>toggleModule("financeBox"));
+    $("repairingModule")?.addEventListener("click",()=>toggleModule("repairingBox"));
+    $("secondHandModule")?.addEventListener("click",()=>toggleModule("secondHandBox"));
+    $("accessoriesModule")?.addEventListener("click",()=>toggleModule("accessoriesBox"));
+    document.querySelectorAll("[data-module-close]").forEach(b=>b.addEventListener("click",e=>{e.stopPropagation();$(b.dataset.moduleClose)?.classList.add("hidden");}));
+    $("secondCustomerListCard")?.addEventListener("click",()=>{show("secondListSection");renderSecondHand();});
+    $("secondStockCard")?.addEventListener("click",()=>{show("secondListSection");renderSecondHand();});
+    $("secondSearchCard")?.addEventListener("click",()=>{show("secondListSection");renderSecondHand();$("secondSearchInput")?.focus();});
+    $("secondAddCard")?.addEventListener("click",()=>show("secondAddSection"));
+    $("accessoryListCard")?.addEventListener("click",()=>{show("accessoryListSection");renderAccessories();});
+    $("accessoryStockCard")?.addEventListener("click",()=>{show("accessoryListSection");renderAccessories();});
+    $("accessorySearchCard")?.addEventListener("click",()=>{show("accessoryListSection");renderAccessories();$("accessorySearchInput")?.focus();});
+    $("accessoryAddCard")?.addEventListener("click",()=>show("accessoryAddSection"));
+    $("secondSearchInput")?.addEventListener("input",renderSecondHand);
+    $("accessorySearchInput")?.addEventListener("input",renderAccessories);
+    $("secondHandForm")?.addEventListener("submit",saveSecondHand);
+    $("accessoryForm")?.addEventListener("submit",saveAccessory);
 
     document
         .querySelectorAll("[data-close]")
@@ -1774,6 +1799,16 @@ function changePin(){
 
 
 let repairListenerStarted=false;
+
+function subscribeInventory(){
+    if(isAdminPage)return;
+    onSnapshot(collection(db,SECOND_COL),snap=>{ secondHand=snap.docs.map(d=>({id:d.id,...d.data()})); if($("secondStockCount"))$("secondStockCount").textContent=String(secondHand.length); renderSecondHand(); },e=>console.warn("Second hand load:",e));
+    onSnapshot(collection(db,ACCESSORY_COL),snap=>{ accessories=snap.docs.map(d=>({id:d.id,...d.data()})); if($("accessoryStockCount"))$("accessoryStockCount").textContent=String(accessories.reduce((n,x)=>n+Number(x.quantity||0),0)); renderAccessories(); },e=>console.warn("Accessories load:",e));
+}
+function renderSecondHand(){ const box=$("secondResults"); if(!box)return; const q=val("secondSearchInput").toLowerCase(); const rows=secondHand.filter(x=>!q||[x.customerName,x.phone,x.device,x.imei,x.condition].join(" ").toLowerCase().includes(q)); box.innerHTML=rows.length?rows.map(x=>`<article class="result"><div class="result-name">${esc(x.device||"Second Hand Phone")}</div><div class="result-meta">${esc(x.customerName||"")} • ${esc(x.phone||"")}</div><div class="result-grid">${item("IMEI",x.imei||"")}${item("Condition",x.condition||"")}${item("Purchase Price",`₹${Number(x.price||0).toLocaleString("en-IN")}`)}${item("Sale Price",`₹${Number(x.salePrice||0).toLocaleString("en-IN")}`)}</div></article>`).join(""):"<div class=\"empty\">No second-hand records found.</div>"; }
+function renderAccessories(){ const box=$("accessoryResults"); if(!box)return; const q=val("accessorySearchInput").toLowerCase(); const rows=accessories.filter(x=>!q||[x.name,x.category].join(" ").toLowerCase().includes(q)); box.innerHTML=rows.length?rows.map(x=>`<article class="result"><div class="result-name">${esc(x.name||"Accessory")}</div><div class="result-meta">${esc(x.category||"")}</div><div class="result-grid">${item("Quantity",x.quantity||0)}${item("Purchase Price",`₹${Number(x.price||0).toLocaleString("en-IN")}`)}${item("Sale Price",`₹${Number(x.salePrice||0).toLocaleString("en-IN")}`)}</div></article>`).join(""):"<div class=\"empty\">No accessories found.</div>"; }
+async function saveSecondHand(e){ e.preventDefault(); const data={customerName:val("secondCustomerName"),phone:val("secondPhone").replace(/\D/g,""),device:val("secondDevice"),imei:val("secondImei"),condition:val("secondCondition"),price:Number(val("secondPrice")||0),salePrice:Number(val("secondSalePrice")||0),createdAt:serverTimestamp(),createdBy:user?.uid||null}; if(!data.customerName||!/^\d{10}$/.test(data.phone)||!data.device){msg("secondMessage","Customer name, valid 10 digit phone और phone model भरें.");return;} try{await addDoc(collection(db,SECOND_COL),data);await audit("second_hand_add",{section:"Second Hand",customerName:data.customerName,description:`Second-hand phone added: ${data.device}`,extra:{phone:data.phone,imei:data.imei}});e.target.reset();msg("secondMessage","Successfully added.",true);showSuccessToast("Second Hand Saved","Phone stock में add हो गया.");}catch(err){console.error(err);msg("secondMessage",err?.message||"Save failed.");}}
+async function saveAccessory(e){ e.preventDefault(); const data={name:val("accessoryName"),category:val("accessoryCategory"),quantity:Number(val("accessoryQty")||0),price:Number(val("accessoryPrice")||0),salePrice:Number(val("accessorySalePrice")||0),createdAt:serverTimestamp(),createdBy:user?.uid||null}; if(!data.name||!data.category||data.quantity<1){msg("accessoryMessage","Name, category और quantity भरें.");return;} try{await addDoc(collection(db,ACCESSORY_COL),data);await audit("accessory_add",{section:"Accessories",description:`Accessory added: ${data.name}`,extra:{category:data.category,quantity:data.quantity}});e.target.reset();msg("accessoryMessage","Successfully added.",true);showSuccessToast("Accessory Saved","Accessory stock में add हो गया.");}catch(err){console.error(err);msg("accessoryMessage",err?.message||"Save failed.");}}
 function subscribeRepairing(){
     if(repairListenerStarted)return;
     repairListenerStarted=true;
@@ -1975,6 +2010,7 @@ async function init(){
     authReady.then(()=>{
         subscribe();
         subscribeRepairing();
+    subscribeInventory();
     });
 
     $("customerForm")
