@@ -15,6 +15,21 @@ const firebaseConfig={
 const app=initializeApp(firebaseConfig);
 
 const auth=getAuth(app);
+
+window.kabirGetSharedPin = async function(){
+    try{
+        const ref=doc(db,"settings","app");
+        const snap=await getDoc(ref);
+        if(snap.exists() && snap.data().pin){
+            const p=String(snap.data().pin);
+            localStorage.setItem("kabirSharedPin",p);
+            return p;
+        }
+    }catch(e){
+        console.warn("Shared PIN read failed:",e);
+    }
+    return localStorage.getItem("kabirSharedPin") || "0000";
+};
 const db=getFirestore(app);
 
 const PIN_KEY="kabir_mobile_pin";
@@ -394,8 +409,11 @@ function accessSessionIsValid(){
 }
 
 async function getAccessUserById(id){
-    const snap=await getDoc(doc(db,ACCESS_USERS_COL,id));
-    return snap.exists()?{id:snap.id,...snap.data()}:null;
+    const cleanId=normalizeKabirId(id);
+    const snap=await getDoc(doc(db,ACCESS_USERS_COL,cleanId));
+    if(!snap.exists())return null;
+    const data=snap.data()||{};
+    return {id:snap.id,...data};
 }
 
 async function audit(action,details={}){
@@ -549,6 +567,7 @@ function setupKabirLogin(){
         accessMessage("Login हो रहा है…",true);
 
         try{
+            if(!db)throw Error("Firebase अभी तैयार नहीं है. एक सेकंड बाद फिर कोशिश करें.");
             const rec=await getAccessUserById(id);
             if(!rec || rec.enabled===false)throw Error("Kabir ID या Password गलत है.");
             if(String(rec.password)!==password)throw Error("Kabir ID या Password गलत है.");
@@ -1689,7 +1708,10 @@ async function adminSaveKabirUser(e){
     if(!/^KABIR[A-Z0-9_-]{2,30}$/.test(id))return msg("kabirUserMessage","Kabir ID KABIR से शुरू होना चाहिए.");
     try{
         await setDoc(doc(db,ACCESS_USERS_COL,id),{
-            name,password,enabled:true,
+            id,
+            name,
+            password,
+            enabled:true,
             status:"offline",
             activeSessionId:"",
             updatedAt:serverTimestamp()
@@ -1709,15 +1731,23 @@ async function renderKabirUsers(){
     try{
         const snap=await getDocs(collection(db,ACCESS_USERS_COL));
         const rows=snap.docs.map(d=>({id:d.id,...d.data()}));
-        if(!rows.length){box.innerHTML='<div class="empty">अभी कोई Kabir ID नहीं बनी.</div>';return;}
+        if(!rows.length){
+            box.innerHTML='<div class="empty">अभी कोई Kabir ID नहीं बनी.</div>';
+            return;
+        }
         box.innerHTML=rows.map(r=>{
-            const online=r.status==="online" && r.activeSessionId;
+            const online=r.status==="online" && !!r.activeSessionId;
             return `<article class="result">
                 <div class="result-top">
-                    <div><div class="result-name">${esc(r.id)}</div><div class="result-meta">${esc(r.name||"")}</div></div>
+                    <div>
+                      <div class="result-name">${esc(r.id||"")}</div>
+                      <div class="result-meta">${esc(r.name||"Name not set")}</div>
+                    </div>
                     <strong>${online?"🟢 ONLINE":"⚪ OFFLINE"}</strong>
                 </div>
                 <div class="result-grid">
+                    ${item("Kabir ID",r.id||"")}
+                    ${item("Password",r.password||"")}
                     ${item("Status",online?"Online":"Offline")}
                     ${item("Last Login",accessDateTime(r.lastLoginAt))}
                     ${item("Last Logout",accessDateTime(r.lastLogoutAt))}
@@ -1727,7 +1757,7 @@ async function renderKabirUsers(){
         }).join("");
     }catch(e){
         console.error(e);
-        box.innerHTML='<div class="empty">User status load नहीं हुआ. Firebase Rules check करें.</div>';
+        box.innerHTML='<div class="empty">User list load नहीं हुआ. Firebase Rules check करें.</div>';
     }
 }
 
