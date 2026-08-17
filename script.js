@@ -1,6 +1,6 @@
 import {initializeApp} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
 import {getAuth,signInAnonymously,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js";
-import {getFirestore,collection,addDoc,updateDoc,deleteDoc,setDoc,getDoc,doc,onSnapshot,query,orderBy,serverTimestamp,getDocs} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
+import {getFirestore,collection,addDoc,updateDoc,deleteDoc,setDoc,getDoc,doc,onSnapshot,query,orderBy,serverTimestamp} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
 
 const firebaseConfig={
     apiKey:"AIzaSyDWD2S7Zvcy-T_Ddr8Ytbqwv9tNEBNIJg4",
@@ -15,21 +15,6 @@ const firebaseConfig={
 const app=initializeApp(firebaseConfig);
 
 const auth=getAuth(app);
-
-window.kabirGetSharedPin = async function(){
-    try{
-        const ref=doc(db,"settings","security");
-        const snap=await getDoc(ref);
-        if(snap.exists() && snap.data().pin){
-            const p=String(snap.data().pin);
-            localStorage.setItem("kabirSharedPin",p);
-            return p;
-        }
-    }catch(e){
-        console.warn("Shared PIN read failed:",e);
-    }
-    return localStorage.getItem("kabirSharedPin") || "0000";
-};
 const db=getFirestore(app);
 
 const PIN_KEY="kabir_mobile_pin";
@@ -39,21 +24,6 @@ const REPAIR_COL="repairing";
 const SETTINGS_COL="settings";
 const SETTINGS_DOC="security";
 const REMOTE_DEVICES_URL="https://cdn.jsdelivr.net/gh/bsthen/device-models/devices.json";
-const ACCESS_USERS_COL="accessUsers";
-const AUDIT_COL="auditLogs";
-const ACCESS_SESSION_KEY="kabir_access_session";
-let kabirAccessUser=null;
-let kabirAccessSessionId=null;
-let accessHeartbeatTimer=null;
-let accessSessionUnsubscribe=null;
-let authReadyResolve;
-let authReadyResolved=false;
-const authReady=new Promise(resolve=>{authReadyResolve=resolve;});
-function resolveAuthReady(){
-    if(authReadyResolved)return;
-    authReadyResolved=true;
-    authReadyResolve?.();
-}
 
 let user=null;
 let customers=[];
@@ -319,46 +289,74 @@ storage:["128 GB","256 GB"]
 
 let sharedPin=DEFAULT_PIN;
 let pinLoaded=false;
+let pinLoadPromise=null;
 
 async function loadSharedPin(){
-    try{
-        const ref=doc(db,SETTINGS_COL,SETTINGS_DOC);
-        const snap=await getDoc(ref);
-
-        if(snap.exists()){
-            const p=String(snap.data()?.pin||"");
-            if(/^\d{4}$/.test(p)){
-                sharedPin=p;
-                localStorage.setItem(PIN_KEY,p);
-                pinLoaded=true;
-                return p;
+    if(pinLoadPromise)return pinLoadPromise;
+    pinLoadPromise=(async()=>{
+        const securityRef=doc(db,SETTINGS_COL,SETTINGS_DOC);
+        try{
+            // Primary location used by both Main Website and Admin Panel.
+            const securitySnap=await getDoc(securityRef);
+            if(securitySnap.exists()){
+                const p=String(securitySnap.data()?.pin||"");
+                if(/^\d{4}$/.test(p)){
+                    sharedPin=p;
+                    localStorage.setItem(PIN_KEY,p);
+                    pinLoaded=true;
+                    return p;
+                }
             }
+
+            // Backward compatibility with the earlier settings/app document.
+            const legacyRef=doc(db,SETTINGS_COL,"app");
+            const legacySnap=await getDoc(legacyRef);
+            if(legacySnap.exists()){
+                const p=String(legacySnap.data()?.pin||"");
+                if(/^\d{4}$/.test(p)){
+                    sharedPin=p;
+                    localStorage.setItem(PIN_KEY,p);
+                    await setDoc(securityRef,{pin:p,updatedAt:serverTimestamp()},{merge:true});
+                    pinLoaded=true;
+                    return p;
+                }
+            }
+
+            const cached=localStorage.getItem(PIN_KEY);
+            if(/^\d{4}$/.test(cached||"")){
+                sharedPin=cached;
+                await setDoc(securityRef,{pin:sharedPin,updatedAt:serverTimestamp()},{merge:true});
+            }else{
+                sharedPin=DEFAULT_PIN;
+                await setDoc(securityRef,{pin:sharedPin,updatedAt:serverTimestamp()},{merge:true});
+                localStorage.setItem(PIN_KEY,sharedPin);
+            }
+            return sharedPin;
+        }catch(e){
+            console.error("Shared PIN load failed:",e);
+            const cached=localStorage.getItem(PIN_KEY);
+            if(/^\d{4}$/.test(cached||"")){
+                sharedPin=cached;
+                return sharedPin;
+            }
+            throw Error("PIN load नहीं हुआ. Firebase connection check करें.");
+        }finally{
+            pinLoaded=true;
         }
-
-        const cached=localStorage.getItem(PIN_KEY);
-        sharedPin=/^\d{4}$/.test(cached||"")?cached:DEFAULT_PIN;
-        await setDoc(ref,{pin:sharedPin,updatedAt:serverTimestamp()},{merge:true});
-    }catch(e){
-        console.warn("Shared PIN read failed:",e);
-        const cached=localStorage.getItem(PIN_KEY);
-        sharedPin=/^\d{4}$/.test(cached||"")?cached:DEFAULT_PIN;
-    }
-    pinLoaded=true;
-    return sharedPin;
+    })();
+    return pinLoadPromise;
 }
 
-function pin(){
-    return sharedPin||DEFAULT_PIN;
-}
+function pin(){return sharedPin||DEFAULT_PIN;}
 
 async function changeSharedPin(newPin){
-    if(!/^\d{4}$/.test(newPin)) throw Error("PIN must be exactly 4 digits.");
-    await setDoc(doc(db,SETTINGS_COL,SETTINGS_DOC),{
-        pin:newPin,
-        updatedAt:serverTimestamp()
-    },{merge:true});
+    if(!/^\d{4}$/.test(newPin))throw Error("PIN must be exactly 4 digits.");
+    await setDoc(doc(db,SETTINGS_COL,SETTINGS_DOC),{pin:newPin,updatedAt:serverTimestamp()},{merge:true});
+    // Keep the legacy document synchronized so older deployments cannot disagree.
+    await setDoc(doc(db,SETTINGS_COL,"app"),{pin:newPin,updatedAt:serverTimestamp()},{merge:true});
     sharedPin=newPin;
     localStorage.setItem(PIN_KEY,newPin);
+    pinLoaded=true;
 }
 
 function msg(id,t,ok=false){
@@ -384,265 +382,121 @@ function showSuccessToast(title="Successfully Saved",text="Data saved successful
 }
 
 /* =========================================================
-   KABIR ID / PASSWORD ACCESS
-   One active session per Kabir ID.
+   PIN SYSTEM
 ========================================================= */
 
-function currentPageIsAdmin(){
-    return /admin\.html?$/i.test(location.pathname) || document.querySelector(".admin");
-}
-
-function accessNow(){
-    return new Date();
-}
-
-function accessDateTime(v){
-    if(!v)return "—";
-    try{
-        const d=v?.toDate?.() || new Date(v);
-        return isNaN(d.getTime()) ? "—" : new Intl.DateTimeFormat("en-IN",{dateStyle:"medium",timeStyle:"medium"}).format(d);
-    }catch(_){return "—";}
-}
-
-function normalizeKabirId(v){
-    return String(v||"").trim().toUpperCase().replace(/\s+/g,"");
-}
-
-function accessMessage(t,ok=false){
-    msg("kabirLoginMessage",t,ok);
-}
-
-function accessSessionIsValid(){
-    return !!sessionStorage.getItem(ACCESS_SESSION_KEY);
-}
-
-async function getAccessUserById(id){
-    const cleanId=normalizeKabirId(id);
-    const snap=await getDoc(doc(db,ACCESS_USERS_COL,cleanId));
-    if(!snap.exists())return null;
-    const data=snap.data()||{};
-    return {id:snap.id,...data};
-}
-
-async function audit(action,details={}){
-    try{
-        if(!kabirAccessUser && !user)return;
-        await addDoc(collection(db,AUDIT_COL),{
-            action,
-            userId:kabirAccessUser?.id||null,
-            userName:kabirAccessUser?.name||null,
-            authUid:user?.uid||null,
-            details,
-            createdAt:serverTimestamp()
+function dots(v){
+    document
+        .querySelectorAll("#pinDots i")
+        .forEach((e,i)=>{
+            e.classList.toggle("filled",i<v.length);
         });
-    }catch(e){console.warn("Audit log failed:",e)}
 }
 
-async function claimAccessSession(record){
-    const sessionId=crypto.randomUUID ? crypto.randomUUID() : ("S"+Date.now()+Math.random().toString(36).slice(2));
-    const now=new Date();
-    const ref=doc(db,ACCESS_USERS_COL,record.id);
+function unlock(){
+    sessionStorage.setItem("kabir_unlocked","1");
 
-    const latest=await getDoc(ref);
-    const data=latest.exists()?latest.data():record;
+    $("pinScreen")?.classList.add("hidden");
+    $("appScreen")?.classList.remove("hidden");
 
-    if(data.activeSessionId && data.activeSessionId!=="" && data.activeSessionId!==sessionId){
-        // A session is considered active until its explicit logout or until
-        // the heartbeat expires for more than 90 seconds.
-        const hb=data.lastHeartbeat?.toDate?.()?.getTime?.()||0;
-        if(hb && (Date.now()-hb)<90000){
-            throw Error("यह Kabir ID अभी किसी दूसरे device/browser में login है.");
-        }
+    $("pinInput")?.blur();
+}
+
+function lock(){
+    sessionStorage.removeItem("kabir_unlocked");
+
+    $("appScreen")?.classList.add("hidden");
+    $("pinScreen")?.classList.remove("hidden");
+
+    let e=$("pinInput");
+
+    if(e){
+        e.value="";
+        dots("");
+
+        setTimeout(()=>{
+            e.focus();
+        },150);
+    }
+}
+
+function pinError(){
+    const card=document.querySelector(".pin-card");
+    const input=$("pinInput");
+    card?.classList.remove("pin-shake");
+    void card?.offsetWidth;
+    card?.classList.add("pin-shake");
+
+    if(navigator.vibrate){
+        try{navigator.vibrate([90,35,90,35,140]);}catch(_){}
     }
 
-    await updateDoc(ref,{
-        activeSessionId:sessionId,
-        status:"online",
-        lastLoginAt:serverTimestamp(),
-        lastHeartbeat:serverTimestamp(),
-        lastLoginDevice:navigator.userAgent.slice(0,180)
-    });
-
-    kabirAccessSessionId=sessionId;
-    kabirAccessUser={...data,id:record.id};
-    sessionStorage.setItem(ACCESS_SESSION_KEY,JSON.stringify({
-        id:record.id,
-        sessionId
-    }));
-
-    await audit("LOGIN",{loginAt:new Date().toISOString()});
-    startAccessHeartbeat();
-    updateAccessIdentityUI();
+    input?.select();
+    setTimeout(()=>card?.classList.remove("pin-shake"),500);
 }
 
-function startAccessHeartbeat(){
-    clearInterval(accessHeartbeatTimer);
-    accessHeartbeatTimer=setInterval(async()=>{
-        if(!kabirAccessUser || !kabirAccessSessionId)return;
+function setupPin(){
+    const e=$("pinInput");
+    if(!e)return;
+
+    const attempt=async()=>{
+        e.value=e.value.replace(/\D/g,"").slice(0,4);
+        dots(e.value);
+        if(e.value.length!==4)return;
+        const entered=e.value;
         try{
-            const ref=doc(db,ACCESS_USERS_COL,kabirAccessUser.id);
-            const snap=await getDoc(ref);
-            if(!snap.exists())return forceAccessLogout("User access removed.");
-            const data=snap.data();
-            if(data.activeSessionId!==kabirAccessSessionId){
-                forceAccessLogout("यह Kabir ID किसी दूसरे login में इस्तेमाल हो रही है.");
-                return;
+            msg("pinMessage","PIN verify हो रहा है…",true);
+            await loadSharedPin();
+            if(entered===pin()){
+                unlock();
+                msg("pinMessage","");
+            }else{
+                msg("pinMessage","Incorrect PIN");
+                pinError();
+                setTimeout(()=>{e.value="";dots("");msg("pinMessage","");e.focus()},520);
             }
-            await updateDoc(ref,{status:"online",lastHeartbeat:serverTimestamp()});
-        }catch(e){console.warn("Heartbeat failed:",e)}
-    },30000);
-}
-
-async function releaseAccessSession(log=true){
-    if(!kabirAccessUser)return;
-    try{
-        await updateDoc(doc(db,ACCESS_USERS_COL,kabirAccessUser.id),{
-            status:"offline",
-            activeSessionId:"",
-            lastLogoutAt:serverTimestamp(),
-            lastHeartbeat:serverTimestamp()
-        });
-        if(log)await audit("LOGOUT",{logoutAt:new Date().toISOString()});
-    }catch(e){console.warn("Logout update failed:",e)}
-    clearInterval(accessHeartbeatTimer);
-    kabirAccessUser=null;
-    kabirAccessSessionId=null;
-    sessionStorage.removeItem(ACCESS_SESSION_KEY);
-}
-
-function forceAccessLogout(message){
-    clearInterval(accessHeartbeatTimer);
-    kabirAccessUser=null;
-    kabirAccessSessionId=null;
-    sessionStorage.removeItem(ACCESS_SESSION_KEY);
-    $("appScreen")?.classList.add("hidden");
-    $("kabirLoginScreen")?.classList.remove("hidden");
-    accessMessage(message||"Session ended.");
-}
-
-async function logoutAccess(){
-    await releaseAccessSession(true);
-    $("appScreen")?.classList.add("hidden");
-    $("kabirLoginScreen")?.classList.remove("hidden");
-    $("kabirLoginId")?.focus();
-}
-
-function updateAccessIdentityUI(){
-    if($("kabirCurrentUser")){
-        $("kabirCurrentUser").textContent=
-            kabirAccessUser ? `${kabirAccessUser.id} • ${kabirAccessUser.name||""}` : "";
-    }
-}
-
-async function restoreAccessSession(){
-    const raw=sessionStorage.getItem(ACCESS_SESSION_KEY);
-    if(!raw)return false;
-    try{
-        const s=JSON.parse(raw);
-        const rec=await getAccessUserById(s.id);
-        if(!rec || rec.activeSessionId!==s.sessionId || rec.status!=="online"){
-            sessionStorage.removeItem(ACCESS_SESSION_KEY);
-            return false;
+        }catch(err){
+            console.error(err);
+            msg("pinMessage",err?.message||"PIN load नहीं हुआ. Firebase connection check करें.");
+            pinError();
+            setTimeout(()=>{e.value="";dots("");e.focus()},650);
         }
-        kabirAccessUser=rec;
-        kabirAccessSessionId=s.sessionId;
-        updateAccessIdentityUI();
-        startAccessHeartbeat();
-        $("kabirLoginScreen")?.classList.add("hidden");
-        $("appScreen")?.classList.remove("hidden");
-        return true;
-    }catch(e){
-        console.warn(e);
-        sessionStorage.removeItem(ACCESS_SESSION_KEY);
-        return false;
-    }
-}
+    };
 
-function setupKabirLogin(){
-    const button=$("kabirLoginButton");
-    if(!button)return;
+    e.addEventListener("input",attempt);
+    $("lockButton")?.addEventListener("click",lock);
 
-    button.addEventListener("click",async()=>{
-        const id=normalizeKabirId(val("kabirLoginId"));
-        const password=val("kabirLoginPassword");
-
-        if(!id || !password){
-            accessMessage("Kabir ID और Password दोनों भरें.");
-            return;
-        }
-
-        button.disabled=true;
-        accessMessage("Login हो रहा है…",true);
-
-        try{
-            if(!db)throw Error("Firebase अभी तैयार नहीं है. एक सेकंड बाद फिर कोशिश करें.");
-            await authReady;
-            if(!user)throw Error("Firebase login तैयार नहीं हुआ. फिर से कोशिश करें.");
-            const rec=await getAccessUserById(id);
-            if(!rec || rec.enabled===false)throw Error("Kabir ID या Password गलत है.");
-            if(String(rec.password)!==password)throw Error("Kabir ID या Password गलत है.");
-
-            await claimAccessSession(rec);
-            accessMessage("");
-            $("kabirLoginScreen")?.classList.add("hidden");
-            $("appScreen")?.classList.remove("hidden");
-        }catch(e){
-            console.error(e);
-            accessMessage(e?.message||"Login नहीं हुआ.");
-        }finally{
-            button.disabled=false;
-        }
-    });
-
-    $("kabirLoginPassword")?.addEventListener("keydown",e=>{
-        if(e.key==="Enter")button.click();
-    });
-    $("kabirLoginId")?.addEventListener("keydown",e=>{
-        if(e.key==="Enter")$("kabirLoginPassword")?.focus();
-    });
-    $("kabirLogoutButton")?.addEventListener("click",logoutAccess);
-}
-
-async function ensureAccessOnMain(){
-    if(currentPageIsAdmin())return;
-    $("appScreen")?.classList.add("hidden");
-    $("kabirLoginScreen")?.classList.remove("hidden");
-    if(!(await restoreAccessSession())){
-        $("kabirLoginId")?.focus();
-    }
+    if(sessionStorage.getItem("kabir_unlocked")==="1")unlock();
+    else setTimeout(()=>e.focus(),250);
 }
 
 /* =========================================================
    FIREBASE AUTH
 ========================================================= */
 
+let authReadyResolve;
+const authReady=new Promise(resolve=>{authReadyResolve=resolve});
+
 async function authInit(){
-
-    try{
-
-        await signInAnonymously(auth);
-
-    }catch(e){
-
-        console.error(e);
-
-        if($("adminFirebaseStatus"))
-            msg(
-                "adminFirebaseStatus",
-                "Firebase authentication error"
-            );
-    }
-
+    let resolved=false;
+    const finish=()=>{if(!resolved){resolved=true;authReadyResolve(user)}};
     onAuthStateChanged(auth,u=>{
         user=u;
         updateAdmin();
-        resolveAuthReady();
+        finish();
+    },e=>{
+        console.error("Auth state error:",e);
+        finish();
     });
-    // If anonymous authentication is disabled/fails, do not leave the app
-    // waiting forever on authReady.
-    if(!user) resolveAuthReady();
+    try{
+        await signInAnonymously(auth);
+    }catch(e){
+        console.error(e);
+        if($("adminFirebaseStatus"))msg("adminFirebaseStatus","Firebase authentication error: "+(e?.message||""));
+        finish();
+    }
+    return authReady;
 }
-
 
 /* =========================================================
    FIRESTORE CUSTOMER LISTENER
@@ -722,10 +576,9 @@ function updateAdmin(){
             );
 
     if($("adminFirebaseStatus"))
-        $("adminFirebaseStatus").textContent=
-            user
-            ?"Firebase connected"
-            :"Connecting to Firebase…";
+        $("adminFirebaseStatus").textContent=user?"Firebase connected":"Connecting to Firebase…";
+    if($("connectionStatus"))
+        $("connectionStatus").textContent=user?"Firebase connected ✓":"Firebase connecting…";
 }
 
 
@@ -791,23 +644,17 @@ function nav(){
         }
     );
 
-    $("repairTotalCustomersCard")?.addEventListener(
-        "click",
-        ()=>{
-            show("repairSearchSection");
-            renderRepairing();
-            $("repairSearchInput")?.focus();
-        }
-    );
+    $("repairTotalCustomersCard")?.addEventListener("click",()=>{
+        show("repairSearchSection");
+        renderRepairing();
+        $("repairSearchInput")?.focus();
+    });
 
-    $("repairTotalDevicesCard")?.addEventListener(
-        "click",
-        ()=>{
-            show("repairSearchSection");
-            renderRepairing();
-            $("repairSearchInput")?.focus();
-        }
-    );
+    $("repairTotalDevicesCard")?.addEventListener("click",()=>{
+        show("repairSearchSection");
+        renderRepairing();
+        $("repairSearchInput")?.focus();
+    });
 
     document
         .querySelectorAll("[data-close]")
@@ -902,9 +749,6 @@ function brands(){
         let s=$("storage");
 
         let cs=d?.models?.[m.value]||[];
-        if(!cs.length && m.value){
-            cs=["Black","White","Blue","Green","Other"];
-        }
 
         c.innerHTML=
             '<option value="">Select colour</option>';
@@ -1071,6 +915,17 @@ function amounts(){
 }
 
 
+function isWriteLocked(){
+    const now=new Date();
+    const minutes=now.getHours()*60+now.getMinutes();
+    return minutes<600;
+}
+function enforceWriteLock(messageId="formMessage"){
+    if(!isWriteLocked())return false;
+    msg(messageId,"12:00 AM से 10:00 AM तक Add/Edit/Delete बंद है. 10:00 AM के बाद फिर कोशिश करें.");
+    return true;
+}
+
 /* =========================================================
    SAVE CUSTOMER
    IMPORTANT:
@@ -1093,23 +948,10 @@ function formatDateTime(c){
     return d?new Intl.DateTimeFormat("en-IN",{dateStyle:"medium",timeStyle:"short"}).format(d):"Date pending";
 }
 
-/* Business rule: add/edit/delete is blocked from 12:00 AM to 10:00 AM. */
-function isBusinessBlocked(){
-    const h=new Date().getHours();
-    return h>=0 && h<10;
-}
-function businessBlockedMessage(){
-    return "12:00 AM से 10:00 AM तक Add, Edit और Delete बंद है. 10:00 AM के बाद फिर कोशिश करें.";
-}
-function ensureBusinessHours(messageId){
-    if(!isBusinessBlocked())return true;
-    msg(messageId,businessBlockedMessage());
-    return false;
-}
-
 async function save(e){
 
     e.preventDefault();
+    if(enforceWriteLock())return;
 
     if(!user){
 
@@ -1121,7 +963,6 @@ async function save(e){
         return;
     }
 
-    if(!ensureBusinessHours("formMessage"))return;
 
     /* Required fields */
 
@@ -1218,11 +1059,11 @@ async function save(e){
          * optional हैं और अभी save process को रोकेंगे नहीं.
          */
 
+        const editId=$("customerForm").dataset.editId;
+        const existing=editId?customers.find(c=>c.id===editId):null;
         let customerData={
 
-            customerCode:$("customerForm")?.dataset?.editId
-                ? (val("customerCode") || await uniqueCustomerCode())
-                : await uniqueCustomerCode(),
+            customerCode:existing?.customerCode || await uniqueCustomerCode(),
             customerName:
                 val("customerName"),
 
@@ -1291,12 +1132,9 @@ async function save(e){
             financerName:
                 val("financerName"),
 
-            bill:{
-                status:"NO",
-                dueDate:billDate()
-            },
+            bill:existing?.bill || {status:"NO",dueDate:billDate()},
 
-            billYes:false,
+            billYes:existing?.billYes===true,
 
             deviceCount:1,
 
@@ -1324,19 +1162,13 @@ async function save(e){
          * ONLY FIRESTORE SAVE
          */
 
-        const editId=$("customerForm").dataset.editId;
         if(editId){
-            const existing=customers.find(c=>c.id===editId);
-            customerData.customerCode=existing?.customerCode || customerData.customerCode;
-            customerData.bill=existing?.bill || customerData.bill;
-            customerData.billYes=existing?.billYes ?? customerData.billYes;
+            delete customerData.customerCode;
             delete customerData.createdAt;
             delete customerData.createdBy;
             await updateDoc(doc(db,COL,editId),customerData);
-            await audit("CUSTOMER_EDITED",{customerId:editId,customerName:customerData.customerName});
         }else{
             await addDoc(collection(db,COL),customerData);
-            await audit("CUSTOMER_ADDED",{customerCode:customerData.customerCode,customerName:customerData.customerName});
         }
 
 
@@ -1478,6 +1310,7 @@ function renderSearch(){
 
     box.querySelectorAll("[data-bill]").forEach(i=>{
         i.onchange=async()=>{
+            if(enforceWriteLock()){i.checked=!i.checked;return;}
             try{await updateDoc(doc(db,COL,i.dataset.bill),{billYes:i.checked,"bill.status":i.checked?"YES":"NO"})}
             catch(x){i.checked=!i.checked;console.error(x)}
         };
@@ -1512,18 +1345,15 @@ function showCustomerDetail(c){
 }
 function closeCustomerDetail(){activeCustomerId=null;$("customerDetailModal")?.classList.add("hidden")}
 async function deleteCustomer(){
+    if(enforceWriteLock("pinMessage"))return;
     const c=customers.find(x=>x.id===activeCustomerId);if(!c)return;
-    if(isBusinessBlocked()){
-        alert(businessBlockedMessage());
-        return;
-    }
     if(!confirm(`Delete ${c.customerName||"this customer"} (${c.customerCode||""}) permanently?`))return;
-    try{await deleteDoc(doc(db,COL,c.id));await audit("CUSTOMER_DELETED",{customerId:c.id,customerName:c.customerName,customerCode:c.customerCode});closeCustomerDetail()}
+    try{await deleteDoc(doc(db,COL,c.id));closeCustomerDetail()}
     catch(e){console.error(e);alert("Customer delete नहीं हुआ. Firebase Rules check करें.")}
 }
 function editCustomer(){
+    if(enforceWriteLock("formMessage"))return;
     const c=customers.find(x=>x.id===activeCustomerId);if(!c)return;
-    if(!ensureBusinessHours("formMessage"))return;
     closeCustomerDetail();show("addSection");
     const map={customerName:"customerName",address:"address",pincode:"pincode",city:"city",state:"state",phone:"phone",
       brand:"brand",model:"model",imei:"imei",colour:"colour",storage:"storage",financeCompany:"financeCompany",
@@ -1728,351 +1558,31 @@ function scanner(){
 }
 
 
-
-/* =========================================================
-   ADMIN: KABIR USERS / LIVE STATUS / ANALYSIS / TODAY WORK
-========================================================= */
-
-function adminToday(){
-    return new Intl.DateTimeFormat("en-CA").format(new Date());
-}
-
-function formatAuditDate(v){
-    return accessDateTime(v);
-}
-
-function showAdminSuccessPopup(title,text){
-    const popup=$("adminSuccessPopup");
-    if(!popup)return;
-    $("adminSuccessTitle").textContent=title||"Successfully Added";
-    $("adminSuccessText").textContent=text||"Saved successfully.";
-    popup.classList.remove("hidden");
-    requestAnimationFrame(()=>popup.classList.add("show"));
-    clearTimeout(window.__adminSuccessTimer);
-    window.__adminSuccessTimer=setTimeout(()=>{
-        popup.classList.remove("show");
-        setTimeout(()=>popup.classList.add("hidden"),250);
-    },2200);
-}
-
-async function adminSaveKabirUser(e){
-    e.preventDefault();
-
-    const name=val("kabirUserName");
-    const id=normalizeKabirId(val("kabirUserId"));
-    const password=val("kabirUserPassword");
-
-    if(!name||!id||!password){
-        msg("kabirUserMessage","Name, Kabir ID और Password भरें.");
-        return;
-    }
-
-    if(!/^KABIR[A-Z0-9_-]{2,30}$/.test(id)){
-        msg("kabirUserMessage","Kabir ID KABIR से शुरू होना चाहिए.");
-        return;
-    }
-
-    const button=e.submitter||$("kabirUserForm")?.querySelector("button[type=submit]");
-    if(button)button.disabled=true;
-
-    try{
-        await authReady;
-        if(!user)throw Error("Firebase authentication तैयार नहीं है.");
-
-        const existing=await getDoc(doc(db,ACCESS_USERS_COL,id));
-        const updateData={
-            id:id,
-            name:name,
-            password:password,
-            enabled:true,
-            updatedAt:serverTimestamp()
-        };
-        if(!existing.exists()){
-            Object.assign(updateData,{
-                status:"offline",
-                activeSessionId:"",
-                lastLoginAt:null,
-                lastLogoutAt:null,
-                lastHeartbeat:null
-            });
-        }
-        await setDoc(doc(db,ACCESS_USERS_COL,id),updateData,{merge:true});
-
-        await renderKabirUsers();
-
-        $("kabirUserForm")?.reset();
-        msg("kabirUserMessage","Successfully added ✓",true);
-        showAdminSuccessPopup("Successfully Added","Kabir ID और Password successfully saved.");
-
-    }catch(e){
-        console.error("Kabir user create/update error:",e);
-        msg("kabirUserMessage",
-            e?.code==="permission-denied"
-            ?"Firebase permission denied — Firestore Rules check करें."
-            :"User save नहीं हुआ. फिर से कोशिश करें."
-        );
-    }finally{
-        if(button)button.disabled=false;
-    }
-}
-
-async function renderKabirUsers(){
-    const box=$("kabirUsersList");
-    if(!box)return;
-    try{
-        await authReady;
-        if(!user){
-            box.innerHTML='<div class="empty">Firebase authentication तैयार नहीं है.</div>';
-            return;
-        }
-        const snap=await getDocs(collection(db,ACCESS_USERS_COL));
-        const rows=snap.docs.map(d=>({id:d.id,...d.data()}));
-        if($("kabirUsersCount"))$("kabirUsersCount").textContent=String(rows.length);
-        if(!rows.length){
-            box.innerHTML='<div class="empty">अभी कोई Kabir ID नहीं बनी.</div>';
-            return;
-        }
-        box.innerHTML=rows.map(r=>{
-            const online=r.status==="online" && !!r.activeSessionId;
-            return `<article class="result">
-                <div class="result-top">
-                    <div>
-                      <div class="result-name">${esc(r.id||"")}</div>
-                      <div class="result-meta">${esc(r.name||"Name not set")}</div>
-                    </div>
-                    <strong>${online?"🟢 ONLINE":"⚪ OFFLINE"}</strong>
-                </div>
-                <div class="result-grid">
-                    ${item("Kabir ID",r.id||"")}
-                    ${item("Password",r.password||"")}
-                    ${item("Status",online?"Online":"Offline")}
-                    ${item("Last Login",accessDateTime(r.lastLoginAt))}
-                    ${item("Last Logout",accessDateTime(r.lastLogoutAt))}
-                    ${item("Last Heartbeat",accessDateTime(r.lastHeartbeat))}
-                </div>
-            </article>`;
-        }).join("");
-    }catch(e){
-        console.error(e);
-        box.innerHTML='<div class="empty">User list load नहीं हुआ. Firebase Rules check करें.</div>';
-    }
-}
-
-async function renderLiveUsers(){
-    const box=$("kabirLiveUsers");
-    if(!box)return;
-    try{
-        await authReady;
-        if(!user){
-            box.innerHTML='<div class="empty">Firebase authentication तैयार नहीं है.</div>';
-            return;
-        }
-        const snap=await getDocs(collection(db,ACCESS_USERS_COL));
-        const rows=snap.docs.map(d=>({id:d.id,...d.data()}));
-        const online=rows.filter(r=>r.status==="online" && !!r.activeSessionId);
-        if(!online.length){
-            box.innerHTML='<div class="empty">अभी कोई Kabir user online नहीं है.</div>';
-            return;
-        }
-        box.innerHTML=online.map(r=>`<article class="result">
-            <div class="result-top">
-                <div>
-                    <div class="result-name">${esc(r.id||"")}</div>
-                    <div class="result-meta">${esc(r.name||"Name not set")}</div>
-                </div>
-                <strong>🟢 ONLINE</strong>
-            </div>
-            <div class="result-grid">
-                ${item("Last Login",accessDateTime(r.lastLoginAt))}
-                ${item("Last Heartbeat",accessDateTime(r.lastHeartbeat))}
-            </div>
-        </article>`).join("");
-    }catch(e){
-        console.error(e);
-        box.innerHTML='<div class="empty">Live user status load नहीं हुआ.</div>';
-    }
-}
-
-async function getAuditRows(){
-    await authReady;
-    if(!user)return [];
-    const snap=await getDocs(collection(db,AUDIT_COL));
-    return snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>{
-        const ta=a.createdAt?.toMillis?.()||0, tb=b.createdAt?.toMillis?.()||0;
-        return tb-ta;
-    });
-}
-
-function inDateRange(row,from,to){
-    const d=row.createdAt?.toDate?.();
-    if(!d)return false;
-    const ds=new Intl.DateTimeFormat("en-CA").format(d);
-    return (!from||ds>=from)&&(!to||ds<=to);
-}
-
-function actionLabel(a){
-    return ({
-        LOGIN:"Login",
-        LOGOUT:"Logout",
-        CUSTOMER_ADDED:"Customer Added",
-        CUSTOMER_EDITED:"Customer Edited",
-        CUSTOMER_DELETED:"Customer Deleted",
-        REPAIR_ADDED:"Repair Added"
-    })[a]||a||"Work";
-}
-
-async function renderTraffic(){
-    const box=$("trafficAnalysis");if(!box)return;
-    const date=val("analysisDate");
-    if(!date){box.innerHTML='<div class="empty">Select a date.</div>';return;}
-    try{
-        const rows=(await getAuditRows()).filter(r=>inDateRange(r,date,date));
-        const counts={};
-        rows.forEach(r=>counts[r.action]=(counts[r.action]||0)+1);
-        const users={};
-        rows.forEach(r=>{
-            const k=r.userId||"Unknown";
-            users[k]=(users[k]||0)+1;
-        });
-        box.innerHTML=`
-          <div class="mini-grid">
-            <div><span>Total Activities</span><strong>${rows.length}</strong></div>
-            <div><span>Active Members</span><strong>${Object.keys(users).length}</strong></div>
-          </div>
-          <div class="result-grid">
-            ${Object.entries(counts).map(([k,v])=>item(actionLabel(k),v)).join("")||'<div class="empty">No work recorded.</div>'}
-          </div>`;
-    }catch(e){console.error(e);box.innerHTML='<div class="empty">Analysis load नहीं हुआ.</div>'}
-}
-
-async function renderTodayWork(){
-    const box=$("todayWorkResults");if(!box)return;
-    const from=val("workFromDate")||adminToday();
-    const to=val("workToDate")||from;
-    try{
-        const rows=(await getAuditRows()).filter(r=>inDateRange(r,from,to));
-        if(!rows.length){box.innerHTML='<div class="empty">इस date range में कोई work नहीं मिला.</div>';return;}
-        box.innerHTML=rows.map(r=>`<article class="result">
-            <div class="result-top">
-                <div><div class="result-name">${esc(r.userId||"Unknown")}</div>
-                <div class="result-meta">${esc(r.userName||"")} • ${esc(formatAuditDate(r.createdAt))}</div></div>
-                <strong>${esc(actionLabel(r.action))}</strong>
-            </div>
-            <div class="result-grid">${item("Work",actionLabel(r.action))}${item("Details",JSON.stringify(r.details||{}))}</div>
-        </article>`).join("");
-    }catch(e){console.error(e);box.innerHTML='<div class="empty">Work history load नहीं हुआ.</div>'}
-}
-
-async function downloadAuditRows(rows,filename){
-    const data=rows.map(r=>({
-        "Date & Time":formatAuditDate(r.createdAt),
-        "Kabir ID":r.userId||"",
-        "Name":r.userName||"",
-        "Work":actionLabel(r.action),
-        "Details":JSON.stringify(r.details||{})
-    }));
-    if(!data.length){alert("Download के लिए data नहीं है.");return}
-    await exportXlsx(data,filename,"Work");
-}
-
-function adminFeatureNav(){
-    $("kabirUserForm")?.addEventListener("submit",adminSaveKabirUser);
-    $("analysisDate")?.addEventListener("change",renderTraffic);
-    $("workFromDate")?.addEventListener("change",renderTodayWork);
-    $("workToDate")?.addEventListener("change",renderTodayWork);
-
-    $("downloadTrafficButton")?.addEventListener("click",async()=>{
-        const date=val("analysisDate");
-        const rows=(await getAuditRows()).filter(r=>inDateRange(r,date,date));
-        await downloadAuditRows(rows,`Kabir_Traffic_${date||adminToday()}.xlsx`);
-    });
-
-    $("downloadTodayWorkButton")?.addEventListener("click",async()=>{
-        const from=val("workFromDate")||adminToday();
-        const to=val("workToDate")||from;
-        const rows=(await getAuditRows()).filter(r=>inDateRange(r,from,to));
-        await downloadAuditRows(rows,`Kabir_Work_${from}_to_${to}.xlsx`);
-    });
-
-    const today=adminToday();
-    if($("analysisDate"))$("analysisDate").value=today;
-    if($("workFromDate"))$("workFromDate").value=today;
-    if($("workToDate"))$("workToDate").value=today;
-    renderTraffic();
-    renderTodayWork();
-    renderKabirUsers();
-    renderLiveUsers();
-
-    setInterval(()=>{
-        renderKabirUsers();
-        renderLiveUsers();
-        renderTraffic();
-        renderTodayWork();
-    },30000);
-}
-
 /* =========================================================
    CHANGE PIN
 ========================================================= */
 
 function changePin(){
-
-    let f=$("changePinForm");
-
+    const f=$("changePinForm");
     if(!f)return;
-
-
     f.onsubmit=async e=>{
-
         e.preventDefault();
-
-        await loadSharedPin();
-
-        let a=val("currentPin");
-        let b=val("newPin");
-        let c=val("confirmPin");
-
-
-        if(a!==pin()){
-
-            return msg(
-                "pinSettingsMessage",
-                "Current PIN incorrect."
-            );
+        try{await loadSharedPin()}catch(x){return msg("pinSettingsMessage",x?.message||"PIN load नहीं हुआ. Firebase connection check करें.")}
+        const a=val("currentPin"),b=val("newPin"),c=val("confirmPin");
+        if(a!==pin())return msg("pinSettingsMessage","Current PIN incorrect.");
+        if(!/^\d{4}$/.test(b))return msg("pinSettingsMessage","New PIN exactly 4 digits होना चाहिए.");
+        if(b!==c)return msg("pinSettingsMessage","New PIN और confirmation match नहीं हैं.");
+        try{
+            await changeSharedPin(b);
+            f.reset();
+            msg("pinSettingsMessage","PIN changed successfully ✓",true);
+            showSuccessToast("PIN Updated","New PIN is now saved to Firebase");
+        }catch(error){
+            console.error(error);
+            msg("pinSettingsMessage","PIN save नहीं हुआ. Firebase Rules check करें.");
         }
-
-
-        if(!/^\d{4}$/.test(b)){
-
-            return msg(
-                "pinSettingsMessage",
-                "New PIN exactly 4 digits होना चाहिए."
-            );
-        }
-
-
-        if(b!==c){
-
-            return msg(
-                "pinSettingsMessage",
-                "New PIN और confirmation match नहीं हैं."
-            );
-        }
-
-
-        changeSharedPin(b)
-            .then(()=>{
-                f.reset();
-                msg("pinSettingsMessage","PIN changed successfully ✓",true);
-                showSuccessToast("PIN Updated","New PIN is now saved to Firebase");
-            })
-            .catch(error=>{
-                console.error(error);
-                msg("pinSettingsMessage","PIN save नहीं हुआ. Firebase Rules check करें.");
-            });
     };
 }
-
 
 
 let repairing=[];
@@ -2109,13 +1619,7 @@ function subscribeRepairing(){
 function renderRepairing(){
     const box=$("repairResults");if(!box)return;
     const s=val("repairSearchInput").toLowerCase();
-    const date=val("repairSearchDate");
-    const arr=repairing.filter(r=>{
-        const text=[r.customerName,r.phone,r.device,r.problem,r.repairBy,r.payment,formatDateTime(r)].join(" ").toLowerCase();
-        const created=r.createdAt?.toDate?.();
-        const rowDate=created?new Intl.DateTimeFormat("en-CA").format(created):"";
-        return (!s||text.includes(s)) && (!date||rowDate===date);
-    });
+    const arr=repairing.filter(r=>!s||[r.customerName,r.phone,r.device,r.problem,r.repairBy,r.payment,formatDateTime(r)].join(" ").toLowerCase().includes(s));
     if(!arr.length){box.innerHTML=`<div class="empty">${s?"No repairing record found.":"No repairing records yet."}</div>`;return}
     box.innerHTML=arr.map(r=>`<article class="result">
       <div class="result-name">${esc(r.customerName||"")}</div><div class="result-meta">${esc(r.phone||"")} • ${esc(formatDateTime(r))}</div>
@@ -2124,7 +1628,7 @@ function renderRepairing(){
 }
 async function saveRepair(e){
     e.preventDefault();
-    if(!ensureBusinessHours("repairMessage"))return;
+    if(enforceWriteLock("repairMessage"))return;
     const ids=["repairCustomerName","repairPhone","repairDevice","repairProblem","repairBy","repairPayment"];
     for(const id of ids)if(!val(id)){ $(id)?.focus();msg("repairMessage","सभी fields भरना जरूरी है.");return }
     const phone=val("repairPhone").replace(/\D/g,"");
@@ -2143,7 +1647,6 @@ async function saveRepair(e){
             createdAt:serverTimestamp(),
             createdBy:user?.uid||null
         });
-        await audit("REPAIR_ADDED",{customerName:val("repairCustomerName"),problem:val("repairProblem"),payment:Number(val("repairPayment"))});
 
         $("repairForm").reset();
         msg("repairMessage","");
@@ -2230,7 +1733,6 @@ function featureNav(){
     $("addRepairingCard")?.addEventListener("click",()=>show("repairAddSection"));
     $("searchRepairingCard")?.addEventListener("click",()=>{show("repairSearchSection");renderRepairing();$("repairSearchInput")?.focus()});
     $("repairSearchInput")?.addEventListener("input",renderRepairing);
-    $("repairSearchDate")?.addEventListener("change",renderRepairing);
     $("repairForm")?.addEventListener("submit",saveRepair);
     $("exportCustomersButton")?.addEventListener("click",exportCustomers);
     $("exportRepairingButton")?.addEventListener("click",exportRepairing);
@@ -2244,29 +1746,10 @@ function featureNav(){
    INITIALIZE
 ========================================================= */
 
-function init(){
-    loadSharedPin();
-
-    // Firebase authentication must finish before accessUsers/auditLogs are touched.
-    authInit().then(async()=>{
-        await authReady;
-        if(user){
-            subscribe();
-            subscribeRepairing();
-        }
-
-        if(currentPageIsAdmin()){
-            adminFeatureNav();
-        }else{
-            setupKabirLogin();
-            ensureAccessOnMain();
-        }
-    }).catch(e=>{
-        console.error("Firebase initialization failed:",e);
-        if(currentPageIsAdmin()){
-            msg("adminFirebaseStatus","Firebase initialization error.");
-        }
-    });
+async function init(){
+    setupPin();
+    authInit();
+    loadSharedPin().catch(e=>console.warn(e));
 
     nav();
 
@@ -2295,6 +1778,11 @@ function init(){
     themeSystem();
     featureNav();
 
+    authReady.then(()=>{
+        subscribe();
+        subscribeRepairing();
+    });
+
     $("customerForm")
         ?.addEventListener(
             "submit",
@@ -2303,8 +1791,4 @@ function init(){
 }
 
 
-document.addEventListener(
-    "DOMContentLoaded",
-    init
-);
-\nwindow.addEventListener("beforeunload",()=>{\n    // Do not automatically mark offline here: refreshes should not log the user out.\n});\n
+document.addEventListener("DOMContentLoaded",()=>{init()});
