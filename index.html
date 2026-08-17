@@ -4,170 +4,130 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <meta name="theme-color" content="#08090d">
-<title>Admin — Kabir Mobile Data</title>
+<title>Kabir Mobile Data</title>
 <link rel="stylesheet" href="style.css">
-<style id="kabirAdminPinGateStyles">
-#adminPinScreen{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(5,7,12,.92);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
-#adminPinScreen.hidden{display:none!important}
-.admin.app.admin-locked{display:none!important}
-.pin-card{width:min(430px,100%);padding:28px;text-align:center}
-.pin-input{width:100%;box-sizing:border-box;margin:10px 0;padding:15px;border-radius:16px;font-size:20px;text-align:center}
-#adminPinMessage{min-height:22px}
-</style>
 </head>
 <body>
-<section id="adminPinScreen" class="pin-screen">
+<section id="kabirLoginScreen" class="pin-screen">
   <div class="glass pin-card">
     <div class="logo">KM</div>
     <div class="eyebrow">KABIR MOBILE</div>
-    <h1>Admin Access</h1>
-    <p class="muted">Enter Admin PIN to continue</p>
-    <input id="adminPinInput" class="pin-input" type="password" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="••••">
-    <button id="adminPinButton" class="save" type="button">UNLOCK ADMIN</button>
-    <p id="adminPinMessage" class="message"></p>
+    <h1>Kabir Login</h1>
+    <p class="muted">Enter your Kabir ID and Password</p>
+    <label class="pin-label" for="kabirLoginId">Kabir ID</label>
+    <input id="kabirLoginId" class="pin-input" type="text" autocomplete="username" autocapitalize="characters" placeholder="KABIR1234">
+    <label class="pin-label" for="kabirLoginPassword">Password</label>
+    <input id="kabirLoginPassword" class="pin-input" type="password" autocomplete="current-password" placeholder="Password">
+    <button id="kabirLoginButton" class="save" type="button">LOGIN</button>
+    <p id="kabirLoginMessage" class="message"></p>
   </div>
 </section>
-<main class="admin app">
+
+<main id="appScreen" class="app hidden">
 <header class="glass topbar">
-  <div><div class="eyebrow">KABIR MOBILE</div><h2>Admin Settings</h2></div>
-  <a class="round" href="index.html">‹</a>
+  <div><div class="eyebrow">KABIR MOBILE</div><h2>Kabir Mobile Data</h2></div>
+  <div class="top-actions">
+    <button id="exportCustomersButton" class="round" type="button" title="Download Customer Excel">⇩</button>
+    <button id="themeButton" class="round" type="button" title="Theme">◐</button>
+    <span id="kabirCurrentUser" class="eyebrow">KABIR USER</span>
+    <button id="kabirLogoutButton" class="round" type="button" title="Logout">⇥</button>
+  </div>
 </header>
 
-<section class="glass panel">
-  <div class="section-head"><div><div class="eyebrow">SECURITY</div><h2>PIN Settings</h2></div></div>
-  <p class="muted">Main website और Admin Panel के shared PIN की setting.</p>
-  <form id="changePinForm">
-    <label>Current PIN<input id="currentPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></label>
-    <label>New PIN<input id="newPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></label>
-    <label>Confirm New PIN<input id="confirmPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></label>
-    <button class="save" type="submit">SAVE NEW PIN</button>
-    <p id="pinSettingsMessage" class="message"></p>
+<section class="dashboard">
+  <button id="totalCustomersCard" class="glass stat" type="button"><span class="icon">👥</span><span>Total Customers</span><strong id="totalCustomers">0</strong></button>
+  <button id="totalDevicesCard" class="glass stat" type="button"><span class="icon">📱</span><span>Total Devices</span><strong id="totalDevices">0</strong></button>
+  <button id="searchCustomerCard" class="glass action" type="button"><span class="icon">⌕</span><strong>Search Customer</strong><small>Name, mobile, IMEI, date…</small></button>
+  <button id="addCustomerCard" class="glass action" type="button"><span class="icon">＋</span><strong>Add Customer</strong><small>Create a new customer record</small></button>
+</section>
+
+<section id="repairingHome" class="repairing-home">
+  <div class="section-head"><div><div class="eyebrow">KABIR REPAIRING DATA</div><h2>Kabir Repairing Data</h2></div><button id="exportRepairingButton" class="round" type="button">⇩</button></div>
+  <div class="repairing-stats">
+    <button id="repairTotalCustomersCard" class="glass stat" type="button"><span class="icon">👥</span><span>Total Customers</span><strong id="repairTotalCustomers">0</strong></button>
+    <button id="repairTotalDevicesCard" class="glass stat" type="button"><span class="icon">📱</span><span>Total Devices</span><strong id="repairTotalDevices">0</strong></button>
+  </div>
+  <div class="repairing-actions">
+    <button id="addRepairingCard" class="glass action" type="button"><span class="icon">🛠</span><strong>Add Repairing</strong><small>New repairing record</small></button>
+    <button id="searchRepairingCard" class="glass action" type="button"><span class="icon">⌕</span><strong>Search Repairing</strong><small>Name, phone, problem, payment…</small></button>
+  </div>
+</section>
+
+<section id="searchSection" class="glass panel hidden">
+  <div class="section-head"><div><div class="eyebrow">DATABASE</div><h2>Search Customer</h2></div><button class="close" data-close="searchSection">×</button></div>
+  <div class="search"><span>⌕</span><input id="searchInput" type="search" placeholder="Name, mobile, IMEI, date, city…" autocomplete="off"></div>
+  <div id="searchResults" class="results"><div class="empty">Customer records will appear here.</div></div>
+</section>
+
+<section id="addSection" class="glass panel hidden">
+  <div class="section-head"><div><div class="eyebrow">NEW RECORD</div><h2>Add Customer</h2></div><button class="close" data-close="addSection">×</button></div>
+  <form id="customerForm">
+    <div class="block"><b>Customer Details</b>
+      <label>1. Customer Name<input id="customerName" required autocomplete="name"></label>
+      <label>Customer Code<input id="customerCode" readonly placeholder="Automatic KM1234"></label>
+      <label>2. Address<textarea id="address" rows="3" required></textarea></label>
+      <label>3. PIN Code<input id="pincode" inputmode="numeric" maxlength="6" required placeholder="6 digit PIN code"><small id="pincodeStatus"></small></label>
+      <div class="cols"><label>4. City / Village<input id="city" required placeholder="Auto from PIN"></label><label>State<input id="state" required placeholder="Auto from PIN"></label></div>
+      <label>Mobile Number<input id="phone" type="tel" inputmode="tel" maxlength="10" required></label>
+    </div>
+    <div class="block"><b>Device Details</b>
+      <label>5. Phone Brand<select id="brand" required><option value="">Select brand</option></select></label>
+      <label>6. Phone Model<select id="model" required disabled><option value="">Select brand first</option></select></label>
+      <label>7. IMEI<div class="with-button"><input id="imei" inputmode="numeric" maxlength="15" required><button id="scanImeiButton" type="button">▣ Scan</button></div><small>QR/barcode scan uses the phone camera when supported.</small></label>
+      <label>8. Colour<select id="colour" required disabled><option value="">Select model first</option></select></label>
+      <label>9. RAM + Storage<select id="storage" required disabled><option value="">Select model first</option></select></label>
+      <label>10. Finance Company<select id="financeCompany"><option value="">Select Finance Company</option></select></label>
+      <div class="cols"><label>11. Phone Amount<input id="phoneAmount" type="number" inputmode="decimal" min="0" required placeholder="₹"></label><label>12. Down Payment (DP)<input id="downPayment" type="number" inputmode="decimal" min="0" required placeholder="₹"></label></div>
+      <div class="cols"><label>13. EMI Amount<input id="emiAmount" type="number" inputmode="decimal" min="0" placeholder="₹"></label><label>EMI Months<input id="emiMonths" type="number" inputmode="numeric" min="0" placeholder="Months"></label></div>
+      <div class="cols"><label>14. Lock<input id="lockName" placeholder="Lock name"></label><label>15. Stock<input id="stock" placeholder="Purchase source"></label></div>
+      <div class="cols"><label>16. Counter<input id="counter"></label><label>17. Financer Name<input id="financerName"></label></div>
+    </div>
+    <div class="block"><b>Bill & Documents</b>
+      <label>18. Bill (After 3 Months)<div class="bill-box"><span><strong>Bill</strong><small id="billDueText"></small></span><em>NO</em></div></label>
+      <label>19. Aadhaar Card<input id="aadhaarFile" type="file" accept="image/*,.pdf" capture="environment"><small>Camera or photo/library.</small></label>
+      <label>20. PAN Card<input id="panFile" type="file" accept="image/*,.pdf" capture="environment"><small>Camera or photo/library.</small></label>
+      <label>21. Customer Photo<input id="customerPhoto" type="file" accept="image/*" capture="user"><small>Direct front camera on supported phones.</small></label>
+    </div>
+    <button id="saveCustomerButton" class="save" type="submit">22. SAVE CUSTOMER <span id="saveSpinner" class="spinner hidden"></span></button>
+    <p id="formMessage" class="message"></p>
   </form>
 </section>
-
-<section class="glass panel">
-  <div class="section-head"><div><div class="eyebrow">KABIR ACCESS</div><h2>Generate Kabir ID & Password</h2></div></div>
-  <form id="kabirUserForm">
-    <label>Name<input id="kabirUserName" required placeholder="Member name"></label>
-    <label>Kabir ID<input id="kabirUserId" required placeholder="KABIR1234" autocapitalize="characters"></label>
-    <label>Password<input id="kabirUserPassword" required placeholder="Password"></label>
-    <button class="save" type="submit">CREATE / UPDATE USER</button>
-    <p id="kabirUserMessage" class="message"></p>
-  </form>
-  <h3>Saved Kabir Users</h3><div id="kabirUsersList" class="results"></div>
-</section>
-
-<section class="glass panel">
-  <div class="section-head"><div><div class="eyebrow">LIVE USERS</div><h2>Login Status</h2></div></div>
-  <div id="kabirLiveUsers" class="results"><div class="empty">Loading user status…</div></div>
-</section>
-
-<section class="glass panel">
-  <div class="section-head"><div><div class="eyebrow">TRAFFIC ANALYSIS</div><h2>Work Analysis</h2></div></div>
-  <label>Date<input id="analysisDate" type="date"></label>
-  <div id="trafficAnalysis" class="results"><div class="empty">Select a date.</div></div>
-  <button id="downloadTrafficButton" class="save" type="button">DOWNLOAD TRAFFIC DATA</button>
-</section>
-
-<section class="glass panel">
-  <div class="section-head"><div><div class="eyebrow">TODAY WORK</div><h2>Work History</h2></div></div>
-  <div class="cols">
-    <label>From Date<input id="workFromDate" type="date"></label>
-    <label>To Date<input id="workToDate" type="date"></label>
-  </div>
-  <div id="todayWorkResults" class="results"><div class="empty">Select date range.</div></div>
-  <button id="downloadTodayWorkButton" class="save" type="button">DOWNLOAD WORK DATA</button>
-</section>
-
-<section class="glass panel">
-  <div class="section-head"><div><div class="eyebrow">DATABASE</div><h2>Live Status</h2></div></div>
-  <div class="mini-grid">
-    <div><span>Customers</span><strong id="adminCustomers">0</strong></div>
-    <div><span>Devices</span><strong id="adminDevices">0</strong></div>
-  </div>
-  <p id="adminFirebaseStatus" class="firebase-status">Connecting to Firebase…</p>
-</section>
-
-<footer>Copyright © 2026 Kabir Data powered by AMAN</footer>
 </main>
+<footer>Copyright © 2026 Kabir Data powered by AMAN</footer>
+
+<div id="successToast" class="success-toast hidden">
+  <div class="success-check">✓</div>
+  <div><strong id="successToastTitle">Successfully Saved</strong><small id="successToastText">Data saved successfully</small></div>
+</div>
+
+<section id="repairAddSection" class="glass panel hidden">
+  <div class="section-head"><div><div class="eyebrow">NEW REPAIRING</div><h2>Add Repairing</h2></div><button class="close" data-close="repairAddSection">×</button></div>
+  <form id="repairForm">
+    <label>1. Customer Name<input id="repairCustomerName" required></label>
+    <label>2. Customer Phone Number<input id="repairPhone" type="tel" inputmode="tel" maxlength="10" required></label>
+    <label>3. Brand or Model<input id="repairDevice" required></label>
+    <label>4. Problem<input id="repairProblem" type="text" required autocomplete="off" placeholder="Type repairing problem"></label>
+    <label>5. Repairing By<input id="repairBy" required></label>
+    <label>6. Payment<input id="repairPayment" type="number" inputmode="decimal" min="0" required placeholder="₹"></label>
+    <button class="save" type="submit">SAVE REPAIRING</button><p id="repairMessage" class="message"></p>
+  </form>
+</section>
+<section id="repairSearchSection" class="glass panel hidden">
+  <div class="section-head"><div><div class="eyebrow">REPAIRING DATABASE</div><h2>Search Repairing</h2></div><button class="close" data-close="repairSearchSection">×</button></div>
+  <div class="search"><span>⌕</span><input id="repairSearchInput" type="search" placeholder="Name, phone, problem, brand/model, payment…" autocomplete="off"></div>
+  <label class="date-filter-label">Filter by Date<input id="repairSearchDate" type="date"></label>
+  <div id="repairResults" class="results"></div>
+</section>
+<div id="customerDetailModal" class="modal hidden"><div class="glass modal-card detail-card">
+  <div class="section-head"><div><div class="eyebrow">CUSTOMER DETAILS</div><h2 id="detailTitle">Customer</h2></div><button id="closeDetailButton" class="close">×</button></div>
+  <div id="customerDetailBody"></div>
+  <div class="detail-actions"><button id="downloadCustomerPdf" class="save" type="button">DOWNLOAD PDF</button><button id="editCustomerButton" class="glass save secondary" type="button">EDIT CUSTOMER</button><button id="deleteCustomerButton" class="glass save danger-btn" type="button">DELETE CUSTOMER</button></div>
+</div></div>
+<div id="themeModal" class="modal hidden"><div class="glass modal-card">
+  <div class="section-head"><div><div class="eyebrow">APPEARANCE</div><h2>Choose Theme</h2></div><button id="closeThemeButton" class="close">×</button></div>
+  <div id="themeChoices" class="theme-grid"><button data-theme="dark">🌑 Dark</button><button data-theme="light">☀️ Light</button><button data-theme="midnight">🌌 Midnight</button><button data-theme="silver">◽ Silver</button><button data-theme="glass">✨ Glass</button></div>
+</div></div>
+<div id="scannerModal" class="modal hidden"><div class="glass modal-card"><div class="section-head"><div><div class="eyebrow">CAMERA</div><h2>Scan IMEI</h2></div><button id="closeScannerButton" class="close">×</button></div><video id="scannerVideo" playsinline muted></video><p id="scannerMessage" class="message">Point the camera at a QR/barcode.</p></div></div>
 <script type="module" src="script.js"></script>
-
-<script>
-(function(){
-  const ADMIN_PIN_KEY = "kabir_admin_pin_unlocked";
-
-  function adminEl(id){ return document.getElementById(id); }
-
-  function adminSetMessage(text, ok){
-    const el=adminEl("adminPinMessage");
-    if(!el)return;
-    el.textContent=text||"";
-    el.style.color=ok ? "" : "#ff5c5c";
-  }
-
-  function unlockAdmin(){
-    adminEl("adminPinScreen")?.classList.add("hidden");
-    document.querySelector("main.admin.app")?.classList.remove("admin-locked");
-    sessionStorage.setItem(ADMIN_PIN_KEY,"1");
-  }
-
-  async function getSharedPin(){
-    if(window.kabirGetSharedPin) return await window.kabirGetSharedPin();
-
-    // Admin page loads script.js after this page; use its exposed reader when available.
-    for(let i=0;i<40;i++){
-      if(window.kabirGetSharedPin) return await window.kabirGetSharedPin();
-      await new Promise(r=>setTimeout(r,100));
-    }
-    return localStorage.getItem("kabirSharedPin") || "0000";
-  }
-
-  async function checkPin(){
-    const input=adminEl("adminPinInput");
-    const entered=(input?.value||"").trim();
-    if(!entered)return adminSetMessage("PIN डालें.");
-
-    try{
-      const pin=await getSharedPin();
-      if(String(entered)===String(pin)){
-        adminSetMessage("");
-        unlockAdmin();
-      }else{
-        adminSetMessage("Wrong PIN");
-        if(input){
-          input.classList.remove("pin-input-error");
-          void input.offsetWidth;
-          input.classList.add("pin-input-error");
-        }
-        if(navigator.vibrate)try{navigator.vibrate([90,35,90,35,140])}catch(_){}
-      }
-    }catch(e){
-      console.error(e);
-      adminSetMessage("PIN verify नहीं हो पाया.");
-    }
-  }
-
-  function bootAdminPin(){
-    const main=document.querySelector("main.admin.app");
-    const screen=adminEl("adminPinScreen");
-    if(!main||!screen)return;
-
-    if(sessionStorage.getItem(ADMIN_PIN_KEY)==="1"){
-      unlockAdmin();
-    }else{
-      main.classList.add("admin-locked");
-      screen.classList.remove("hidden");
-      adminEl("adminPinInput")?.focus();
-    }
-
-    adminEl("adminPinButton")?.addEventListener("click",checkPin);
-    adminEl("adminPinInput")?.addEventListener("keydown",e=>{
-      if(e.key==="Enter")checkPin();
-    });
-  }
-
-  document.addEventListener("DOMContentLoaded",bootAdminPin);
-})();
-</script>
-
-</body></html>
+</body>
+</html>
