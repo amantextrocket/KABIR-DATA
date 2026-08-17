@@ -13,6 +13,31 @@
 .pin-card{width:min(430px,100%);padding:28px;text-align:center}
 .pin-input{width:100%;box-sizing:border-box;margin:10px 0;padding:15px;border-radius:16px;font-size:20px;text-align:center}
 #adminPinMessage{min-height:22px}
+#adminPinScreen .pin-card{animation:none}
+.pin-input-error{animation:adminPinShake .48s cubic-bezier(.36,.07,.19,.97) both!important}
+@keyframes adminPinShake{
+  0%,100%{transform:translateX(0)}
+  20%{transform:translateX(-10px)}
+  40%{transform:translateX(9px)}
+  60%{transform:translateX(-7px)}
+  80%{transform:translateX(5px)}
+}
+.admin-success-popup{
+  position:fixed;left:50%;top:50%;transform:translate(-50%,-50%) scale(.88);
+  z-index:100000;display:flex;align-items:center;gap:14px;min-width:280px;
+  max-width:calc(100vw - 40px);padding:18px 20px;border-radius:22px;
+  background:rgba(20,24,32,.94);color:#fff;border:1px solid rgba(255,255,255,.16);
+  box-shadow:0 20px 60px rgba(0,0,0,.35);backdrop-filter:blur(20px);
+  opacity:0;pointer-events:none;transition:.25s ease;
+}
+.admin-success-popup.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
+.admin-success-popup.hidden{display:flex}
+.admin-success-icon{
+  width:42px;height:42px;border-radius:50%;display:grid;place-items:center;
+  background:#22c55e;color:#fff;font-size:24px;font-weight:800;
+}
+.admin-success-popup strong{display:block;font-size:16px}
+.admin-success-popup small{display:block;margin-top:4px;opacity:.78}
 </style>
 </head>
 <body>
@@ -23,7 +48,6 @@
     <h1>Admin Access</h1>
     <p class="muted">Enter Admin PIN to continue</p>
     <input id="adminPinInput" class="pin-input" type="password" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="••••">
-    <button id="adminPinButton" class="save" type="button">UNLOCK ADMIN</button>
     <p id="adminPinMessage" class="message"></p>
   </div>
 </section>
@@ -54,7 +78,7 @@
     <button class="save" type="submit">CREATE / UPDATE USER</button>
     <p id="kabirUserMessage" class="message"></p>
   </form>
-  <h3>Saved Kabir Users</h3><div id="kabirUsersList" class="results"></div>
+  <h3>Saved Kabir Users <span id="kabirUsersCount" class="eyebrow">0</span></h3><div id="kabirUsersList" class="results"></div>
 </section>
 
 <section class="glass panel">
@@ -94,80 +118,100 @@
 
 <script>
 (function(){
-  const ADMIN_PIN_KEY = "kabir_admin_pin_unlocked";
+  const ADMIN_PIN_KEY="kabir_admin_pin_unlocked";
 
-  function adminEl(id){ return document.getElementById(id); }
+  const el=id=>document.getElementById(id);
 
-  function adminSetMessage(text, ok){
-    const el=adminEl("adminPinMessage");
-    if(!el)return;
-    el.textContent=text||"";
-    el.style.color=ok ? "" : "#ff5c5c";
+  function setMessage(text,ok=false){
+    const m=el("adminPinMessage");
+    if(!m)return;
+    m.textContent=text||"";
+    m.style.color=ok?"#22c55e":"";
   }
 
-  function unlockAdmin(){
-    adminEl("adminPinScreen")?.classList.add("hidden");
+  function unlock(){
+    el("adminPinScreen")?.classList.add("hidden");
     document.querySelector("main.admin.app")?.classList.remove("admin-locked");
     sessionStorage.setItem(ADMIN_PIN_KEY,"1");
   }
 
   async function getSharedPin(){
-    if(window.kabirGetSharedPin) return await window.kabirGetSharedPin();
-
-    // Admin page loads script.js after this page; use its exposed reader when available.
-    for(let i=0;i<40;i++){
-      if(window.kabirGetSharedPin) return await window.kabirGetSharedPin();
+    for(let i=0;i<80;i++){
+      if(window.kabirGetSharedPin){
+        return await window.kabirGetSharedPin();
+      }
       await new Promise(r=>setTimeout(r,100));
     }
-    return localStorage.getItem("kabirSharedPin") || "0000";
+    return "0000";
   }
 
   async function checkPin(){
-    const input=adminEl("adminPinInput");
-    const entered=(input?.value||"").trim();
-    if(!entered)return adminSetMessage("PIN डालें.");
+    const input=el("adminPinInput");
+    if(!input)return;
+
+    const entered=input.value.trim();
+    if(entered.length!==4)return;
 
     try{
       const pin=await getSharedPin();
+
       if(String(entered)===String(pin)){
-        adminSetMessage("");
-        unlockAdmin();
-      }else{
-        adminSetMessage("Wrong PIN");
-        if(input){
-          input.classList.remove("pin-input-error");
-          void input.offsetWidth;
-          input.classList.add("pin-input-error");
-        }
-        if(navigator.vibrate)try{navigator.vibrate([90,35,90,35,140])}catch(_){}
+        input.value="";
+        setMessage("");
+        unlock();
+        return;
       }
+
+      setMessage("Wrong PIN");
+      input.classList.remove("pin-input-error");
+      void input.offsetWidth;
+      input.classList.add("pin-input-error");
+
+      if(navigator.vibrate){
+        try{navigator.vibrate([90,35,90,35,140]);}catch(_){}
+      }
+
+      // Wrong PIN is cleared automatically.
+      setTimeout(()=>{
+        input.value="";
+        input.focus();
+        input.classList.remove("pin-input-error");
+      },500);
+
     }catch(e){
       console.error(e);
-      adminSetMessage("PIN verify नहीं हो पाया.");
+      setMessage("PIN verify नहीं हो पाया.");
+      input.value="";
     }
   }
 
-  function bootAdminPin(){
+  function boot(){
     const main=document.querySelector("main.admin.app");
-    const screen=adminEl("adminPinScreen");
-    if(!main||!screen)return;
+    const screen=el("adminPinScreen");
+    const input=el("adminPinInput");
+    if(!main||!screen||!input)return;
 
     if(sessionStorage.getItem(ADMIN_PIN_KEY)==="1"){
-      unlockAdmin();
+      unlock();
     }else{
       main.classList.add("admin-locked");
       screen.classList.remove("hidden");
-      adminEl("adminPinInput")?.focus();
+      setTimeout(()=>input.focus(),100);
     }
 
-    adminEl("adminPinButton")?.addEventListener("click",checkPin);
-    adminEl("adminPinInput")?.addEventListener("keydown",e=>{
-      if(e.key==="Enter")checkPin();
+    // No unlock button. Exactly 4 digits => automatic verification.
+    input.addEventListener("input",()=>{
+      input.value=input.value.replace(/\D/g,"").slice(0,4);
+      if(input.value.length===4)checkPin();
     });
   }
 
-  document.addEventListener("DOMContentLoaded",bootAdminPin);
+  document.addEventListener("DOMContentLoaded",boot);
 })();
 </script>
 
+<div id="adminSuccessPopup" class="admin-success-popup hidden">
+  <div class="admin-success-icon">✓</div>
+  <div><strong id="adminSuccessTitle">Successfully Added</strong><small id="adminSuccessText">Kabir ID और Password saved.</small></div>
+</div>
 </body></html>
