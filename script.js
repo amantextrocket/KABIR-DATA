@@ -405,7 +405,7 @@ async function audit(action,details={}){
             customerCode:details.customerCode||null,
             customerName:details.customerName||null,
             description:details.description||auditLabel(action),
-            details:details.extra||null,
+            details:{...(details.extra||{}),brand:details.brand||val("brand")||null,model:details.model||val("model")||null,device:details.device||val("repairDevice")||null},
             clientTime:new Date().toISOString(),
             createdAt:serverTimestamp()
         });
@@ -673,7 +673,7 @@ function subscribe(){
             });
 
             counts();
-            renderSearch();
+            renderSearch(); renderTrafficManagementCounts?.();
             updateAdmin();
             homeDateFilter();
             renderCustomerDateGraph();
@@ -832,8 +832,7 @@ function nav(){
     $("accessoryAddCard")?.addEventListener("click",()=>show("accessoryAddSection"));
     $("secondSearchInput")?.addEventListener("input",renderSecondHand);
     $("accessorySearchInput")?.addEventListener("input",renderAccessories);
-    $("secondHandForm")?.addEventListener("submit",saveSecondHand);
-    $("accessoryForm")?.addEventListener("submit",saveAccessory);
+    /* Enhanced inventory submit handlers are attached by enhancedFeaturesInit(). */
 
     document
         .querySelectorAll("[data-close]")
@@ -1755,20 +1754,7 @@ function stopScan(){
 }
 
 
-function scanner(){
-
-    $("scanImeiButton")
-        ?.addEventListener(
-            "click",
-            startScan
-        );
-
-    $("closeScannerButton")
-        ?.addEventListener(
-            "click",
-            stopScan
-        );
-}
+function scanner(){ /* Enhanced universal scanner is initialized later. */ }
 
 
 /* =========================================================
@@ -1802,8 +1788,8 @@ let repairListenerStarted=false;
 
 function subscribeInventory(){
     if(isAdminPage)return;
-    onSnapshot(collection(db,SECOND_COL),snap=>{ secondHand=snap.docs.map(d=>({id:d.id,...d.data()})); if($("secondStockCount"))$("secondStockCount").textContent=String(secondHand.length); renderSecondHand(); },e=>console.warn("Second hand load:",e));
-    onSnapshot(collection(db,ACCESSORY_COL),snap=>{ accessories=snap.docs.map(d=>({id:d.id,...d.data()})); if($("accessoryStockCount"))$("accessoryStockCount").textContent=String(accessories.reduce((n,x)=>n+Number(x.quantity||0),0)); renderAccessories(); },e=>console.warn("Accessories load:",e));
+    onSnapshot(collection(db,SECOND_COL),snap=>{ secondHand=snap.docs.map(d=>({id:d.id,...d.data()})); if($('secondStockCount'))$('secondStockCount').textContent=String(secondHand.length); renderSecondHand(); renderTrafficManagementCounts?.(); },e=>console.warn('Second hand load:',e));
+    onSnapshot(collection(db,ACCESSORY_COL),snap=>{ accessories=snap.docs.map(d=>({id:d.id,...d.data()})); if($('accessoryStockCount'))$('accessoryStockCount').textContent=String(accessories.reduce((n,x)=>n+Number(x.quantity||0),0)); renderAccessories(); renderTrafficManagementCounts?.(); },e=>console.warn('Accessories load:',e));
 }
 function renderSecondHand(){ const box=$("secondResults"); if(!box)return; const q=val("secondSearchInput").toLowerCase(); const rows=secondHand.filter(x=>!q||[x.customerName,x.phone,x.device,x.imei,x.condition].join(" ").toLowerCase().includes(q)); box.innerHTML=rows.length?rows.map(x=>`<article class="result"><div class="result-name">${esc(x.device||"Second Hand Phone")}</div><div class="result-meta">${esc(x.customerName||"")} • ${esc(x.phone||"")}</div><div class="result-grid">${item("IMEI",x.imei||"")}${item("Condition",x.condition||"")}${item("Purchase Price",`₹${Number(x.price||0).toLocaleString("en-IN")}`)}${item("Sale Price",`₹${Number(x.salePrice||0).toLocaleString("en-IN")}`)}</div></article>`).join(""):"<div class=\"empty\">No second-hand records found.</div>"; }
 function renderAccessories(){ const box=$("accessoryResults"); if(!box)return; const q=val("accessorySearchInput").toLowerCase(); const rows=accessories.filter(x=>!q||[x.name,x.category].join(" ").toLowerCase().includes(q)); box.innerHTML=rows.length?rows.map(x=>`<article class="result"><div class="result-name">${esc(x.name||"Accessory")}</div><div class="result-meta">${esc(x.category||"")}</div><div class="result-grid">${item("Quantity",x.quantity||0)}${item("Purchase Price",`₹${Number(x.price||0).toLocaleString("en-IN")}`)}${item("Sale Price",`₹${Number(x.salePrice||0).toLocaleString("en-IN")}`)}</div></article>`).join(""):"<div class=\"empty\">No accessories found.</div>"; }
@@ -1889,210 +1875,41 @@ async function exportXlsx(rows,filename,sheet){
         XLSX.utils.book_append_sheet(wb,ws,sheet);XLSX.writeFile(wb,filename);
     }catch(e){console.error(e);alert("Excel file download नहीं हो पाया.")}
 }
-
-function pdfSafe(value){
-    return String(value??"").replace(/\s+/g," ").trim() || "—";
+function exportCustomers(){
+    if(!customers.length){alert("Customer data अभी उपलब्ध नहीं है.");return}
+    audit("customer_export",{section:"Kabir Mobile Data",description:`Customer Excel downloaded (${customers.length} records)`});
+    exportXlsx(customers.map(c=>({"Customer Code":c.customerCode||"","Date & Time":formatDateTime(c),"Customer Name":c.customerName||"",
+      "Phone":c.phone||"","Address":c.address||"","PIN Code":c.pincode||"","City":c.city||"","State":c.state||"",
+      "Brand":c.brand||"","Model":c.model||"","IMEI":c.imei||"","Colour":c.colour||"","RAM + Storage":c.storage||"",
+      "Finance Company":c.financeCompany||"","Phone Amount":c.phoneAmount||0,"Down Payment":c.downPayment||0,
+      "EMI Amount":c.emiAmount||0,"EMI Months":c.emiMonths||0,"Lock":c.lockName||"","Stock":c.stock||"",
+      "Counter":c.counter||"","Financer":c.financerName||"","Bill":c.billYes?"YES":"NO"})),"Kabir_Mobile_Customers.xlsx","Customers");
 }
-function pdfDate(row){
-    try{return formatDateTime(row)||"—"}catch{return "—"}
+function exportRepairing(){
+    if(!repairing.length){alert("Repairing data अभी उपलब्ध नहीं है.");return}
+    audit("repairing_export",{section:"Kabir Repairing Data",description:`Repairing Excel downloaded (${repairing.length} records)`});
+    exportXlsx(repairing.map(r=>({"Date & Time":formatDateTime(r),"Customer Name":r.customerName||"","Phone":r.phone||"",
+      "Brand / Model":r.device||"","Problem":r.problem||"","Repairing By":r.repairBy||"","Payment":r.payment||0})),
+      "Kabir_Repairing_Data.xlsx","Repairing");
 }
-function pdfSectionTitle(pdf,title,subtitle){
-    const pageW=pdf.internal.pageSize.getWidth();
-    pdf.setFillColor(12,15,22);pdf.roundedRect(14,18,pageW-28,22,5,5,"F");
-    pdf.setTextColor(255,255,255);pdf.setFontSize(16);pdf.setFont(undefined,"bold");pdf.text(title,22,32);
-    if(subtitle){pdf.setFontSize(8);pdf.setFont(undefined,"normal");pdf.setTextColor(185,190,205);pdf.text(subtitle,pageW-22,32,{align:"right"});}
-    pdf.setTextColor(20,22,28);
-}
-function pdfFieldGrid(pdf,rows,startY){
-    const pageW=pdf.internal.pageSize.getWidth();
-    const left=14,right=pageW-14,gap=7,colW=(right-left-gap)/2;
-    let y=startY;
-    for(let i=0;i<rows.length;i+=2){
-        const pair=rows.slice(i,i+2).map(([k,v])=>[pdfSafe(k),pdfSafe(v)]);
-        const prepared=pair.map(([k,v])=>{
-            pdf.setFontSize(7);const lines=pdf.splitTextToSize(v,colW-12);return {k,vLines:lines};
-        });
-        const h=Math.max(17,...prepared.map(x=>10+x.vLines.length*4.2));
-        if(y+h>190){pdf.addPage();pdfSectionTitle(pdf,"KABIR MOBILE DATA","CONTINUED");y=48;}
-        prepared.forEach((x,j)=>{
-            const x0=left+j*(colW+gap);
-            pdf.setFillColor(247,248,251);pdf.setDrawColor(225,228,235);pdf.roundedRect(x0,y,colW,h,3,3,"FD");
-            pdf.setTextColor(95,100,112);pdf.setFontSize(6.5);pdf.setFont(undefined,"bold");pdf.text(x.k,x0+6,y+7);
-            pdf.setTextColor(25,27,34);pdf.setFontSize(7.5);pdf.setFont(undefined,"normal");pdf.text(x.vLines,x0+6,y+12);
-        });
-        y+=h+4;
-    }
-    return y;
-}
-function pdfRecord(pdf,number,title,rows){
-    let y=45;
-    if(pdf.internal.getNumberOfPages()>1){
-        // Continue on the current page when space is available.
-        y=45;
-    }
-    pdf.setFillColor(231,234,242);pdf.roundedRect(14,y, pdf.internal.pageSize.getWidth()-28, 10, 3,3,"F");
-    pdf.setTextColor(35,38,48);pdf.setFontSize(9);pdf.setFont(undefined,"bold");pdf.text(`${number}. ${pdfSafe(title)}`,20,y+6.7);
-    y=pdfFieldGrid(pdf,rows,y+14);
-    return y;
-}
-
-async function downloadCompletePdf(){
+async function downloadCustomerPdf(){
+    const c=customers.find(x=>x.id===activeCustomerId);if(!c)return;
     try{
-        const total=customers.length+repairing.length+secondHand.length+accessories.length;
-        if(!total){alert("Abhi PDF banane ke liye koi data उपलब्ध नहीं है.");return;}
+        await audit("customer_pdf",{section:"Kabir Mobile Data",customerId:c.id,customerCode:c.customerCode,customerName:c.customerName,description:`PDF downloaded for ${c.customerName||c.customerCode||c.id}`});
         if(!window.jspdf)await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
-        if(!window.jspdf?.jsPDF?.API?.autoTable)await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.4/jspdf.plugin.autotable.min.js");
-        const pdf=new window.jspdf.jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
-        const pageW=pdf.internal.pageSize.getWidth(),pageH=pdf.internal.pageSize.getHeight();
-        const stamp=new Date().toLocaleString("en-IN",{dateStyle:"medium",timeStyle:"short"});
-
-        // Premium cover
-        pdf.setFillColor(7,8,12);pdf.rect(0,0,pageW,pageH,"F");
-        pdf.setFillColor(30,34,55);pdf.circle(28,28,38,"F");
-        pdf.setFillColor(70,75,125);pdf.circle(pageW-25,pageH-18,46,"F");
-        pdf.setTextColor(255,255,255);pdf.setFont(undefined,"bold");pdf.setFontSize(30);pdf.text("KABIR MOBILE DATA",20,70);
-        pdf.setFont(undefined,"normal");pdf.setFontSize(12);pdf.setTextColor(190,195,210);pdf.text("Complete Business Data • Premium PDF Report",20,80);
-        pdf.setDrawColor(90,95,125);pdf.line(20,88,pageW-20,88);
-        const summary=[
-            ["CUSTOMERS",customers.length],
-            ["REPAIRING",repairing.length],
-            ["SECOND HAND",secondHand.length],
-            ["ACCESSORIES",accessories.length]
-        ];
-        let sx=20;summary.forEach(([label,value])=>{
-            pdf.setFillColor(20,24,34);pdf.roundedRect(sx,102,58,32,6,6,"F");
-            pdf.setTextColor(150,155,175);pdf.setFontSize(7);pdf.text(label,sx+8,112);
-            pdf.setTextColor(255,255,255);pdf.setFontSize(19);pdf.setFont(undefined,"bold");pdf.text(String(value),sx+8,126);
-            sx+=64;
+        const pdf=new window.jspdf.jsPDF();let y=18;
+        pdf.setFontSize(18);pdf.text("KABIR MOBILE DATA",14,y);y+=10;pdf.setFontSize(10);
+        [["Customer Code",c.customerCode],["Date & Time",formatDateTime(c)],["Customer Name",c.customerName],["Phone",c.phone],
+        ["Address",c.address],["PIN Code",c.pincode],["City / State",`${c.city||""}, ${c.state||""}`],["Brand",c.brand],["Model",c.model],
+        ["IMEI",c.imei],["Colour",c.colour],["RAM + Storage",c.storage],["Finance Company",c.financeCompany],
+        ["Phone Amount",`₹${c.phoneAmount||0}`],["Down Payment",`₹${c.downPayment||0}`],["EMI",`₹${c.emiAmount||0} × ${c.emiMonths||0} months`],
+        ["Lock",c.lockName],["Stock",c.stock],["Counter",c.counter],["Financer",c.financerName],["Bill",c.billYes?"YES":"NO"]].forEach(([a,b])=>{
+            if(y>280){pdf.addPage();y=18}pdf.setFont(undefined,"bold");pdf.text(String(a||""),14,y);
+            pdf.setFont(undefined,"normal");pdf.text(String(b||"-"),65,y,{maxWidth:130});y+=8;
         });
-        pdf.setFont(undefined,"normal");pdf.setFontSize(8);pdf.setTextColor(145,150,165);pdf.text(`Generated: ${stamp}`,20,pageH-20);
-        pdf.text("Copyright © 2026 Kabir Data powered by AMAN",pageW-20,pageH-20,{align:"right"});
-
-        // Customers
-        if(customers.length){
-            customers.forEach((c,idx)=>{
-                pdf.addPage();pdfSectionTitle(pdf,"CUSTOMER DATABASE",`${idx+1} / ${customers.length}`);
-                const rows=[
-                    ["Customer Code",c.customerCode],["Date & Time",pdfDate(c)],["Customer Name",c.customerName],["Mobile Number",c.phone],
-                    ["Address",c.address],["PIN Code",c.pincode],["City / Village",c.city],["State",c.state],
-                    ["Phone Brand",c.brand],["Phone Model",c.model],["IMEI",c.imei],["Colour",c.colour],["RAM + Storage",c.storage],
-                    ["Finance Company",c.financeCompany],["Phone Amount",`₹${Number(c.phoneAmount||0).toLocaleString("en-IN")}`],
-                    ["Down Payment",`₹${Number(c.downPayment||0).toLocaleString("en-IN")}`],
-                    ["EMI Amount",`₹${Number(c.emiAmount||0).toLocaleString("en-IN")} × ${Number(c.emiMonths||0)} months`],
-                    ["Lock",c.lockName],["Stock",c.stock],["Counter",c.counter],["Financer Name",c.financerName],
-                    ["Bill",c.billYes?"YES":"NO"],["Aadhaar Document",c.documents?.aadhaar?"Available":"Not attached"],
-                    ["PAN Document",c.documents?.pan?"Available":"Not attached"],["Customer Photo",c.documents?.customerPhoto?"Available":"Not attached"]
-                ];
-                pdfFieldGrid(pdf,rows,48);
-            });
-        }
-        // Repairing
-        if(repairing.length){
-            pdf.addPage();pdfSectionTitle(pdf,"REPAIRING DATABASE",`${repairing.length} records`);
-            const rows=repairing.map((r,i)=>[
-                String(i+1),pdfDate(r),pdfSafe(r.customerName),pdfSafe(r.phone),pdfSafe(r.device),pdfSafe(r.problem),pdfSafe(r.repairBy),`₹${Number(r.payment||0).toLocaleString("en-IN")}`
-            ]);
-            pdf.autoTable?.({startY:48,head:[["#","Date & Time","Customer","Phone","Brand / Model","Problem","Repairing By","Payment"]],body:rows,theme:"grid",styles:{fontSize:7,cellPadding:3},headStyles:{fillColor:[20,24,34],textColor:[255,255,255],fontStyle:"bold"},alternateRowStyles:{fillColor:[247,248,251]},margin:{left:14,right:14}});
-            if(!pdf.autoTable){
-                let y=48;rows.forEach(r=>{pdf.setFontSize(7);pdf.text(r.map(pdfSafe).join("  |  "),14,y,{maxWidth:pageW-28});y+=5;if(y>190){pdf.addPage();y=22;}});
-            }
-        }
-        // Second hand
-        if(secondHand.length){
-            pdf.addPage();pdfSectionTitle(pdf,"SECOND HAND INVENTORY",`${secondHand.length} records`);
-            const rows=secondHand.map((r,i)=>[String(i+1),pdfDate(r),pdfSafe(r.customerName),pdfSafe(r.phone),pdfSafe(r.device),pdfSafe(r.imei),pdfSafe(r.condition),`₹${Number(r.price||0).toLocaleString("en-IN")}`,`₹${Number(r.salePrice||0).toLocaleString("en-IN")}`]);
-            if(!pdf.autoTable){
-                let y=48;rows.forEach(r=>{pdf.setFontSize(7);pdf.text(r.map(pdfSafe).join("  |  "),14,y,{maxWidth:pageW-28});y+=5;if(y>190){pdf.addPage();y=22;}});
-            }else pdf.autoTable({startY:48,head:[["#","Date & Time","Customer","Phone","Device","IMEI","Condition","Purchase","Sale"]],body:rows,theme:"grid",styles:{fontSize:7,cellPadding:3},headStyles:{fillColor:[20,24,34],textColor:[255,255,255],fontStyle:"bold"},alternateRowStyles:{fillColor:[247,248,251]},margin:{left:14,right:14}});
-        }
-        // Accessories
-        if(accessories.length){
-            pdf.addPage();pdfSectionTitle(pdf,"ACCESSORIES INVENTORY",`${accessories.length} records`);
-            const rows=accessories.map((r,i)=>[String(i+1),pdfDate(r),pdfSafe(r.name),pdfSafe(r.category),String(r.quantity||0),`₹${Number(r.price||0).toLocaleString("en-IN")}`,`₹${Number(r.salePrice||0).toLocaleString("en-IN")}`]);
-            if(!pdf.autoTable){
-                let y=48;rows.forEach(r=>{pdf.setFontSize(7);pdf.text(r.map(pdfSafe).join("  |  "),14,y,{maxWidth:pageW-28});y+=5;if(y>190){pdf.addPage();y=22;}});
-            }else pdf.autoTable({startY:48,head:[["#","Date & Time","Item","Category","Qty","Purchase","Sale"]],body:rows,theme:"grid",styles:{fontSize:7,cellPadding:3},headStyles:{fillColor:[20,24,34],textColor:[255,255,255],fontStyle:"bold"},alternateRowStyles:{fillColor:[247,248,251]},margin:{left:14,right:14}});
-        }
-        // Footer every page
-        const pages=pdf.getNumberOfPages();
-        for(let i=1;i<=pages;i++){
-            pdf.setPage(i);pdf.setDrawColor(225,228,235);pdf.line(14,pageH-10,pageW-14,pageH-10);
-            pdf.setFontSize(6.5);pdf.setTextColor(125,130,142);pdf.setFont(undefined,"normal");
-            pdf.text("KABIR MOBILE DATA • Confidential Business Report",14,pageH-5);
-            pdf.text(`Page ${i} / ${pages}`,pageW-14,pageH-5,{align:"right"});
-        }
-        await audit("customer_pdf",{section:"Kabir Mobile Data",description:`Complete PDF downloaded (${total} total records)`});
-        pdf.save(`Kabir_Mobile_Data_Complete_${new Date().toISOString().slice(0,10)}.pdf`);
-    }catch(e){
-        console.error("Complete PDF error:",e);
-        alert("Complete PDF बन नहीं पाया. Internet connection check करके फिर कोशिश करें.");
-    }
+        pdf.save(`${c.customerCode||"customer"}_${(c.customerName||"customer").replace(/\s+/g,"_")}.pdf`);
+    }catch(e){console.error(e);alert("PDF बन नहीं पाया.")}
 }
-
-function setupHomePdf(){
-    $("homePdfButton")?.addEventListener("click",downloadCompletePdf);
-}
-
-function setupHomeModuleReorder(){
-    const container=$("homeModules");
-    if(!container)return;
-    const key="kabir_home_module_order";
-    const ids=["financeModule","repairingModule","secondHandModule","accessoriesModule"];
-    const boxes={financeModule:"financeBox",repairingModule:"repairingBox",secondHandModule:"secondHandBox",accessoriesModule:"accessoriesBox"};
-    const getCards=()=>ids.map(id=>$(id)).filter(Boolean);
-    const getOrder=()=>{try{const a=JSON.parse(localStorage.getItem(key)||"[]");return Array.isArray(a)?a.filter(x=>ids.includes(x)):[]}catch{return []}};
-    const saveOrder=order=>localStorage.setItem(key,JSON.stringify(order));
-    const applyOrder=order=>{
-        const normalized=[...order,...ids.filter(x=>!order.includes(x))];
-        normalized.forEach(id=>{const card=$(id),box=$(boxes[id]);if(card)container.appendChild(card);if(box)container.appendChild(box);});
-        saveOrder(normalized);
-    };
-    applyOrder(getOrder());
-
-    let dragging=null,longPress=null,startY=0,moved=false,suppressClick=false;
-    const group=(id)=>({card:$(id),box:$(boxes[id])});
-    const reorder=(sourceId,targetId)=>{
-        if(!sourceId||!targetId||sourceId===targetId)return;
-        const order=[...container.querySelectorAll(":scope > .module-card")].map(x=>x.id);
-        const a=order.indexOf(sourceId),b=order.indexOf(targetId);
-        if(a<0||b<0)return;
-        order.splice(a,1);order.splice(b,0,sourceId);applyOrder(order);
-    };
-    const clearTimer=()=>{if(longPress){clearTimeout(longPress);longPress=null;}};
-    getCards().forEach(card=>{
-        card.style.touchAction="pan-y";
-        card.addEventListener("pointerdown",e=>{
-            if(e.pointerType==="mouse"&&e.button!==0)return;
-            clearTimer();moved=false;startY=e.clientY;
-            longPress=setTimeout(()=>{
-                dragging=card.id;card.classList.add("module-dragging");
-                try{card.setPointerCapture(e.pointerId)}catch{}
-                navigator.vibrate?.(20);
-            },480);
-        });
-        card.addEventListener("pointermove",e=>{
-            if(!dragging){if(Math.abs(e.clientY-startY)>8){moved=true;clearTimer();}return;}
-            e.preventDefault();moved=true;
-            const target=e.target.closest?.(".module-card");
-            if(!target||target.id===dragging)return;
-            const rect=target.getBoundingClientRect();
-            const before=e.clientY<rect.top+rect.height/2;
-            const source=group(dragging),dest=group(target.id);
-            if(!source.card||!dest.card)return;
-            const order=[...container.querySelectorAll(":scope > .module-card")].map(x=>x.id);
-            const si=order.indexOf(dragging),ti=order.indexOf(target.id);
-            if(si===ti)return;
-            order.splice(si,1);
-            let insert=order.indexOf(target.id)+(before?0:1);
-            order.splice(insert,0,dragging);
-            applyOrder(order);
-        });
-        card.addEventListener("pointerup",()=>{clearTimer();if(dragging){$(dragging)?.classList.remove("module-dragging");dragging=null;suppressClick=true;setTimeout(()=>suppressClick=false,80);}});
-        card.addEventListener("pointercancel",()=>{clearTimer();if(dragging){$(dragging)?.classList.remove("module-dragging");dragging=null;suppressClick=true;setTimeout(()=>suppressClick=false,80);}});
-        card.addEventListener("click",e=>{if(suppressClick){e.preventDefault();e.stopImmediatePropagation();suppressClick=false;}} ,true);
-    });
-}
-
 function applyTheme(theme){
     const allowed=["dark","light","midnight","silver","glass"];
     if(!allowed.includes(theme)) theme="dark";
@@ -2124,111 +1941,14 @@ function themeSystem(){
     });
 }
 
-
-/* =========================================================
-   KABIR AI ASSISTANT — MAIN WEBSITE ONLY
-   Smart data assistant: Hindi/English queries, voice input,
-   and answers from the currently synced Firebase data.
-========================================================= */
-function aiAddMessage(type,text){
-    const box=$("aiMessages"); if(!box)return;
-    const article=document.createElement("article");
-    article.className=`ai-msg ${type}`;
-    article.innerHTML=`<div class="ai-avatar">${type==="ai"?"✦":"You"}</div><div><b>${type==="ai"?"Kabir AI":"You"}</b><p>${esc(text).replace(/\n/g,"<br>")}</p></div>`;
-    box.appendChild(article);
-    box.scrollTop=box.scrollHeight;
-}
-function aiDateKey(row){return recordDay(row)||""}
-function aiTodayRows(){
-    const today=new Date().toLocaleDateString("en-CA");
-    return {customers:customers.filter(x=>aiDateKey(x)===today),repairing:repairing.filter(x=>aiDateKey(x)===today)};
-}
-function aiTopBrand(){
-    const map={};
-    customers.forEach(c=>{const b=String(c.brand||"").trim();if(b)map[b]=(map[b]||0)+1});
-    const rows=Object.entries(map).sort((a,b)=>b[1]-a[1]);
-    return rows[0]||null;
-}
-function aiSearchCustomer(q){
-    const terms=q.toLowerCase().replace(/[^a-z0-9@.\-\s]/g," ").split(/\s+/).filter(x=>x.length>1);
-    if(!terms.length)return [];
-    return customers.filter(c=>{
-        const hay=[c.customerCode,c.customerName,c.phone,c.imei,c.pincode,c.city,c.state,c.brand,c.model,c.financeCompany,c.lockName,c.stock,c.counter,c.financerName,formatDateTime(c)].filter(Boolean).join(" ").toLowerCase();
-        return terms.some(t=>hay.includes(t));
-    }).slice(0,5);
-}
-function aiAnswer(raw){
-    const q=String(raw||"").trim();
-    const l=q.toLowerCase();
-    if(!q)return "कुछ पूछिए — जैसे ‘आज कितने customer add हुए?’";
-
-    const today=aiTodayRows();
-    const top=aiTopBrand();
-    const repairCount=repairing.length;
-    const secondCount=secondHand.length;
-    const accessoryCount=accessories.reduce((n,x)=>n+(Number(x.qty)||0),0);
-
-    if(/^(hi|hello|hey|namaste|नमस्ते|हेलो)/i.test(q)) return "नमस्ते! 👋 मैं Kabir AI हूँ। Customer, repairing, stock, brand या आज के work के बारे में पूछिए।";
-    if(/आज|today/.test(l) && /customer|कस्टमर|ग्राहक/.test(l)) return `आज ${today.customers.length} customer record add हुआ है।`;
-    if(/आज|today/.test(l) && /repair|repairing|रिपेयर/.test(l)) return `आज ${today.repairing.length} repairing record हुआ है।`;
-    if(/total|कुल|कितने|कितना/.test(l) && /customer|कस्टमर|ग्राहक/.test(l)) return `कुल ${customers.length} customer records मौजूद हैं।`;
-    if(/total|कुल|कितने|कितना/.test(l) && /device|phone|मोबाइल|फोन/.test(l)){
-        const n=customers.reduce((t,c)=>t+(Number(c.deviceCount)>0?Number(c.deviceCount):1),0);
-        return `कुल ${n} devices हैं।`;
-    }
-    if(/repair|repairing|रिपेयर/.test(l) && /total|कुल|कितने|है/.test(l)) return `Kabir Repairing Data में कुल ${repairCount} records हैं।`;
-    if(/second|second hand|सेकंड/.test(l) && /stock|स्टॉक|कितने|total|कुल/.test(l)) return `Second Hand में ${secondCount} records हैं।`;
-    if(/accessor|accessories|एक्सेसरी|स्टॉक/.test(l) && /stock|कितने|total|कुल/.test(l)) return `Accessories में कुल ${accessoryCount} quantity stock है।`;
-    if(/top|सबसे ज्यादा|ज्यादा|popular|brand/.test(l) && /brand|ब्रांड/.test(l)) return top?`${top[0]} सबसे ज्यादा है — ${top[1]} customer records में।`:"अभी brand data उपलब्ध नहीं है।";
-    if(/आज|today/.test(l) && /काम|work|entry|entries|record/.test(l)) return `आज ${today.customers.length} customer और ${today.repairing.length} repairing entries हुई हैं।`;
-
-    const matches=aiSearchCustomer(q);
-    if(matches.length){
-        if(matches.length===1){
-            const c=matches[0];
-            return `मुझे ${c.customerName||"Customer"} मिला। Code: ${c.customerCode||"—"}, Phone: ${c.phone||"—"}, Device: ${[c.brand,c.model].filter(Boolean).join(" ")||"—"}, IMEI: ${c.imei||"—"}.`;
-        }
-        return `मुझे ${matches.length} matching records मिले: ${matches.map(c=>`${c.customerName||"Customer"} (${c.customerCode||"—"})`).join(", ")}.`;
-    }
-    return "मैं अभी आपके synced Kabir Data से customer, device, repairing, second-hand, accessories और daily work से जुड़े सवालों का जवाब दे सकता हूँ। उदाहरण: ‘KM1234 की जानकारी’, ‘आज कितने customer add हुए?’ या ‘सबसे ज्यादा कौन सा brand है?’";
-}
-function setupAi(){
-    const modal=$("aiModal");
-    const form=$("aiForm");
-    const input=$("aiInput");
-    if(!modal||!form||!input)return;
-    const open=()=>{modal.classList.remove("hidden");setTimeout(()=>input.focus(),220)};
-    const close=()=>modal.classList.add("hidden");
-    $("aiButton")?.addEventListener("click",open);
-    $("closeAiButton")?.addEventListener("click",close);
-    modal.addEventListener("click",e=>{if(e.target===modal)close()});
-    document.querySelectorAll("[data-ai-q]").forEach(b=>b.addEventListener("click",()=>{input.value=b.dataset.aiQ||"";form.requestSubmit()}));
-    form.addEventListener("submit",e=>{
-        e.preventDefault();
-        const q=input.value.trim(); if(!q)return;
-        aiAddMessage("user",q); input.value="";
-        const status=$("aiStatus"); if(status)status.textContent="Kabir AI सोच रहा है…";
-        setTimeout(()=>{aiAddMessage("ai",aiAnswer(q));if(status)status.textContent="Data आपके device/browser में process हो रहा है • Voice supported phones पर उपलब्ध"},260);
-    });
-    const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition;
-    const mic=$("aiMicButton");
-    if(!SpeechRecognition){
-        if(mic){mic.disabled=true;mic.title="Voice आपके browser में supported नहीं है"}
-        return;
-    }
-    const recognition=new SpeechRecognition();
-    recognition.lang="hi-IN"; recognition.interimResults=false; recognition.maxAlternatives=1;
-    mic?.addEventListener("click",()=>{try{recognition.start();mic.classList.add("listening");$("aiStatus").textContent="सुन रहा हूँ… Hindi/English में बोलें"}catch(_){}});
-    recognition.onresult=e=>{input.value=e.results?.[0]?.[0]?.transcript||"";form.requestSubmit()};
-    recognition.onerror=()=>{$("aiStatus").textContent="Voice input नहीं मिल पाया। फिर से try करें।"};
-    recognition.onend=()=>mic?.classList.remove("listening");
-}
-
 function featureNav(){
     $("addRepairingCard")?.addEventListener("click",()=>show("repairAddSection"));
     $("searchRepairingCard")?.addEventListener("click",()=>{show("repairSearchSection");renderRepairing();$("repairSearchInput")?.focus();audit("repairing_search",{section:"Kabir Repairing Data",description:"Repairing search opened"})});
     $("repairSearchInput")?.addEventListener("input",renderRepairing);
     $("repairForm")?.addEventListener("submit",saveRepair);
+    $("exportCustomersButton")?.addEventListener("click",exportCustomers);
+    $("exportRepairingButton")?.addEventListener("click",exportRepairing);
+    $("downloadCustomerPdf")?.addEventListener("click",downloadCustomerPdf);
     $("deleteCustomerButton")?.addEventListener("click",deleteCustomer);
     $("editCustomerButton")?.addEventListener("click",editCustomer);
     $("closeDetailButton")?.addEventListener("click",closeCustomerDetail);
@@ -2268,10 +1988,7 @@ async function init(){
      * featureNav() was never called, so the buttons did nothing.
      */
     themeSystem();
-    setupAi();
     featureNav();
-    setupHomePdf();
-    setupHomeModuleReorder();
     setupHomeDateFilter();
     adminAnalytics();
     if($('appScreen')?.classList.contains('admin')) audit('page_open',{section:'Admin Panel',description:'Admin Panel opened'});
@@ -2290,4 +2007,259 @@ async function init(){
 }
 
 
-document.addEventListener("DOMContentLoaded",()=>{init()});
+document.addEventListener("DOMContentLoaded",()=>{init();setTimeout(enhancedFeaturesInit,50)});
+
+/* =========================================================
+   ENHANCED SYNCED FEATURES — 17 AUG 2026
+   Additive layer: keeps existing Firebase collections intact.
+========================================================= */
+const __originalShow = show;
+function hideAllMainPages(){
+    document.querySelectorAll('.page-section').forEach(el=>{el.classList.add('hidden');el.classList.remove('page-active');});
+    document.querySelectorAll('.home-modules .module-box').forEach(el=>el.classList.remove('page-open'));
+    document.querySelector('.home-modules')?.classList.remove('management-mode');
+}
+function openMainPage(id){
+    hideAllMainPages();
+    const el=$(id); if(!el)return;
+    el.classList.remove('hidden'); el.classList.add('page-active');
+    setTimeout(()=>el.scrollIntoView({behavior:'smooth',block:'start'}),20);
+}
+function openManagementPage(boxId){
+    const home=document.querySelector('.home-modules');
+    if(!home)return;
+    document.querySelectorAll('.page-section').forEach(el=>{el.classList.add('hidden');el.classList.remove('page-active');});
+    document.querySelectorAll('.home-modules .module-box').forEach(el=>el.classList.remove('page-open'));
+    home.classList.add('management-mode');
+    const box=$(boxId); if(!box)return;
+    box.classList.remove('hidden'); box.classList.add('page-open');
+}
+function closeMainPage(id){
+    if(id){$(id)?.classList.add('hidden');$(id)?.classList.remove('page-active');}
+    document.querySelectorAll('.home-modules .module-box').forEach(el=>{el.classList.add('hidden');el.classList.remove('page-open');});
+    document.querySelector('.home-modules')?.classList.remove('management-mode');
+    window.scrollTo({top:0,behavior:'smooth'});
+}
+function enhancedNavigation(){
+    // Four management buttons open as true pages instead of inline boxes.
+    [['financeModule','financeBox'],['repairingModule','repairingBox'],['secondHandModule','secondHandBox'],['accessoriesModule','accessoriesBox']].forEach(([btn,box])=>{
+        $(btn)?.addEventListener('click',()=>openManagementPage(box));
+    });
+    document.querySelectorAll('[data-module-close]').forEach(btn=>btn.addEventListener('click',e=>{e.stopPropagation();closeMainPage(btn.dataset.moduleClose);}));
+    $('customerModule')?.addEventListener('click',()=>{openMainPage('customerHubSection');renderCustomerHub();});
+    $('customerHubClose')?.addEventListener('click',()=>closeMainPage('customerHubSection'));
+    $('customerHubSearch')?.addEventListener('input',renderCustomerHub);
+    document.querySelectorAll('[data-close]').forEach(btn=>btn.addEventListener('click',()=>closeMainPage(btn.dataset.close)));
+    // Keep existing internal action cards but present them in the opened management page.
+    $('secondAddCard')?.addEventListener('click',()=>openMainPage('secondAddSection'));
+    $('secondCustomerListCard')?.addEventListener('click',()=>openMainPage('secondListSection'));
+    $('secondStockCard')?.addEventListener('click',()=>openMainPage('secondListSection'));
+    $('secondSearchCard')?.addEventListener('click',()=>openMainPage('secondListSection'));
+    $('accessoryAddCard')?.addEventListener('click',()=>openMainPage('accessoryAddSection'));
+    $('accessoryListCard')?.addEventListener('click',()=>openMainPage('accessoryListSection'));
+    $('accessoryStockCard')?.addEventListener('click',()=>openMainPage('accessoryListSection'));
+    $('accessorySearchCard')?.addEventListener('click',()=>openMainPage('accessoryListSection'));
+}
+function setupProfitCalculators(){
+    const calc=(a,b,out)=>{
+        const n=Number(val(a)||0),s=Number(val(b)||0),p=s-n;
+        if($(out)){$(out).textContent=`₹${p.toLocaleString('en-IN')}`;$(out).style.color=p>=0?'var(--success)':'var(--danger)';}
+    };
+    $('secondPrice')?.addEventListener('input',()=>calc('secondPrice','secondSalePrice','secondProfit'));
+    $('secondSalePrice')?.addEventListener('input',()=>calc('secondPrice','secondSalePrice','secondProfit'));
+    $('accessoryPrice')?.addEventListener('input',()=>calc('accessoryPrice','accessorySalePrice','accessoryProfit'));
+    $('accessorySalePrice')?.addEventListener('input',()=>calc('accessoryPrice','accessorySalePrice','accessoryProfit'));
+}
+function setupSecondHandSelectors(){
+    const bs=$('secondBrandSelect'), bi=$('secondBrand'), ms=$('secondModelSelect'), mi=$('secondModel');
+    if(!bs||!bi||!ms||!mi)return;
+    const brands=[...new Set(Object.keys(BRANDS||{}))].sort((a,b)=>a.localeCompare(b));
+    bs.innerHTML='<option value="">Select brand</option>'+brands.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');
+    const dl=$('secondBrandList'); if(dl)dl.innerHTML=brands.map(x=>`<option value="${esc(x)}"></option>`).join('');
+    const fillModels=(brand)=>{
+        const list=modelListForBrand(brand||'');
+        ms.innerHTML='<option value="">Select model</option>'+list.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');
+        const mdl=$('secondModelList'); if(mdl)mdl.innerHTML=list.map(x=>`<option value="${esc(x)}"></option>`).join('');
+    };
+    bs.addEventListener('change',()=>{bi.value=bs.value;fillModels(bs.value);});
+    bi.addEventListener('input',()=>{const found=brands.find(x=>x.toLowerCase()===bi.value.trim().toLowerCase());if(found)bs.value=found;fillModels(found||bi.value.trim());});
+    ms.addEventListener('change',()=>{mi.value=ms.value;});
+    mi.addEventListener('input',()=>{const list=modelListForBrand(bi.value.trim());const found=list.find(x=>x.toLowerCase()===mi.value.trim().toLowerCase());if(found)ms.value=found;});
+}
+function customerKey(x){return String(x.phone||'').replace(/\D/g,'')||String(x.customerName||'').trim().toLowerCase();}
+function aggregateCustomers(){
+    const map=new Map();
+    const add=(x,type)=>{
+        const key=customerKey(x);if(!key)return;
+        if(!map.has(key))map.set(key,{key,name:x.customerName||'Customer',phone:x.phone||'',records:[]});
+        const g=map.get(key);if(!g.name||g.name==='Customer')g.name=x.customerName||g.name;if(!g.phone)g.phone=x.phone||'';g.records.push({type,data:x});
+    };
+    customers.forEach(x=>add(x,'Finance'));repairing.forEach(x=>add(x,'Repairing'));secondHand.forEach(x=>add(x,'Second Hand'));
+    accessories.forEach(x=>{if(x.customerName||x.phone)add(x,'Accessories');});
+    return [...map.values()].sort((a,b)=>a.name.localeCompare(b.name));
+}
+function renderCustomerHub(){
+    const box=$('customerHubResults');if(!box)return;
+    const q=val('customerHubSearch').toLowerCase();
+    const rows=aggregateCustomers().filter(g=>!q||[g.name,g.phone,...g.records.flatMap(r=>[r.data.imei,r.data.customerCode,r.data.device,r.data.brand,r.data.model])].join(' ').toLowerCase().includes(q));
+    if(!rows.length){box.innerHTML='<div class="empty">No customer found.</div>';return;}
+    box.innerHTML=rows.map((g,i)=>`<article class="result customer-result" data-customer-key="${esc(g.key)}"><div class="result-top"><div><div class="result-name">${esc(g.name)}</div><div class="result-meta">${esc(g.phone||'Phone not available')}</div></div><div class="work-log-tag">${g.records.length} records</div></div><div class="result-grid">${item('Finance',g.records.filter(r=>r.type==='Finance').length)}${item('Repairing',g.records.filter(r=>r.type==='Repairing').length)}${item('Second Hand',g.records.filter(r=>r.type==='Second Hand').length)}${item('Accessories',g.records.filter(r=>r.type==='Accessories').length)}</div></article>`).join('');
+    box.querySelectorAll('.customer-result').forEach(card=>card.addEventListener('click',()=>showAggregatedCustomer(card.dataset.customerKey)));
+}
+function showAggregatedCustomer(key){
+    const g=aggregateCustomers().find(x=>x.key===key);if(!g)return;
+    const modal=$('customerDetailModal');if(!modal)return;
+    $('detailTitle').textContent=`${g.name} • Customer History`;
+    const blocks=g.records.map(r=>{
+        const x=r.data;
+        if(r.type==='Finance')return `<article class="traffic-data-card"><h4>💳 Finance / Mobile</h4><p>${esc(x.customerCode||'')} • ${esc(x.brand||'')} ${esc(x.model||'')}</p><p>IMEI: ${esc(x.imei||'-')} • Amount: ₹${Number(x.phoneAmount||0).toLocaleString('en-IN')}</p><p>Date: ${esc(formatDateTime(x))}</p></article>`;
+        if(r.type==='Repairing')return `<article class="traffic-data-card"><h4>🛠️ Repairing</h4><p>${esc(x.device||'')} • ${esc(x.problem||'')}</p><p>Payment: ₹${Number(x.payment||0).toLocaleString('en-IN')} • ${esc(formatDateTime(x))}</p></article>`;
+        if(r.type==='Second Hand')return `<article class="traffic-data-card"><h4>📦 Second Hand</h4><p>${esc(x.brand||x.device||'')} ${esc(x.model||'')}</p><p>IMEI: ${esc(x.imei||'-')} • Condition: ${esc(x.condition||'-')}</p><p>Purchase ₹${Number(x.price||0).toLocaleString('en-IN')} • Sell ₹${Number(x.salePrice||0).toLocaleString('en-IN')} • Profit ₹${Number((x.salePrice||0)-(x.price||0)).toLocaleString('en-IN')}</p></article>`;
+        return `<article class="traffic-data-card"><h4>🎧 Accessories</h4><p>${esc(x.name||'')} • ${esc(x.category||'')}</p><p>SN: ${esc(x.sn||'-')} • Qty: ${esc(x.quantity||0)}</p></article>`;
+    }).join('');
+    $('customerDetailBody').innerHTML=`<div class="detail-grid">${detailItem('Customer Name',g.name)}${detailItem('Phone',g.phone||'-')}</div><div class="results" style="margin-top:14px">${blocks}</div>`;
+    modal.classList.remove('hidden');
+}
+function setupUniversalScanners(){
+    // Replace the old single-purpose scanner with a target-aware scanner.
+    const openTarget=(targetId,title)=>startUniversalScan(targetId,title);
+    $('scanImeiButton')?.addEventListener('click',e=>{e.stopImmediatePropagation();openTarget('imei','Scan IMEI');});
+    $('scanSecondImeiButton')?.addEventListener('click',e=>{e.stopImmediatePropagation();openTarget('secondImei','Scan IMEI');});
+    $('scanAccessorySnButton')?.addEventListener('click',e=>{e.stopImmediatePropagation();openTarget('accessorySn','Scan Serial Number');});
+}
+async function startUniversalScan(targetId,title){
+    const modal=$('scannerModal'),video=$('scannerVideo'),m=$('scannerMessage');if(!modal||!video)return;
+    modal.classList.remove('hidden');$('scannerMessage').textContent=`${title}: camera शुरू हो रहा है…`;
+    try{
+        if(!navigator.mediaDevices?.getUserMedia)throw Error('Camera API unavailable');
+        scanStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});
+        video.srcObject=scanStream;await video.play();
+        let detector=null;
+        if('BarcodeDetector' in window){
+            let formats=await BarcodeDetector.getSupportedFormats();formats=formats.filter(x=>['qr_code','code_128','code_39','code_93','ean_13','ean_8','itf','upc_a','upc_e','data_matrix'].includes(x));if(formats.length)detector=new BarcodeDetector({formats});
+        }
+        if(!detector){
+            // ZXing fallback for iPhone/browser implementations without BarcodeDetector.
+            if(!window.ZXingBrowser)await loadScript('https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js');
+            if(window.ZXingBrowser){
+                const reader=new ZXingBrowser.BrowserMultiFormatReader();
+                m.textContent='Camera ready — barcode/IMEI को frame में रखें…';
+                const controls=await reader.decodeFromVideoElement(video,(result)=>{
+                    if(result){const raw=result.getText?result.getText():result.text||'';applyScanValue(targetId,raw);controls?.stop();stopScan();}
+                });
+                window.__zxingControls=controls;return;
+            }
+            throw Error('No barcode decoder available');
+        }
+        m.textContent='Camera ready — barcode/IMEI को frame में रखें…';
+        const loop=async()=>{if(!scanStream)return;try{const a=await detector.detect(video);if(a?.length){applyScanValue(targetId,a[0].rawValue||'');return;}}catch(_){}scanTimer=setTimeout(loop,180);};loop();
+    }catch(err){console.error(err);m.textContent='Camera scan शुरू नहीं हुआ. iPhone Settings → Safari → Camera permission allow करें, फिर HTTPS/GitHub Pages पर खोलें.';}
+}
+function applyScanValue(targetId,raw){
+    const target=$(targetId);if(!target)return;
+    const text=String(raw||'').trim();
+    if(targetId.toLowerCase().includes('imei')){
+        const digits=text.replace(/\D/g,'');target.value=digits.slice(0,15);
+        if(target.value.length<15){$('scannerMessage').textContent=`Scanned ${target.value.length}/15 digits — पूरा IMEI frame में रखें…`;return;}
+    }else{target.value=text.slice(0,80);}
+    target.classList.add('scanner-target');setTimeout(()=>target.classList.remove('scanner-target'),700);stopScan();
+}
+function stopScan(){
+    if(scanTimer)clearTimeout(scanTimer);scanTimer=null;
+    try{window.__zxingControls?.stop?.();}catch(_){}window.__zxingControls=null;
+    if(scanStream)scanStream.getTracks().forEach(t=>t.stop());scanStream=null;
+    if($('scannerVideo'))$('scannerVideo').srcObject=null;$('scannerModal')?.classList.add('hidden');
+}
+function setupAdminEnhancements(){
+    if(!$('appScreen')?.classList.contains('admin'))return;
+    document.querySelector('h2')?.textContent;
+    const pinHead=document.querySelector('.admin .panel .section-head h2');if(pinHead)pinHead.textContent='PIN Settings';
+    document.querySelectorAll('.traffic-management-button').forEach(btn=>btn.addEventListener('click',()=>renderTrafficManagement(btn.dataset.management)));
+    renderTrafficManagementCounts();
+}
+function renderTrafficManagementCounts(){
+    $('trafficFinanceCount')&&($('trafficFinanceCount').textContent=`${customers.length} records`);
+    $('trafficRepairingCount')&&($('trafficRepairingCount').textContent=`${repairing.length} records`);
+    $('trafficSecondCount')&&($('trafficSecondCount').textContent=`${secondHand.length} records`);
+    $('trafficAccessoryCount')&&($('trafficAccessoryCount').textContent=`${accessories.length} records`);
+}
+function renderTrafficManagement(type){
+    const box=$('trafficManagementData');if(!box)return;box.classList.remove('hidden');
+    const source=type==='finance'?customers:type==='repairing'?repairing:type==='secondHand'?secondHand:accessories;
+    const title={finance:'Finance Management',repairing:'Repairing Management',secondHand:'Second Hand Management',accessories:'Accessories Management'}[type]||type;
+    if(!source.length){box.innerHTML=`<div class="empty">${title} में अभी कोई data नहीं है.</div>`;return;}
+    box.innerHTML=`<div class="traffic-data-card"><h4>${esc(title)}</h4><p>Total records: <b>${source.length}</b></p></div>`+source.slice(0,300).map(x=>{
+        if(type==='finance')return `<div class="traffic-data-card"><h4>${esc(x.customerName||'Customer')} • ${esc(x.customerCode||'')}</h4><p>${esc(x.phone||'')} • ${esc(x.brand||'')} ${esc(x.model||'')}</p><p>IMEI: ${esc(x.imei||'-')} • Amount: ₹${Number(x.phoneAmount||0).toLocaleString('en-IN')}</p></div>`;
+        if(type==='repairing')return `<div class="traffic-data-card"><h4>${esc(x.customerName||'Customer')}</h4><p>${esc(x.device||'')} • ${esc(x.problem||'')}</p><p>₹${Number(x.payment||0).toLocaleString('en-IN')} • ${esc(formatDateTime(x))}</p></div>`;
+        if(type==='secondHand')return `<div class="traffic-data-card"><h4>${esc(x.brand||x.device||'')} ${esc(x.model||'')}</h4><p>${esc(x.customerName||'')} • ${esc(x.phone||'')}</p><p>IMEI: ${esc(x.imei||'-')} • Profit: ₹${Number((x.salePrice||0)-(x.price||0)).toLocaleString('en-IN')}</p></div>`;
+        return `<div class="traffic-data-card"><h4>${esc(x.name||'Accessory')}</h4><p>${esc(x.category||'')} • SN: ${esc(x.sn||'-')}</p><p>Qty: ${esc(x.quantity||0)} • Profit: ₹${Number((x.salePrice||0)-(x.price||0)).toLocaleString('en-IN')}</p></div>`;
+    }).join('');
+}
+function enhancedSaveSecondHand(){
+    const f=$('secondHandForm');if(!f)return;
+    f.addEventListener('submit',async e=>{
+        e.preventDefault();if(enforceWriteLock('secondMessage'))return;
+        const data={customerName:val('secondCustomerName'),phone:val('secondPhone').replace(/\D/g,''),brand:val('secondBrand'),model:val('secondModel'),device:[val('secondBrand'),val('secondModel')].filter(Boolean).join(' '),imei:val('secondImei').replace(/\D/g,''),condition:val('secondCondition'),price:Number(val('secondPrice')||0),salePrice:Number(val('secondSalePrice')||0),profit:Number(val('secondSalePrice')||0)-Number(val('secondPrice')||0),createdAt:serverTimestamp(),createdBy:user?.uid||null};
+        if(!data.condition||!data.brand||!data.model||!data.customerName||!/^\d{10}$/.test(data.phone)){msg('secondMessage','Condition, brand, model, customer name और valid 10 digit phone भरें.');return;}
+        if(data.imei && data.imei.length!==15){msg('secondMessage','IMEI 15 digits होना चाहिए.');return;}
+        try{const ref=await addDoc(collection(db,SECOND_COL),data);await audit('second_hand_add',{section:'Second Hand Management',customerName:data.customerName,description:`Second-hand ${data.brand} ${data.model} added`,extra:{phone:data.phone,imei:data.imei,profit:data.profit}});f.reset();$('secondProfit').textContent='₹0';showSuccessToast('Successfully Saved','Second-hand phone saved successfully');}catch(err){console.error(err);msg('secondMessage',err?.message||'Save failed.');}
+    });
+}
+function enhancedSaveAccessory(){
+    const f=$('accessoryForm');if(!f)return;
+    f.addEventListener('submit',async e=>{
+        e.preventDefault();if(enforceWriteLock('accessoryMessage'))return;
+        const data={name:val('accessoryName'),category:val('accessoryCategory'),sn:val('accessorySn'),quantity:Number(val('accessoryQty')||0),price:Number(val('accessoryPrice')||0),salePrice:Number(val('accessorySalePrice')||0),profit:Number(val('accessorySalePrice')||0)-Number(val('accessoryPrice')||0),createdAt:serverTimestamp(),createdBy:user?.uid||null};
+        if(!data.name||!data.category||data.quantity<1){msg('accessoryMessage','Name, category और quantity भरें.');return;}
+        try{await addDoc(collection(db,ACCESSORY_COL),data);await audit('accessory_add',{section:'Accessories Management',description:`Accessory added: ${data.name}`,extra:{sn:data.sn,quantity:data.quantity,profit:data.profit}});f.reset();$('accessoryProfit').textContent='₹0';showSuccessToast('Successfully Saved','Accessory saved successfully');}catch(err){console.error(err);msg('accessoryMessage',err?.message||'Save failed.');}
+    });
+}
+function addWorkDeviceDetails(){
+    // Patch audit display so existing and new logs show device details + source status.
+    const oldRender=renderWorkHistory;
+    window.renderWorkHistory=()=>{
+        const box=$('workHistoryResults');if(!box)return;const q=val('workSearchInput').toLowerCase();const rows=auditLogs.filter(x=>!q||[x.label,x.action,x.userName,x.userUid,x.section,x.customerCode,x.customerName,x.description,JSON.stringify(x.details||{}),auditTime(x)].join(' ').toLowerCase().includes(q));
+        if(!rows.length){box.innerHTML='<div class="empty">अभी कोई work history उपलब्ध नहीं है.</div>';return;}
+        const iconMap={customer_add:'👤',customer_edit:'✏️',customer_delete:'🗑️',repairing_add:'🛠️',customer_search:'🔎',repairing_search:'🔎',customer_export:'📥',repairing_export:'📥',customer_pdf:'🔵',login_success:'🟢',login_failed:'🔴',page_open:'🟡',second_hand_add:'📱',accessory_add:'🎧',pin_change:'🔐'};
+        box.innerHTML=rows.slice(0,300).map((x,i)=>{const d=x.details||{};const device=[d.brand,d.model,d.device].filter(Boolean).join(' ');const status=x.action==='customer_pdf'?'🔵 PDF Download':(x.action==='customer_export'||x.action==='repairing_export'?'🔵 PDF/Export': '🟡 Website');return `<article class="result work-log"><div class="work-log-head"><div class="work-log-icon">${iconMap[x.action]||'⚡'}</div><div class="work-log-title"><b>${esc(x.label||auditLabel(x.action))}</b><small>${esc(x.section||'Kabir Mobile Data')} • ${esc(x.userName||x.userUid||'Kabir User')}</small></div><time class="work-log-time">${esc(auditTime(x))}</time></div><div class="work-log-desc">${esc(x.description||auditLabel(x.action))}</div><div class="work-log-tags"><span class="work-log-tag">${status}</span>${device?`<span class="work-log-tag">📱 ${esc(device)}</span>`:''}${x.customerCode?`<span class="work-log-tag">${esc(x.customerCode)}</span>`:''}${x.customerName?`<span class="work-log-tag">${esc(x.customerName)}</span>`:''}<span class="work-log-tag">#${i+1}</span></div></article>`;}).join('');
+    };
+}
+function setupHomePdf(){
+    $('homePdfButton')?.addEventListener('click',async()=>{
+        try{
+            if(!window.jspdf)await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+            const {jsPDF}=window.jspdf;const pdf=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});let page=1,y=20;
+            const title='KABIR DATA — COMPLETE DATABASE';pdf.setFontSize(18);pdf.text(title,148,12,{align:'center'});pdf.setFontSize(9);pdf.text(`Generated: ${new Date().toLocaleString('en-IN')}`,148,17,{align:'center'});
+            const addSection=(name,rows,cols)=>{if(y>185){pdf.addPage();page++;y=20;}pdf.setFontSize(13);pdf.text(name,14,y);y+=7;pdf.setFontSize(8);rows.slice(0,200).forEach(r=>{const line=cols.map(c=>`${c}: ${String(r[c]??'-')}`).join('   |   ');const lines=pdf.splitTextToSize(line,270);if(y+lines.length*4>195){pdf.addPage();page++;y=20;}pdf.text(lines,14,y);y+=lines.length*4+2;});y+=4;};
+            addSection('FINANCE / CUSTOMERS',customers.map(c=>({'Code':c.customerCode,'Name':c.customerName,'Phone':c.phone,'Device':`${c.brand||''} ${c.model||''}`,'IMEI':c.imei,'Amount':c.phoneAmount,'Date':formatDateTime(c)})),['Code','Name','Phone','Device','IMEI','Amount','Date']);
+            addSection('REPAIRING',repairing.map(r=>({'Name':r.customerName,'Phone':r.phone,'Device':r.device,'Problem':r.problem,'Payment':r.payment,'Date':formatDateTime(r)})),['Name','Phone','Device','Problem','Payment','Date']);
+            addSection('SECOND HAND',secondHand.map(r=>({'Name':r.customerName,'Phone':r.phone,'Device':`${r.brand||''} ${r.model||r.device||''}`,'IMEI':r.imei,'Condition':r.condition,'Purchase':r.price,'Sell':r.salePrice,'Profit':r.profit??Number(r.salePrice||0)-Number(r.price||0)})),['Name','Phone','Device','IMEI','Condition','Purchase','Sell','Profit']);
+            addSection('ACCESSORIES',accessories.map(r=>({'Name':r.name,'Category':r.category,'SN':r.sn,'Qty':r.quantity,'Purchase':r.price,'Sell':r.salePrice,'Profit':r.profit??Number(r.salePrice||0)-Number(r.price||0)})),['Name','Category','SN','Qty','Purchase','Sell','Profit']);
+            pdf.save(`Kabir_Data_Complete_${new Date().toLocaleDateString('en-CA')}.pdf');
+            await audit('customer_pdf',{section:'Kabir Data',description:'Complete database PDF downloaded'});
+        }catch(e){console.error(e);alert('PDF download नहीं हो पाया.');}
+    });
+}
+// Patch audit details for device/source when possible without breaking existing logs.
+const __oldAudit=audit;
+window.audit=__oldAudit;
+function auditWithDevice(action,details={}){return __oldAudit(action,{...details,extra:{...(details.extra||{}),brand:details.brand||val('brand'),model:details.model||val('model'),device:details.device||val('repairDevice')}});}
+
+function setupPinSettingsPage(){const b=$('openPinChangeButton'),p=$('pinChangePanel');b?.addEventListener('click',()=>p?.classList.toggle('hidden'));}
+function setupAdminPages(){
+    if(!$('appScreen')?.classList.contains('admin'))return;
+    const open=(id)=>{$(id)?.classList.add('admin-page-open');};
+    const close=(id)=>{$(id)?.classList.remove('admin-page-open');window.scrollTo({top:0,behavior:'smooth'});};
+    $('workHistoryButton')?.addEventListener('click',()=>open('workHistorySection'));
+    $('trafficButton')?.addEventListener('click',()=>{open('trafficSection');renderTraffic();renderTrafficManagementCounts();});
+    $('closeWorkPageButton')?.addEventListener('click',()=>close('workHistorySection'));
+    $('closeTrafficPageButton')?.addEventListener('click',()=>close('trafficSection'));
+}
+const __renderTrafficBase=renderTraffic;
+function renderTraffic(){__renderTrafficBase();renderTrafficManagementCounts();}
+
+function enhancedFeaturesInit(){
+    enhancedNavigation();setupProfitCalculators();setupSecondHandSelectors();setupUniversalScanners();enhancedSaveSecondHand();enhancedSaveAccessory();setupHomePdf();setupAdminEnhancements();setupAdminPages();setupPinSettingsPage();addWorkDeviceDetails();
+}
+
+function renderAccessories(){ const box=$('accessoryResults');if(!box)return;const q=val('accessorySearchInput').toLowerCase();const rows=accessories.filter(x=>!q||[x.name,x.category,x.sn].join(' ').toLowerCase().includes(q));box.innerHTML=rows.length?rows.map(x=>`<article class="result"><div class="result-name">${esc(x.name||'Accessory')}</div><div class="result-meta">${esc(x.category||'')} • SN: ${esc(x.sn||'-')}</div><div class="result-grid">${item('Quantity',x.quantity||0)}${item('Purchase Price',`₹${Number(x.price||0).toLocaleString('en-IN')}`)}${item('Sale Price',`₹${Number(x.salePrice||0).toLocaleString('en-IN')}`)}${item('Profit',`₹${Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))).toLocaleString('en-IN')}`)}</div></article>`).join(''):'<div class="empty">No accessories found.</div>'; }
