@@ -291,8 +291,8 @@ storage:["128 GB","256 GB"]
    COMMON HELPERS
 ========================================================= */
 
-let sharedPin=DEFAULT_PIN;
-let pinLoaded=false;
+let sharedPin=/^\d{4}$/.test(localStorage.getItem(PIN_KEY)||"")?localStorage.getItem(PIN_KEY):DEFAULT_PIN;
+let pinLoaded=/^\d{4}$/.test(localStorage.getItem(PIN_KEY)||"");
 let pinLoadPromise=null;
 
 async function loadSharedPin(){
@@ -443,15 +443,16 @@ function subscribeAuditLogs(){
     });
 }
 function renderWorkHistory(){
-    const box=$('workHistoryResults'); if(!box)return;
-    const q=val('workSearchInput').toLowerCase();
-    const rows=auditLogs.filter(x=>!q||[x.label,x.action,x.userName,x.userUid,x.section,x.customerCode,x.customerName,x.description,auditTime(x)].join(' ').toLowerCase().includes(q));
+    const box=$("workHistoryResults"); if(!box)return;
+    const q=val("workSearchInput").toLowerCase();
+    const rows=auditLogs.filter(x=>!q||[x.label,x.action,x.userName,x.userUid,x.section,x.customerCode,x.customerName,x.description,auditTime(x)].join(" ").toLowerCase().includes(q));
     if(!rows.length){box.innerHTML='<div class="empty">अभी कोई work history उपलब्ध नहीं है.</div>';return;}
-    box.innerHTML=rows.slice(0,300).map(x=>`<article class="result work-log">
-      <div class="result-name">${esc(x.label||auditLabel(x.action))}</div>
-      <div class="result-meta">${esc(auditTime(x))} • ${esc(x.section||'Kabir Mobile Data')}</div>
-      <div class="result-grid">${item('User',x.userName||x.userUid||'Unknown')}${item('Customer',x.customerName||x.customerCode||'-')}${item('Details',x.description||'-')}${item('Action',x.action||'-')}</div>
-    </article>`).join('');
+    const iconMap={customer_add:"👤",customer_edit:"✏️",customer_delete:"🗑️",customer_bill_update:"🧾",repairing_add:"🛠️",customer_search:"🔎",repairing_search:"🔎",customer_export:"📥",repairing_export:"📥",customer_pdf:"📄",pin_change:"🔐",login_success:"🔓",login_failed:"⚠️",page_open:"🏠"};
+    box.innerHTML=rows.slice(0,300).map((x,i)=>`<article class="result work-log">
+      <div class="work-log-head"><div class="work-log-icon">${iconMap[x.action]||"⚡"}</div><div class="work-log-title"><b>${esc(x.label||auditLabel(x.action))}</b><small>${esc(x.section||"Kabir Mobile Data")} • ${esc(x.userName||x.userUid||"Kabir User")}</small></div><time class="work-log-time">${esc(auditTime(x))}</time></div>
+      <div class="work-log-desc">${esc(x.description||auditLabel(x.action))}</div>
+      <div class="work-log-tags"><span class="work-log-tag">#${i+1}</span>${x.customerCode?`<span class="work-log-tag">${esc(x.customerCode)}</span>`:""}${x.customerName?`<span class="work-log-tag">${esc(x.customerName)}</span>`:""}<span class="work-log-tag">${esc(x.action||"work")}</span></div>
+    </article>`).join("");
 }
 function renderTraffic(){
     const total=auditLogs.length;
@@ -482,6 +483,20 @@ function renderTraffic(){
         const max=Math.max(list[0]?.[1]||1,1);
         tb.innerHTML=list.slice(0,15).map(([a,n])=>`<div class="traffic-type"><span>${esc(auditLabel(a))}</span><div><i style="width:${Math.round(n/max*100)}%"></i></div><b>${n}</b></div>`).join('')||'<div class="empty">No traffic data.</div>';
     }
+    renderCustomerDateGraph();
+}
+function renderCustomerDateGraph(){
+    const box=$("customerDateGraph"); if(!box)return;
+    const range=Number($("customerGraphRange")?.value||30);
+    const now=new Date(); now.setHours(0,0,0,0);
+    const rows=[];
+    for(let i=range-1;i>=0;i--){
+        const d=new Date(now); d.setDate(now.getDate()-i);
+        const key=d.toLocaleDateString("en-CA");
+        rows.push({d,key,count:customers.filter(c=>recordDay(c)===key).length});
+    }
+    const max=Math.max(...rows.map(x=>x.count),1);
+    box.innerHTML=rows.map(x=>`<div class="customer-bar" title="${x.key}: ${x.count} customer"><div class="customer-bar-value">${x.count||""}</div><i style="height:${Math.max(4,Math.round(x.count/max*100))}%"></i><span>${x.d.getDate()} ${x.d.toLocaleString("en-IN",{month:"short"})}</span></div>`).join("");
 }
 function adminAnalytics(){
     if(!$('workHistoryButton'))return;
@@ -566,50 +581,42 @@ function pinError(){
     card?.classList.remove("pin-shake");
     void card?.offsetWidth;
     card?.classList.add("pin-shake");
-
-    if(navigator.vibrate){
-        try{navigator.vibrate([90,35,90,35,140]);}catch(_){}
-    }
-
+    if(navigator.vibrate){try{navigator.vibrate([45,25,45]);}catch(_){}}
     input?.select();
-    setTimeout(()=>card?.classList.remove("pin-shake"),500);
+    setTimeout(()=>card?.classList.remove("pin-shake"),260);
 }
 
 function setupPin(){
     const e=$("pinInput");
     if(!e)return;
-
-    const attempt=async()=>{
+    const attempt=()=>{
         e.value=e.value.replace(/\D/g,"").slice(0,4);
         dots(e.value);
         if(e.value.length!==4)return;
         const entered=e.value;
-        try{
-            msg("pinMessage","PIN verify हो रहा है…",true);
-            await loadSharedPin();
+        const finish=async()=>{
+            if(e.value!==entered)return;
             if(entered===pin()){
-                await audit("login_success",{section:$('appScreen')?.classList.contains('admin')?'Admin Panel':'Kabir Mobile Data',description:'PIN login successful'});
+                audit("login_success",{section:$('appScreen')?.classList.contains('admin')?'Admin Panel':'Kabir Mobile Data',description:'PIN login successful'});
                 unlock();
                 msg("pinMessage","");
             }else{
-                await audit("login_failed",{section:$('appScreen')?.classList.contains('admin')?'Admin Panel':'Kabir Mobile Data',description:'Incorrect PIN entered'});
+                audit("login_failed",{section:$('appScreen')?.classList.contains('admin')?'Admin Panel':'Kabir Mobile Data',description:'Incorrect PIN entered'});
                 msg("pinMessage","Incorrect PIN");
                 pinError();
-                setTimeout(()=>{e.value="";dots("");msg("pinMessage","");e.focus()},520);
+                setTimeout(()=>{e.value="";dots("");msg("pinMessage","");e.focus()},240);
             }
-        }catch(err){
-            console.error(err);
-            msg("pinMessage",err?.message||"PIN load नहीं हुआ. Firebase connection check करें.");
-            pinError();
-            setTimeout(()=>{e.value="";dots("");e.focus()},650);
+        };
+        // Fast path: cached PIN is checked immediately. Firebase refresh never blocks the keypad.
+        finish();
+        if(!pinLoaded){
+            loadSharedPin().then(()=>{if(e.value===entered)finish()}).catch(()=>{});
         }
     };
-
     e.addEventListener("input",attempt);
     $("lockButton")?.addEventListener("click",lock);
-
     if(sessionStorage.getItem("kabir_unlocked")==="1")unlock();
-    else setTimeout(()=>e.focus(),250);
+    else setTimeout(()=>e.focus(),100);
 }
 
 /* =========================================================
@@ -662,11 +669,15 @@ function subscribe(){
             counts();
             renderSearch();
             updateAdmin();
+            homeDateFilter();
+            renderCustomerDateGraph();
         },
         e=>{
             console.error("Customer listener:",e);
             msg("formMessage","Firestore access error. Check Firebase rules.");
             counts();
+            homeDateFilter();
+            renderCustomerDateGraph();
         }
     );
 }
@@ -1530,6 +1541,38 @@ function search(){
 
 
 /* =========================================================
+   HOME DATE FILTER / DAILY WORK VIEW
+========================================================= */
+function recordDay(row){
+    const d=row?.createdAt?.toDate?.() || (row?.createdAt?new Date(row.createdAt):null);
+    return d&&!Number.isNaN(d.getTime())?d.toLocaleDateString("en-CA"):"";
+}
+function homeDateFilter(){
+    const input=$("homeWorkDate");
+    const date=input?.value||new Date().toLocaleDateString("en-CA");
+    const customerRows=customers.filter(c=>recordDay(c)===date);
+    const repairRows=repairing.filter(r=>recordDay(r)===date);
+    $("homeDateCustomerCount")&&($("homeDateCustomerCount").textContent=customerRows.length);
+    $("homeDateRepairCount")&&($("homeDateRepairCount").textContent=repairRows.length);
+    const box=$("homeDateResults"); if(!box)return;
+    const rows=[
+        ...customerRows.map(c=>({icon:"👤",kind:"Customer",title:c.customerName||"Customer",meta:c.customerCode||"KM----",time:formatDateTime(c),detail:`${c.phone||""} • ${c.brand||""} ${c.model||""}`})),
+        ...repairRows.map(r=>({icon:"🛠",kind:"Repairing",title:r.customerName||"Repairing",meta:r.phone||"",time:formatDateTime(r),detail:`${r.device||""} • ${r.problem||""}`}))
+    ];
+    box.innerHTML=rows.length?rows.map(r=>`<article class="date-work-item"><div class="date-work-icon">${r.icon}</div><div class="date-work-main"><b>${esc(r.title)}</b><small>${esc(r.kind)} • ${esc(r.meta)}</small><span>${esc(r.detail)}</span></div><time>${esc(r.time)}</time></article>`).join(""):'<div class="empty">इस तारीख को कोई Customer या Repairing work नहीं हुआ.</div>';
+}
+function setupHomeDateFilter(){
+    $("homeDateWorkButton")?.addEventListener("click",()=>{
+        const sec=$("homeDateWorkSection"); sec?.classList.toggle("hidden");
+        if(sec&&!sec.classList.contains("hidden")){
+            const d=$("homeWorkDate"); if(d&&!d.value)d.value=new Date().toLocaleDateString("en-CA");
+            homeDateFilter(); setTimeout(()=>sec.scrollIntoView({behavior:"smooth",block:"start"}),20);
+        }
+    });
+    $("homeWorkDate")?.addEventListener("change",homeDateFilter);
+}
+
+/* =========================================================
    IMEI QR / BARCODE SCANNER
 ========================================================= */
 
@@ -1925,6 +1968,7 @@ async function init(){
      */
     themeSystem();
     featureNav();
+    setupHomeDateFilter();
     adminAnalytics();
     if($('appScreen')?.classList.contains('admin')) audit('page_open',{section:'Admin Panel',description:'Admin Panel opened'});
 
