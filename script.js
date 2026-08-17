@@ -1,6 +1,6 @@
 import {initializeApp} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
 import {getAuth,signInAnonymously,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js";
-import {getFirestore,collection,addDoc,updateDoc,deleteDoc,setDoc,getDoc,doc,onSnapshot,query,orderBy,serverTimestamp} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
+import {getFirestore,collection,addDoc,updateDoc,deleteDoc,setDoc,getDoc,doc,onSnapshot,query,orderBy,serverTimestamp,getDocs} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
 
 const firebaseConfig={
     apiKey:"AIzaSyDWD2S7Zvcy-T_Ddr8Ytbqwv9tNEBNIJg4",
@@ -15,26 +15,44 @@ const firebaseConfig={
 const app=initializeApp(firebaseConfig);
 
 const auth=getAuth(app);
+
+window.kabirGetSharedPin = async function(){
+    try{
+        const ref=doc(db,"settings","app");
+        const snap=await getDoc(ref);
+        if(snap.exists() && snap.data().pin){
+            const p=String(snap.data().pin);
+            localStorage.setItem("kabirSharedPin",p);
+            return p;
+        }
+    }catch(e){
+        console.warn("Shared PIN read failed:",e);
+    }
+    return localStorage.getItem("kabirSharedPin") || "0000";
+};
 const db=getFirestore(app);
 
 const PIN_KEY="kabir_mobile_pin";
 const DEFAULT_PIN="0000";
 const COL="customers";
 const REPAIR_COL="repairing";
-const SECOND_COL="secondHand";
-const ACCESSORY_COL="accessories";
-const AUDIT_COL="auditLogs";
 const SETTINGS_COL="settings";
 const SETTINGS_DOC="security";
 const REMOTE_DEVICES_URL="https://cdn.jsdelivr.net/gh/bsthen/device-models/devices.json";
+const ACCESS_USERS_COL="accessUsers";
+const AUDIT_COL="auditLogs";
+const TRASH_COL="recentlyDeleted";
+const TRASH_DAYS=30;
+const ACCESS_SESSION_KEY="kabir_access_session";
+let kabirAccessUser=null;
+let kabirAccessSessionId=null;
+let accessHeartbeatTimer=null;
+let accessSessionUnsubscribe=null;
+let authReadyResolve;
+const authReady=new Promise(resolve=>{authReadyResolve=resolve;});
 
 let user=null;
 let customers=[];
-let repairing=[];
-let secondHand=[];
-let accessories=[];
-let auditLogs=[];
-let auditListenerStarted=false;
 let scanStream=null;
 let scanTimer=null;
 
@@ -295,229 +313,48 @@ storage:["128 GB","256 GB"]
    COMMON HELPERS
 ========================================================= */
 
-let sharedPin=/^\d{4}$/.test(localStorage.getItem(PIN_KEY)||"")?localStorage.getItem(PIN_KEY):DEFAULT_PIN;
-let pinLoaded=/^\d{4}$/.test(localStorage.getItem(PIN_KEY)||"");
-let pinLoadPromise=null;
+let sharedPin=DEFAULT_PIN;
+let pinLoaded=false;
 
 async function loadSharedPin(){
-    if(pinLoadPromise)return pinLoadPromise;
-    pinLoadPromise=(async()=>{
-        const securityRef=doc(db,SETTINGS_COL,SETTINGS_DOC);
-        try{
-            // Primary location used by both Main Website and Admin Panel.
-            const securitySnap=await getDoc(securityRef);
-            if(securitySnap.exists()){
-                const p=String(securitySnap.data()?.pin||"");
-                if(/^\d{4}$/.test(p)){
-                    sharedPin=p;
-                    localStorage.setItem(PIN_KEY,p);
-                    pinLoaded=true;
-                    return p;
-                }
-            }
+    try{
+        const ref=doc(db,SETTINGS_COL,SETTINGS_DOC);
+        const snap=await getDoc(ref);
 
-            // Backward compatibility with the earlier settings/app document.
-            const legacyRef=doc(db,SETTINGS_COL,"app");
-            const legacySnap=await getDoc(legacyRef);
-            if(legacySnap.exists()){
-                const p=String(legacySnap.data()?.pin||"");
-                if(/^\d{4}$/.test(p)){
-                    sharedPin=p;
-                    localStorage.setItem(PIN_KEY,p);
-                    await setDoc(securityRef,{pin:p,updatedAt:serverTimestamp()},{merge:true});
-                    pinLoaded=true;
-                    return p;
-                }
+        if(snap.exists()){
+            const p=String(snap.data()?.pin||"");
+            if(/^\d{4}$/.test(p)){
+                sharedPin=p;
+                localStorage.setItem(PIN_KEY,p);
+                pinLoaded=true;
+                return p;
             }
-
-            const cached=localStorage.getItem(PIN_KEY);
-            if(/^\d{4}$/.test(cached||"")){
-                sharedPin=cached;
-                await setDoc(securityRef,{pin:sharedPin,updatedAt:serverTimestamp()},{merge:true});
-            }else{
-                sharedPin=DEFAULT_PIN;
-                await setDoc(securityRef,{pin:sharedPin,updatedAt:serverTimestamp()},{merge:true});
-                localStorage.setItem(PIN_KEY,sharedPin);
-            }
-            return sharedPin;
-        }catch(e){
-            console.error("Shared PIN load failed:",e);
-            const cached=localStorage.getItem(PIN_KEY);
-            if(/^\d{4}$/.test(cached||"")){
-                sharedPin=cached;
-                return sharedPin;
-            }
-            throw Error("PIN load नहीं हुआ. Firebase connection check करें.");
-        }finally{
-            pinLoaded=true;
         }
-    })();
-    return pinLoadPromise;
+
+        const cached=localStorage.getItem(PIN_KEY);
+        sharedPin=/^\d{4}$/.test(cached||"")?cached:DEFAULT_PIN;
+        await setDoc(ref,{pin:sharedPin,updatedAt:serverTimestamp()},{merge:true});
+    }catch(e){
+        console.warn("Shared PIN read failed:",e);
+        const cached=localStorage.getItem(PIN_KEY);
+        sharedPin=/^\d{4}$/.test(cached||"")?cached:DEFAULT_PIN;
+    }
+    pinLoaded=true;
+    return sharedPin;
 }
 
-function pin(){return sharedPin||DEFAULT_PIN;}
+function pin(){
+    return sharedPin||DEFAULT_PIN;
+}
 
 async function changeSharedPin(newPin){
-    if(!/^\d{4}$/.test(newPin))throw Error("PIN must be exactly 4 digits.");
-    await setDoc(doc(db,SETTINGS_COL,SETTINGS_DOC),{pin:newPin,updatedAt:serverTimestamp()},{merge:true});
-    // Keep the legacy document synchronized so older deployments cannot disagree.
-    await setDoc(doc(db,SETTINGS_COL,"app"),{pin:newPin,updatedAt:serverTimestamp()},{merge:true});
+    if(!/^\d{4}$/.test(newPin)) throw Error("PIN must be exactly 4 digits.");
+    await setDoc(doc(db,SETTINGS_COL,SETTINGS_DOC),{
+        pin:newPin,
+        updatedAt:serverTimestamp()
+    },{merge:true});
     sharedPin=newPin;
     localStorage.setItem(PIN_KEY,newPin);
-    pinLoaded=true;
-    await audit("pin_change",{section:"Admin Panel",description:"Shared PIN changed from Admin Panel"});
-}
-
-
-/* =========================================================
-   WORK HISTORY / AUDIT LOGS
-========================================================= */
-function auditLabel(action){
-    const labels={
-        customer_add:"Customer Add",
-        customer_edit:"Customer Edit",
-        customer_delete:"Customer Delete",
-        customer_bill_update:"Customer Bill Update",
-        repairing_add:"Repairing Add",
-        customer_search:"Customer Search",
-        repairing_search:"Repairing Search",
-        customer_export:"Customer Excel Download",
-        repairing_export:"Repairing Excel Download",
-        customer_pdf:"Customer PDF Download",
-        pin_change:"PIN Changed",
-        login_success:"Login Success",
-        login_failed:"Login Failed",
-        page_open:"Website Opened",
-        second_hand_add:"Second Hand Phone Added",
-        accessory_add:"Accessory Added"
-    };
-    return labels[action]||String(action||"Work").replaceAll("_"," ");
-}
-async function audit(action,details={}){
-    try{
-        await addDoc(collection(db,AUDIT_COL),{
-            action:String(action||"work"),
-            label:auditLabel(action),
-            userUid:user?.uid||"unknown",
-            userName:localStorage.getItem("kabir_current_user")||"Kabir User",
-            section:details.section||"Kabir Mobile Data",
-            customerId:details.customerId||null,
-            customerCode:details.customerCode||null,
-            customerName:details.customerName||null,
-            description:details.description||auditLabel(action),
-            details:details.extra||null,
-            clientTime:new Date().toISOString(),
-            createdAt:serverTimestamp()
-        });
-    }catch(e){
-        // Audit failure must never block the actual customer/repairing operation.
-        console.warn("Audit log failed:",e?.message||e);
-    }
-}
-
-function auditTime(x){
-    const d=x?.createdAt?.toDate?.() || (x?.clientTime?new Date(x.clientTime):null);
-    if(!d || Number.isNaN(d.getTime())) return "Time pending";
-    return d.toLocaleString("en-IN",{dateStyle:"medium",timeStyle:"medium"});
-}
-function auditDay(x){
-    const d=x?.createdAt?.toDate?.() || (x?.clientTime?new Date(x.clientTime):null);
-    return d&&!Number.isNaN(d.getTime())?d.toLocaleDateString("en-CA"):"";
-}
-function auditHour(x){
-    const d=x?.createdAt?.toDate?.() || (x?.clientTime?new Date(x.clientTime):null);
-    return d&&!Number.isNaN(d.getTime())?d.getHours():-1;
-}
-function sortAudit(){
-    auditLogs.sort((a,b)=>{
-        const ta=a.createdAt?.toMillis?.()||Date.parse(a.clientTime||"")||0;
-        const tb=b.createdAt?.toMillis?.()||Date.parse(b.clientTime||"")||0;
-        return tb-ta;
-    });
-}
-function subscribeAuditLogs(){
-    if(auditListenerStarted || !$('workHistoryResults')) return;
-    auditListenerStarted=true;
-    onSnapshot(collection(db,AUDIT_COL),snap=>{
-        auditLogs=snap.docs.map(d=>({id:d.id,...d.data()}));
-        sortAudit();
-        renderWorkHistory();
-        renderTraffic();
-    },e=>{
-        console.error("Audit listener:",e);
-        if($('workHistoryResults'))$('workHistoryResults').innerHTML='<div class="empty">Work History load नहीं हुआ. Firebase Rules में auditLogs read permission check करें.</div>';
-    });
-}
-function renderWorkHistory(){
-    const box=$("workHistoryResults"); if(!box)return;
-    const q=val("workSearchInput").toLowerCase();
-    const rows=auditLogs.filter(x=>!q||[x.label,x.action,x.userName,x.userUid,x.section,x.customerCode,x.customerName,x.description,auditTime(x)].join(" ").toLowerCase().includes(q));
-    if(!rows.length){box.innerHTML='<div class="empty">अभी कोई work history उपलब्ध नहीं है.</div>';return;}
-    const iconMap={customer_add:"👤",customer_edit:"✏️",customer_delete:"🗑️",customer_bill_update:"🧾",repairing_add:"🛠️",customer_search:"🔎",repairing_search:"🔎",customer_export:"📥",repairing_export:"📥",customer_pdf:"📄",pin_change:"🔐",login_success:"🟢",login_failed:"🔴",page_open:"🏠",second_hand_add:"📱",accessory_add:"🎧"};
-    box.innerHTML=rows.slice(0,300).map((x,i)=>`<article class="result work-log">
-      <div class="work-log-head"><div class="work-log-icon">${iconMap[x.action]||"⚡"}</div><div class="work-log-title"><b>${esc(x.label||auditLabel(x.action))}</b><small>${esc(x.section||"Kabir Mobile Data")} • ${esc(x.userName||x.userUid||"Kabir User")}</small></div><time class="work-log-time">${esc(auditTime(x))}</time></div>
-      <div class="work-log-desc">${esc(x.description||auditLabel(x.action))}</div>
-      <div class="work-log-tags"><span class="work-log-tag">#${i+1}</span>${x.customerCode?`<span class="work-log-tag">${esc(x.customerCode)}</span>`:""}${x.customerName?`<span class="work-log-tag">${esc(x.customerName)}</span>`:""}<span class="work-log-tag">${esc(x.action||"work")}</span></div>
-    </article>`).join("");
-}
-function renderTraffic(){
-    const total=auditLogs.length;
-    const today=new Date().toLocaleDateString('en-CA');
-    const todayRows=auditLogs.filter(x=>auditDay(x)===today);
-    const count=a=>auditLogs.filter(x=>x.action===a).length;
-    const users=new Set(auditLogs.map(x=>x.userUid).filter(Boolean));
-    $('trafficTotal')&&($('trafficTotal').textContent=String(total));
-    $('trafficToday')&&($('trafficToday').textContent=String(todayRows.length));
-    $('trafficAdds')&&($('trafficAdds').textContent=String(count('customer_add')));
-    $('trafficEdits')&&($('trafficEdits').textContent=String(count('customer_edit')));
-    $('trafficDeletes')&&($('trafficDeletes').textContent=String(count('customer_delete')));
-    $('trafficRepairs')&&($('trafficRepairs').textContent=String(count('repairing_add')));
-    $('trafficUsers')&&($('trafficUsers').textContent=String(users.size));
-    const hours=Array.from({length:24},(_,h)=>auditLogs.filter(x=>auditHour(x)===h).length);
-    const peak=Math.max(...hours,0),peakHour=peak?hours.indexOf(peak):-1;
-    $('trafficPeak')&&($('trafficPeak').textContent=peakHour<0?'—':`${String(peakHour).padStart(2,'0')}:00 (${peak})`);
-    const hb=$('trafficHours');
-    if(hb){
-        const max=Math.max(...hours,1);
-        hb.innerHTML=hours.map((n,h)=>`<div class="traffic-hour"><span>${String(h).padStart(2,'0')}</span><div><i style="width:${Math.round(n/max*100)}%"></i></div><b>${n}</b></div>`).join('');
-    }
-    const types={};
-    auditLogs.forEach(x=>types[x.action||'other']=(types[x.action||'other']||0)+1);
-    const tb=$('trafficTypes');
-    if(tb){
-        const list=Object.entries(types).sort((a,b)=>b[1]-a[1]);
-        const max=Math.max(list[0]?.[1]||1,1);
-        tb.innerHTML=list.slice(0,15).map(([a,n])=>`<div class="traffic-type"><span>${esc(auditLabel(a))}</span><div><i style="width:${Math.round(n/max*100)}%"></i></div><b>${n}</b></div>`).join('')||'<div class="empty">No traffic data.</div>';
-    }
-    renderCustomerDateGraph();
-}
-function renderCustomerDateGraph(){
-    const box=$("customerDateGraph"); if(!box)return;
-    const range=Number($("customerGraphRange")?.value||30);
-    const now=new Date(); now.setHours(0,0,0,0);
-    const rows=[];
-    for(let i=range-1;i>=0;i--){
-        const d=new Date(now); d.setDate(now.getDate()-i);
-        const key=d.toLocaleDateString("en-CA");
-        rows.push({d,key,count:customers.filter(c=>recordDay(c)===key).length});
-    }
-    const max=Math.max(...rows.map(x=>x.count),1);
-    box.innerHTML=rows.map(x=>`<div class="customer-bar" title="${x.key}: ${x.count} customer"><div class="customer-bar-value">${x.count||""}</div><i style="height:${Math.max(4,Math.round(x.count/max*100))}%"></i><span>${x.d.getDate()} ${x.d.toLocaleString("en-IN",{month:"short"})}</span></div>`).join("");
-}
-function adminAnalytics(){
-    if(!$('workHistoryButton'))return;
-    const open=id=>{
-        $('workHistorySection')?.classList.add('hidden');
-        $('trafficSection')?.classList.add('hidden');
-        $(id)?.classList.remove('hidden');
-        setTimeout(()=>$(id)?.scrollIntoView({behavior:'smooth',block:'start'}),20);
-    };
-    $('workHistoryButton').addEventListener('click',()=>{open('workHistorySection');renderWorkHistory();});
-    $('trafficButton').addEventListener('click',()=>{open('trafficSection');renderTraffic();});
-    $('refreshWorkButton')?.addEventListener('click',renderWorkHistory);
-    $('refreshTrafficButton')?.addEventListener('click',renderTraffic);
-    $('workSearchInput')?.addEventListener('input',renderWorkHistory);
-    subscribeAuditLogs();
 }
 
 function msg(id,t,ok=false){
@@ -543,115 +380,263 @@ function showSuccessToast(title="Successfully Saved",text="Data saved successful
 }
 
 /* =========================================================
-   PIN SYSTEM
+   KABIR ID / PASSWORD ACCESS
+   One active session per Kabir ID.
 ========================================================= */
 
-function dots(v){
-    document
-        .querySelectorAll("#pinDots i")
-        .forEach((e,i)=>{
-            e.classList.toggle("filled",i<v.length);
+function currentPageIsAdmin(){
+    return /admin\.html?$/i.test(location.pathname) || document.querySelector(".admin");
+}
+
+function accessNow(){
+    return new Date();
+}
+
+function accessDateTime(v){
+    if(!v)return "—";
+    try{
+        const d=v?.toDate?.() || new Date(v);
+        return isNaN(d.getTime()) ? "—" : new Intl.DateTimeFormat("en-IN",{dateStyle:"medium",timeStyle:"medium"}).format(d);
+    }catch(_){return "—";}
+}
+
+function normalizeKabirId(v){
+    return String(v||"").trim().toUpperCase().replace(/\s+/g,"");
+}
+
+function accessMessage(t,ok=false){
+    msg("kabirLoginMessage",t,ok);
+}
+
+function accessSessionIsValid(){
+    return !!sessionStorage.getItem(ACCESS_SESSION_KEY);
+}
+
+async function getAccessUserById(id){
+    const cleanId=normalizeKabirId(id);
+    const snap=await getDoc(doc(db,ACCESS_USERS_COL,cleanId));
+    if(!snap.exists())return null;
+    const data=snap.data()||{};
+    return {id:snap.id,...data};
+}
+
+async function audit(action,details={}){
+    try{
+        if(!kabirAccessUser && !user)return;
+        await addDoc(collection(db,AUDIT_COL),{
+            action,
+            userId:kabirAccessUser?.id||null,
+            userName:kabirAccessUser?.name||null,
+            authUid:user?.uid||null,
+            details,
+            createdAt:serverTimestamp()
         });
+    }catch(e){console.warn("Audit log failed:",e)}
 }
 
-function unlock(){
-    sessionStorage.setItem("kabir_unlocked","1");
+async function claimAccessSession(record){
+    const sessionId=crypto.randomUUID ? crypto.randomUUID() : ("S"+Date.now()+Math.random().toString(36).slice(2));
+    const now=new Date();
+    const ref=doc(db,ACCESS_USERS_COL,record.id);
 
-    $("pinScreen")?.classList.add("hidden");
-    $("appScreen")?.classList.remove("hidden");
+    const latest=await getDoc(ref);
+    const data=latest.exists()?latest.data():record;
 
-    $("pinInput")?.blur();
+    if(data.activeSessionId && data.activeSessionId!=="" && data.activeSessionId!==sessionId){
+        // A session is considered active until its explicit logout or until
+        // the heartbeat expires for more than 90 seconds.
+        const hb=data.lastHeartbeat?.toDate?.()?.getTime?.()||0;
+        if(hb && (Date.now()-hb)<90000){
+            throw Error("यह Kabir ID अभी किसी दूसरे device/browser में login है.");
+        }
+    }
+
+    await updateDoc(ref,{
+        activeSessionId:sessionId,
+        status:"online",
+        lastLoginAt:serverTimestamp(),
+        lastHeartbeat:serverTimestamp(),
+        lastLoginDevice:navigator.userAgent.slice(0,180)
+    });
+
+    kabirAccessSessionId=sessionId;
+    kabirAccessUser={...data,id:record.id};
+    sessionStorage.setItem(ACCESS_SESSION_KEY,JSON.stringify({
+        id:record.id,
+        sessionId
+    }));
+
+    await audit("LOGIN",{loginAt:new Date().toISOString()});
+    startAccessHeartbeat();
+    updateAccessIdentityUI();
 }
 
-function lock(){
-    sessionStorage.removeItem("kabir_unlocked");
+function startAccessHeartbeat(){
+    clearInterval(accessHeartbeatTimer);
+    accessHeartbeatTimer=setInterval(async()=>{
+        if(!kabirAccessUser || !kabirAccessSessionId)return;
+        try{
+            const ref=doc(db,ACCESS_USERS_COL,kabirAccessUser.id);
+            const snap=await getDoc(ref);
+            if(!snap.exists())return forceAccessLogout("User access removed.");
+            const data=snap.data();
+            if(data.activeSessionId!==kabirAccessSessionId){
+                forceAccessLogout("यह Kabir ID किसी दूसरे login में इस्तेमाल हो रही है.");
+                return;
+            }
+            await updateDoc(ref,{status:"online",lastHeartbeat:serverTimestamp()});
+        }catch(e){console.warn("Heartbeat failed:",e)}
+    },30000);
+}
 
+async function releaseAccessSession(log=true){
+    if(!kabirAccessUser)return;
+    try{
+        await updateDoc(doc(db,ACCESS_USERS_COL,kabirAccessUser.id),{
+            status:"offline",
+            activeSessionId:"",
+            lastLogoutAt:serverTimestamp(),
+            lastHeartbeat:serverTimestamp()
+        });
+        if(log)await audit("LOGOUT",{logoutAt:new Date().toISOString()});
+    }catch(e){console.warn("Logout update failed:",e)}
+    clearInterval(accessHeartbeatTimer);
+    kabirAccessUser=null;
+    kabirAccessSessionId=null;
+    sessionStorage.removeItem(ACCESS_SESSION_KEY);
+}
+
+function forceAccessLogout(message){
+    clearInterval(accessHeartbeatTimer);
+    kabirAccessUser=null;
+    kabirAccessSessionId=null;
+    sessionStorage.removeItem(ACCESS_SESSION_KEY);
     $("appScreen")?.classList.add("hidden");
-    $("pinScreen")?.classList.remove("hidden");
+    $("kabirLoginScreen")?.classList.remove("hidden");
+    accessMessage(message||"Session ended.");
+}
 
-    let e=$("pinInput");
+async function logoutAccess(){
+    await releaseAccessSession(true);
+    $("appScreen")?.classList.add("hidden");
+    $("kabirLoginScreen")?.classList.remove("hidden");
+    $("kabirLoginId")?.focus();
+}
 
-    if(e){
-        e.value="";
-        dots("");
-
-        setTimeout(()=>{
-            e.focus();
-        },150);
+function updateAccessIdentityUI(){
+    if($("kabirCurrentUser")){
+        $("kabirCurrentUser").textContent=
+            kabirAccessUser ? `${kabirAccessUser.id} • ${kabirAccessUser.name||""}` : "";
     }
 }
 
-function pinError(){
-    const card=document.querySelector(".pin-card");
-    const input=$("pinInput");
-    card?.classList.remove("pin-shake");
-    void card?.offsetWidth;
-    card?.classList.add("pin-shake");
-    if(navigator.vibrate){try{navigator.vibrate([45,25,45]);}catch(_){}}
-    input?.select();
-    setTimeout(()=>card?.classList.remove("pin-shake"),260);
+async function restoreAccessSession(){
+    const raw=sessionStorage.getItem(ACCESS_SESSION_KEY);
+    if(!raw)return false;
+    try{
+        const s=JSON.parse(raw);
+        const rec=await getAccessUserById(s.id);
+        if(!rec || rec.activeSessionId!==s.sessionId || rec.status!=="online"){
+            sessionStorage.removeItem(ACCESS_SESSION_KEY);
+            return false;
+        }
+        kabirAccessUser=rec;
+        kabirAccessSessionId=s.sessionId;
+        updateAccessIdentityUI();
+        startAccessHeartbeat();
+        $("kabirLoginScreen")?.classList.add("hidden");
+        $("appScreen")?.classList.remove("hidden");
+        return true;
+    }catch(e){
+        console.warn(e);
+        sessionStorage.removeItem(ACCESS_SESSION_KEY);
+        return false;
+    }
 }
 
-function setupPin(){
-    const e=$("pinInput");
-    if(!e)return;
-    const attempt=()=>{
-        e.value=e.value.replace(/\D/g,"").slice(0,4);
-        dots(e.value);
-        if(e.value.length!==4)return;
-        const entered=e.value;
-        const finish=async()=>{
-            if(e.value!==entered)return;
-            if(entered===pin()){
-                audit("login_success",{section:$('appScreen')?.classList.contains('admin')?'Admin Panel':'Kabir Mobile Data',description:'PIN login successful'});
-                unlock();
-                msg("pinMessage","");
-            }else{
-                audit("login_failed",{section:$('appScreen')?.classList.contains('admin')?'Admin Panel':'Kabir Mobile Data',description:'Incorrect PIN entered'});
-                msg("pinMessage","Incorrect PIN");
-                pinError();
-                setTimeout(()=>{e.value="";dots("");msg("pinMessage","");e.focus()},240);
-            }
-        };
-        // Fast path: cached PIN is checked immediately. Firebase refresh never blocks the keypad.
-        finish();
-        if(!pinLoaded){
-            loadSharedPin().then(()=>{if(e.value===entered)finish()}).catch(()=>{});
+function setupKabirLogin(){
+    const button=$("kabirLoginButton");
+    if(!button)return;
+
+    button.addEventListener("click",async()=>{
+        const id=normalizeKabirId(val("kabirLoginId"));
+        const password=val("kabirLoginPassword");
+
+        if(!id || !password){
+            accessMessage("Kabir ID और Password दोनों भरें.");
+            return;
         }
-    };
-    e.addEventListener("input",attempt);
-    $("lockButton")?.addEventListener("click",lock);
-    if(sessionStorage.getItem("kabir_unlocked")==="1")unlock();
-    else setTimeout(()=>e.focus(),100);
+
+        button.disabled=true;
+        accessMessage("Login हो रहा है…",true);
+
+        try{
+            if(!db)throw Error("Firebase अभी तैयार नहीं है. एक सेकंड बाद फिर कोशिश करें.");
+            await authReady;
+            if(!user)throw Error("Firebase login तैयार नहीं हुआ. फिर से कोशिश करें.");
+            const rec=await getAccessUserById(id);
+            if(!rec || rec.enabled===false)throw Error("Kabir ID या Password गलत है.");
+            if(String(rec.password)!==password)throw Error("Kabir ID या Password गलत है.");
+
+            await claimAccessSession(rec);
+            accessMessage("");
+            $("kabirLoginScreen")?.classList.add("hidden");
+            $("appScreen")?.classList.remove("hidden");
+        }catch(e){
+            console.error(e);
+            accessMessage(e?.message||"Login नहीं हुआ.");
+        }finally{
+            button.disabled=false;
+        }
+    });
+
+    $("kabirLoginPassword")?.addEventListener("keydown",e=>{
+        if(e.key==="Enter")button.click();
+    });
+    $("kabirLoginId")?.addEventListener("keydown",e=>{
+        if(e.key==="Enter")$("kabirLoginPassword")?.focus();
+    });
+    $("kabirLogoutButton")?.addEventListener("click",logoutAccess);
+}
+
+async function ensureAccessOnMain(){
+    if(currentPageIsAdmin())return;
+    $("appScreen")?.classList.add("hidden");
+    $("kabirLoginScreen")?.classList.remove("hidden");
+    if(!(await restoreAccessSession())){
+        $("kabirLoginId")?.focus();
+    }
 }
 
 /* =========================================================
    FIREBASE AUTH
 ========================================================= */
 
-let authReadyResolve;
-const authReady=new Promise(resolve=>{authReadyResolve=resolve});
-
 async function authInit(){
-    let resolved=false;
-    const finish=()=>{if(!resolved){resolved=true;authReadyResolve(user)}};
-    onAuthStateChanged(auth,u=>{
-        user=u;
-        updateAdmin();
-        finish();
-    },e=>{
-        console.error("Auth state error:",e);
-        finish();
-    });
+
     try{
+
         await signInAnonymously(auth);
+
     }catch(e){
+
         console.error(e);
-        if($("adminFirebaseStatus"))msg("adminFirebaseStatus","Firebase authentication error: "+(e?.message||""));
-        finish();
+
+        if($("adminFirebaseStatus"))
+            msg(
+                "adminFirebaseStatus",
+                "Firebase authentication error"
+            );
     }
-    return authReady;
+
+    onAuthStateChanged(auth,u=>{
+
+        user=u;
+
+        updateAdmin();
+    });
 }
+
 
 /* =========================================================
    FIRESTORE CUSTOMER LISTENER
@@ -675,15 +660,11 @@ function subscribe(){
             counts();
             renderSearch();
             updateAdmin();
-            homeDateFilter();
-            renderCustomerDateGraph();
         },
         e=>{
             console.error("Customer listener:",e);
             msg("formMessage","Firestore access error. Check Firebase rules.");
             counts();
-            homeDateFilter();
-            renderCustomerDateGraph();
         }
     );
 }
@@ -735,9 +716,10 @@ function updateAdmin(){
             );
 
     if($("adminFirebaseStatus"))
-        $("adminFirebaseStatus").textContent=user?"Firebase connected":"Connecting to Firebase…";
-    if($("connectionStatus"))
-        $("connectionStatus").textContent=user?"Firebase connected ✓":"Firebase connecting…";
+        $("adminFirebaseStatus").textContent=
+            user
+            ?"Firebase connected"
+            :"Connecting to Firebase…";
 }
 
 
@@ -777,7 +759,6 @@ function nav(){
             show("searchSection");
             $("searchInput")?.focus();
             renderSearch();
-            audit("customer_search",{section:"Kabir Mobile Data",description:"Customer search opened"});
         }
     );
 
@@ -804,36 +785,21 @@ function nav(){
         }
     );
 
-    $("repairTotalCustomersCard")?.addEventListener("click",()=>{
-        show("repairSearchSection");
-        renderRepairing();
-        $("repairSearchInput")?.focus();
-    });
+    $("repairTotalCustomersCard")?.addEventListener(
+        "click",
+        ()=>{
+            show("searchSection");
+            renderSearch();
+        }
+    );
 
-    $("repairTotalDevicesCard")?.addEventListener("click",()=>{
-        show("repairSearchSection");
-        renderRepairing();
-        $("repairSearchInput")?.focus();
-    });
-
-    const toggleModule=id=>{const el=$(id);if(el)el.classList.toggle("hidden");};
-    $("financeModule")?.addEventListener("click",()=>toggleModule("financeBox"));
-    $("repairingModule")?.addEventListener("click",()=>toggleModule("repairingBox"));
-    $("secondHandModule")?.addEventListener("click",()=>toggleModule("secondHandBox"));
-    $("accessoriesModule")?.addEventListener("click",()=>toggleModule("accessoriesBox"));
-    document.querySelectorAll("[data-module-close]").forEach(b=>b.addEventListener("click",e=>{e.stopPropagation();$(b.dataset.moduleClose)?.classList.add("hidden");}));
-    $("secondCustomerListCard")?.addEventListener("click",()=>{show("secondListSection");renderSecondHand();});
-    $("secondStockCard")?.addEventListener("click",()=>{show("secondListSection");renderSecondHand();});
-    $("secondSearchCard")?.addEventListener("click",()=>{show("secondListSection");renderSecondHand();$("secondSearchInput")?.focus();});
-    $("secondAddCard")?.addEventListener("click",()=>show("secondAddSection"));
-    $("accessoryListCard")?.addEventListener("click",()=>{show("accessoryListSection");renderAccessories();});
-    $("accessoryStockCard")?.addEventListener("click",()=>{show("accessoryListSection");renderAccessories();});
-    $("accessorySearchCard")?.addEventListener("click",()=>{show("accessoryListSection");renderAccessories();$("accessorySearchInput")?.focus();});
-    $("accessoryAddCard")?.addEventListener("click",()=>show("accessoryAddSection"));
-    $("secondSearchInput")?.addEventListener("input",renderSecondHand);
-    $("accessorySearchInput")?.addEventListener("input",renderAccessories);
-    $("secondHandForm")?.addEventListener("submit",saveSecondHand);
-    $("accessoryForm")?.addEventListener("submit",saveAccessory);
+    $("repairTotalDevicesCard")?.addEventListener(
+        "click",
+        ()=>{
+            show("searchSection");
+            renderSearch();
+        }
+    );
 
     document
         .querySelectorAll("[data-close]")
@@ -1094,17 +1060,6 @@ function amounts(){
 }
 
 
-function isWriteLocked(){
-    const now=new Date();
-    const minutes=now.getHours()*60+now.getMinutes();
-    return minutes<600;
-}
-function enforceWriteLock(messageId="formMessage"){
-    if(!isWriteLocked())return false;
-    msg(messageId,"12:00 AM से 10:00 AM तक Add/Edit/Delete बंद है. 10:00 AM के बाद फिर कोशिश करें.");
-    return true;
-}
-
 /* =========================================================
    SAVE CUSTOMER
    IMPORTANT:
@@ -1130,7 +1085,6 @@ function formatDateTime(c){
 async function save(e){
 
     e.preventDefault();
-    if(enforceWriteLock())return;
 
     if(!user){
 
@@ -1238,11 +1192,9 @@ async function save(e){
          * optional हैं और अभी save process को रोकेंगे नहीं.
          */
 
-        const editId=$("customerForm").dataset.editId;
-        const existing=editId?customers.find(c=>c.id===editId):null;
         let customerData={
 
-            customerCode:existing?.customerCode || await uniqueCustomerCode(),
+            customerCode:await uniqueCustomerCode(),
             customerName:
                 val("customerName"),
 
@@ -1311,9 +1263,12 @@ async function save(e){
             financerName:
                 val("financerName"),
 
-            bill:existing?.bill || {status:"NO",dueDate:billDate()},
+            bill:{
+                status:"NO",
+                dueDate:billDate()
+            },
 
-            billYes:existing?.billYes===true,
+            billYes:false,
 
             deviceCount:1,
 
@@ -1341,15 +1296,16 @@ async function save(e){
          * ONLY FIRESTORE SAVE
          */
 
+        const editId=$("customerForm").dataset.editId;
         if(editId){
             delete customerData.customerCode;
             delete customerData.createdAt;
             delete customerData.createdBy;
             await updateDoc(doc(db,COL,editId),customerData);
-            await audit("customer_edit",{section:"Kabir Mobile Data",customerId:editId,customerCode:existing?.customerCode,customerName:customerData.customerName,description:`Customer ${customerData.customerName||existing?.customerCode||editId} edited`});
+            await audit("CUSTOMER_EDITED",{customerId:editId,customerName:customerData.customerName});
         }else{
-            const added=await addDoc(collection(db,COL),customerData);
-            await audit("customer_add",{section:"Kabir Mobile Data",customerId:added.id,customerCode:customerData.customerCode,customerName:customerData.customerName,description:`Customer ${customerData.customerName||customerData.customerCode||added.id} added`});
+            await addDoc(collection(db,COL),customerData);
+            await audit("CUSTOMER_ADDED",{customerCode:customerData.customerCode,customerName:customerData.customerName});
         }
 
 
@@ -1491,8 +1447,7 @@ function renderSearch(){
 
     box.querySelectorAll("[data-bill]").forEach(i=>{
         i.onchange=async()=>{
-            if(enforceWriteLock()){i.checked=!i.checked;return;}
-            try{await updateDoc(doc(db,COL,i.dataset.bill),{billYes:i.checked,"bill.status":i.checked?"YES":"NO"}); const bc=customers.find(x=>x.id===i.dataset.bill); await audit("customer_bill_update",{section:"Kabir Mobile Data",customerId:i.dataset.bill,customerCode:bc?.customerCode,customerName:bc?.customerName,description:`Bill marked ${i.checked?"YES":"NO"}`})}
+            try{await updateDoc(doc(db,COL,i.dataset.bill),{billYes:i.checked,"bill.status":i.checked?"YES":"NO"})}
             catch(x){i.checked=!i.checked;console.error(x)}
         };
     });
@@ -1525,15 +1480,19 @@ function showCustomerDetail(c){
     $("customerDetailModal")?.classList.remove("hidden");
 }
 function closeCustomerDetail(){activeCustomerId=null;$("customerDetailModal")?.classList.add("hidden")}
+function trashDate(v){try{const d=v?.toDate?.()||(v instanceof Date?v:new Date(v));return isNaN(d.getTime())?"—":new Intl.DateTimeFormat("en-IN",{dateStyle:"medium",timeStyle:"short"}).format(d)}catch(_){return "—"}}
+function trashRemaining(v){try{const d=v?.toDate?.()||(v instanceof Date?v:new Date(v));const ms=d.getTime()-Date.now();if(ms<=0)return "30 दिन पूरे";return `${Math.ceil(ms/86400000)} दिन बाकी`}catch(_){return "—"}}
+async function moveCustomerToTrash(c){const deletedAt=new Date();const deleteAfter=new Date(deletedAt.getTime()+TRASH_DAYS*86400000);const copy={...c};delete copy.id;await addDoc(collection(db,TRASH_COL),{originalCollection:COL,originalId:c.id,type:"Customer",title:c.customerName||"Customer",customerCode:c.customerCode||"",deletedAt,deleteAfter,deletedBy:kabirAccessUser?.id||null,deletedByName:kabirAccessUser?.name||null,data:copy});await deleteDoc(doc(db,COL,c.id))}
+async function cleanupExpiredTrash(){try{const snap=await getDocs(collection(db,TRASH_COL));const now=Date.now();for(const d of snap.docs){const x=d.data()||{};const expires=x.deleteAfter?.toDate?.()?.getTime?.()||(x.deleteAfter instanceof Date?x.deleteAfter.getTime():0);if(expires&&expires<=now){try{await deleteDoc(d.ref)}catch(_){}}}}catch(e){console.warn("Trash cleanup:",e)}}
+function ensureRecentlyDeletedUI(){const app=$("appScreen");if(!app||$("recentlyDeletedButton"))return;const target=app.querySelector(".topbar")||app.firstElementChild;const wrap=document.createElement("div");wrap.className="recently-deleted-home";wrap.innerHTML='<button id="recentlyDeletedButton" class="glass recently-deleted-button" type="button"><span>🗑️</span><b>Recently Deleted</b><small>30 दिन तक सुरक्षित</small></button>';if(target?.nextSibling)app.insertBefore(wrap,target.nextSibling);else app.prepend(wrap);const sec=document.createElement("section");sec.id="recentlyDeletedSection";sec.className="glass panel hidden recently-deleted-section";sec.innerHTML='<div class="section-head"><div><div class="eyebrow">RECENTLY DELETED</div><h2>Recently Deleted</h2><small class="section-subtitle">Delete किए गए items 30 दिन तक सुरक्षित रहेंगे</small></div><button id="closeRecentlyDeleted" class="round" type="button">×</button></div><div id="recentlyDeletedResults" class="recently-deleted-list"><div class="empty">Loading…</div></div>';app.appendChild(sec);const style=document.createElement("style");style.id="recentlyDeletedStyles";style.textContent='.recently-deleted-home{margin:8px 14px 12px;display:flex;justify-content:flex-end}.recently-deleted-button{border:0;border-radius:18px;padding:10px 14px;display:flex;align-items:center;gap:8px;cursor:pointer;transition:transform .18s ease,opacity .18s ease}.recently-deleted-button:active{transform:scale(.96)}.recently-deleted-button span{font-size:18px}.recently-deleted-button b{font-size:12px}.recently-deleted-button small{opacity:.65;font-size:9px}.recently-deleted-list{display:grid;gap:10px}.trash-card{padding:14px;border-radius:18px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.035)}.trash-card .trash-head{display:flex;justify-content:space-between;gap:10px}.trash-card .trash-name{font-weight:800}.trash-card .trash-meta{font-size:11px;opacity:.68;margin-top:5px}.trash-expiry{font-size:11px;margin-top:10px;padding:8px 10px;border-radius:12px;background:rgba(255,170,0,.08);display:inline-block}';document.head.appendChild(style);$("recentlyDeletedButton").onclick=async()=>{$("recentlyDeletedSection").classList.remove("hidden");await renderRecentlyDeleted();$("recentlyDeletedSection").scrollIntoView({behavior:"smooth",block:"start"})};$("closeRecentlyDeleted").onclick=()=>$("recentlyDeletedSection").classList.add("hidden")}
+async function renderRecentlyDeleted(){const box=$("recentlyDeletedResults");if(!box)return;try{await cleanupExpiredTrash();const snap=await getDocs(query(collection(db,TRASH_COL),orderBy("deletedAt","desc")));const rows=snap.docs.map(d=>({id:d.id,...d.data()}));if(!rows.length){box.innerHTML='<div class="empty">Recently Deleted खाली है.</div>';return}box.innerHTML=rows.map(x=>`<article class="trash-card"><div class="trash-head"><div><div class="trash-name">🗑️ ${esc(x.title||x.type||"Deleted Item")}</div><div class="trash-meta">${esc(x.type||"Item")} ${x.customerCode?`• ${esc(x.customerCode)}`:""} • Deleted: ${esc(trashDate(x.deletedAt))}</div></div><span class="trash-expiry">${esc(trashRemaining(x.deleteAfter))}</span></div></article>`).join("")}catch(e){console.error(e);box.innerHTML='<div class="empty">Recently Deleted load नहीं हुआ. Firebase Rules check करें.</div>'}}
 async function deleteCustomer(){
-    if(enforceWriteLock("pinMessage"))return;
     const c=customers.find(x=>x.id===activeCustomerId);if(!c)return;
-    if(!confirm(`Delete ${c.customerName||"this customer"} (${c.customerCode||""}) permanently?`))return;
-    try{await deleteDoc(doc(db,COL,c.id)); await audit("customer_delete",{section:"Kabir Mobile Data",customerId:c.id,customerCode:c.customerCode,customerName:c.customerName,description:`Customer ${c.customerName||c.customerCode||c.id} deleted`}); closeCustomerDetail()}
-    catch(e){console.error(e);alert("Customer delete नहीं हुआ. Firebase Rules check करें.")}
+    if(!confirm(`"${c.customerName||"this customer"}" को Delete करें?\n\nयह item permanently delete नहीं होगा. यह 30 दिनों तक Recently Deleted में सुरक्षित रहेगा.`))return;
+    try{await moveCustomerToTrash(c);await audit("CUSTOMER_DELETED",{customerId:c.id,customerName:c.customerName,customerCode:c.customerCode,trashDays:TRASH_DAYS});closeCustomerDetail();showSuccessToast("Moved to Recently Deleted","यह item 30 दिनों तक सुरक्षित रहेगा")}
+    catch(e){console.error(e);alert("Delete नहीं हुआ. Firebase Rules check करें.")}
 }
 function editCustomer(){
-    if(enforceWriteLock("formMessage"))return;
     const c=customers.find(x=>x.id===activeCustomerId);if(!c)return;
     closeCustomerDetail();show("addSection");
     const map={customerName:"customerName",address:"address",pincode:"pincode",city:"city",state:"state",phone:"phone",
@@ -1564,38 +1523,6 @@ function search(){
         );
 }
 
-
-/* =========================================================
-   HOME DATE FILTER / DAILY WORK VIEW
-========================================================= */
-function recordDay(row){
-    const d=row?.createdAt?.toDate?.() || (row?.createdAt?new Date(row.createdAt):null);
-    return d&&!Number.isNaN(d.getTime())?d.toLocaleDateString("en-CA"):"";
-}
-function homeDateFilter(){
-    const input=$("homeWorkDate");
-    const date=input?.value||new Date().toLocaleDateString("en-CA");
-    const customerRows=customers.filter(c=>recordDay(c)===date);
-    const repairRows=repairing.filter(r=>recordDay(r)===date);
-    $("homeDateCustomerCount")&&($("homeDateCustomerCount").textContent=customerRows.length);
-    $("homeDateRepairCount")&&($("homeDateRepairCount").textContent=repairRows.length);
-    const box=$("homeDateResults"); if(!box)return;
-    const rows=[
-        ...customerRows.map(c=>({icon:"👤",kind:"Customer",title:c.customerName||"Customer",meta:c.customerCode||"KM----",time:formatDateTime(c),detail:`${c.phone||""} • ${c.brand||""} ${c.model||""}`})),
-        ...repairRows.map(r=>({icon:"🛠",kind:"Repairing",title:r.customerName||"Repairing",meta:r.phone||"",time:formatDateTime(r),detail:`${r.device||""} • ${r.problem||""}`}))
-    ];
-    box.innerHTML=rows.length?rows.map(r=>`<article class="date-work-item"><div class="date-work-icon">${r.icon}</div><div class="date-work-main"><b>${esc(r.title)}</b><small>${esc(r.kind)} • ${esc(r.meta)}</small><span>${esc(r.detail)}</span></div><time>${esc(r.time)}</time></article>`).join(""):'<div class="empty">इस तारीख को कोई Customer या Repairing work नहीं हुआ.</div>';
-}
-function setupHomeDateFilter(){
-    $("homeDateWorkButton")?.addEventListener("click",()=>{
-        const sec=$("homeDateWorkSection"); sec?.classList.toggle("hidden");
-        if(sec&&!sec.classList.contains("hidden")){
-            const d=$("homeWorkDate"); if(d&&!d.value)d.value=new Date().toLocaleDateString("en-CA");
-            homeDateFilter(); setTimeout(()=>sec.scrollIntoView({behavior:"smooth",block:"start"}),20);
-        }
-    });
-    $("homeWorkDate")?.addEventListener("change",homeDateFilter);
-}
 
 /* =========================================================
    IMEI QR / BARCODE SCANNER
@@ -1771,44 +1698,311 @@ function scanner(){
 }
 
 
+
+/* =========================================================
+   ADMIN: KABIR USERS / LIVE STATUS / ANALYSIS / TODAY WORK
+========================================================= */
+
+function adminToday(){
+    return new Intl.DateTimeFormat("en-CA").format(new Date());
+}
+
+function formatAuditDate(v){
+    return accessDateTime(v);
+}
+
+function showAdminSuccessPopup(title,text){
+    const popup=$("adminSuccessPopup");
+    if(!popup)return;
+    $("adminSuccessTitle").textContent=title||"Successfully Added";
+    $("adminSuccessText").textContent=text||"Saved successfully.";
+    popup.classList.remove("hidden");
+    requestAnimationFrame(()=>popup.classList.add("show"));
+    clearTimeout(window.__adminSuccessTimer);
+    window.__adminSuccessTimer=setTimeout(()=>{
+        popup.classList.remove("show");
+        setTimeout(()=>popup.classList.add("hidden"),250);
+    },2200);
+}
+
+async function adminSaveKabirUser(e){
+    e.preventDefault();
+
+    const name=val("kabirUserName");
+    const id=normalizeKabirId(val("kabirUserId"));
+    const password=val("kabirUserPassword");
+
+    if(!name||!id||!password){
+        msg("kabirUserMessage","Name, Kabir ID और Password भरें.");
+        return;
+    }
+
+    if(!/^KABIR[A-Z0-9_-]{2,30}$/.test(id)){
+        msg("kabirUserMessage","Kabir ID KABIR से शुरू होना चाहिए.");
+        return;
+    }
+
+    const button=e.submitter||$("kabirUserForm")?.querySelector("button[type=submit]");
+    if(button)button.disabled=true;
+
+    try{
+        await authReady;
+        if(!user)throw Error("Firebase authentication तैयार नहीं है.");
+
+        await setDoc(doc(db,ACCESS_USERS_COL,id),{
+            id:id,
+            name:name,
+            password:password,
+            enabled:true,
+            status:"offline",
+            activeSessionId:"",
+            lastLoginAt:null,
+            lastLogoutAt:null,
+            lastHeartbeat:null,
+            updatedAt:serverTimestamp()
+        },{merge:true});
+
+        await renderKabirUsers();
+
+        $("kabirUserForm")?.reset();
+        msg("kabirUserMessage","Successfully added ✓",true);
+        showAdminSuccessPopup("Successfully Added","Kabir ID और Password successfully saved.");
+
+    }catch(e){
+        console.error("Kabir user create/update error:",e);
+        msg("kabirUserMessage",
+            e?.code==="permission-denied"
+            ?"Firebase permission denied — Firestore Rules check करें."
+            :"User save नहीं हुआ. फिर से कोशिश करें."
+        );
+    }finally{
+        if(button)button.disabled=false;
+    }
+}
+
+async function renderKabirUsers(){
+    const box=$("kabirUsersList");
+    if(!box)return;
+    try{
+        await authReady;
+        if(!user){
+            box.innerHTML='<div class="empty">Firebase authentication तैयार नहीं है.</div>';
+            return;
+        }
+        const snap=await getDocs(collection(db,ACCESS_USERS_COL));
+        const rows=snap.docs.map(d=>({id:d.id,...d.data()}));
+        if($("kabirUsersCount"))$("kabirUsersCount").textContent=String(rows.length);
+        if(!rows.length){
+            box.innerHTML='<div class="empty">अभी कोई Kabir ID नहीं बनी.</div>';
+            return;
+        }
+        box.innerHTML=rows.map(r=>{
+            const online=r.status==="online" && !!r.activeSessionId;
+            return `<article class="result">
+                <div class="result-top">
+                    <div>
+                      <div class="result-name">${esc(r.id||"")}</div>
+                      <div class="result-meta">${esc(r.name||"Name not set")}</div>
+                    </div>
+                    <strong>${online?"🟢 ONLINE":"⚪ OFFLINE"}</strong>
+                </div>
+                <div class="result-grid">
+                    ${item("Kabir ID",r.id||"")}
+                    ${item("Password",r.password||"")}
+                    ${item("Status",online?"Online":"Offline")}
+                    ${item("Last Login",accessDateTime(r.lastLoginAt))}
+                    ${item("Last Logout",accessDateTime(r.lastLogoutAt))}
+                    ${item("Last Heartbeat",accessDateTime(r.lastHeartbeat))}
+                </div>
+            </article>`;
+        }).join("");
+    }catch(e){
+        console.error(e);
+        box.innerHTML='<div class="empty">User list load नहीं हुआ. Firebase Rules check करें.</div>';
+    }
+}
+
+async function getAuditRows(){
+    await authReady;
+    if(!user)return [];
+    const snap=await getDocs(collection(db,AUDIT_COL));
+    return snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>{
+        const ta=a.createdAt?.toMillis?.()||0, tb=b.createdAt?.toMillis?.()||0;
+        return tb-ta;
+    });
+}
+
+function inDateRange(row,from,to){
+    const d=row.createdAt?.toDate?.();
+    if(!d)return false;
+    const ds=new Intl.DateTimeFormat("en-CA").format(d);
+    return (!from||ds>=from)&&(!to||ds<=to);
+}
+
+function actionLabel(a){
+    return ({
+        LOGIN:"Login",
+        LOGOUT:"Logout",
+        CUSTOMER_ADDED:"Customer Added",
+        CUSTOMER_EDITED:"Customer Edited",
+        CUSTOMER_DELETED:"Customer Deleted",
+        REPAIR_ADDED:"Repair Added"
+    })[a]||a||"Work";
+}
+
+async function renderTraffic(){
+    const box=$("trafficAnalysis");if(!box)return;
+    const date=val("analysisDate");
+    if(!date){box.innerHTML='<div class="empty">Select a date.</div>';return;}
+    try{
+        const rows=(await getAuditRows()).filter(r=>inDateRange(r,date,date));
+        const counts={};
+        rows.forEach(r=>counts[r.action]=(counts[r.action]||0)+1);
+        const users={};
+        rows.forEach(r=>{
+            const k=r.userId||"Unknown";
+            users[k]=(users[k]||0)+1;
+        });
+        box.innerHTML=`
+          <div class="mini-grid">
+            <div><span>Total Activities</span><strong>${rows.length}</strong></div>
+            <div><span>Active Members</span><strong>${Object.keys(users).length}</strong></div>
+          </div>
+          <div class="result-grid">
+            ${Object.entries(counts).map(([k,v])=>item(actionLabel(k),v)).join("")||'<div class="empty">No work recorded.</div>'}
+          </div>`;
+    }catch(e){console.error(e);box.innerHTML='<div class="empty">Analysis load नहीं हुआ.</div>'}
+}
+
+async function renderTodayWork(){
+    const box=$("todayWorkResults");if(!box)return;
+    const from=val("workFromDate")||adminToday();
+    const to=val("workToDate")||from;
+    try{
+        const rows=(await getAuditRows()).filter(r=>inDateRange(r,from,to));
+        if(!rows.length){box.innerHTML='<div class="empty">इस date range में कोई work नहीं मिला.</div>';return;}
+        box.innerHTML=rows.map(r=>`<article class="result">
+            <div class="result-top">
+                <div><div class="result-name">${esc(r.userId||"Unknown")}</div>
+                <div class="result-meta">${esc(r.userName||"")} • ${esc(formatAuditDate(r.createdAt))}</div></div>
+                <strong>${esc(actionLabel(r.action))}</strong>
+            </div>
+            <div class="result-grid">${item("Work",actionLabel(r.action))}${item("Details",JSON.stringify(r.details||{}))}</div>
+        </article>`).join("");
+    }catch(e){console.error(e);box.innerHTML='<div class="empty">Work history load नहीं हुआ.</div>'}
+}
+
+async function downloadAuditRows(rows,filename){
+    const data=rows.map(r=>({
+        "Date & Time":formatAuditDate(r.createdAt),
+        "Kabir ID":r.userId||"",
+        "Name":r.userName||"",
+        "Work":actionLabel(r.action),
+        "Details":JSON.stringify(r.details||{})
+    }));
+    if(!data.length){alert("Download के लिए data नहीं है.");return}
+    await exportXlsx(data,filename,"Work");
+}
+
+function adminFeatureNav(){
+    $("kabirUserForm")?.addEventListener("submit",adminSaveKabirUser);
+    $("analysisDate")?.addEventListener("change",renderTraffic);
+    $("workFromDate")?.addEventListener("change",renderTodayWork);
+    $("workToDate")?.addEventListener("change",renderTodayWork);
+
+    $("downloadTrafficButton")?.addEventListener("click",async()=>{
+        const date=val("analysisDate");
+        const rows=(await getAuditRows()).filter(r=>inDateRange(r,date,date));
+        await downloadAuditRows(rows,`Kabir_Traffic_${date||adminToday()}.xlsx`);
+    });
+
+    $("downloadTodayWorkButton")?.addEventListener("click",async()=>{
+        const from=val("workFromDate")||adminToday();
+        const to=val("workToDate")||from;
+        const rows=(await getAuditRows()).filter(r=>inDateRange(r,from,to));
+        await downloadAuditRows(rows,`Kabir_Work_${from}_to_${to}.xlsx`);
+    });
+
+    const today=adminToday();
+    if($("analysisDate"))$("analysisDate").value=today;
+    if($("workFromDate"))$("workFromDate").value=today;
+    if($("workToDate"))$("workToDate").value=today;
+    renderTraffic();
+    renderTodayWork();
+    renderKabirUsers();
+
+    setInterval(()=>{
+        renderKabirUsers();
+        renderTraffic();
+        renderTodayWork();
+    },30000);
+}
+
 /* =========================================================
    CHANGE PIN
 ========================================================= */
 
 function changePin(){
-    const f=$("changePinForm");
+
+    let f=$("changePinForm");
+
     if(!f)return;
-    f.onsubmit=async e=>{
+
+
+    f.onsubmit=e=>{
+
         e.preventDefault();
-        try{await loadSharedPin()}catch(x){return msg("pinSettingsMessage",x?.message||"PIN load नहीं हुआ. Firebase connection check करें.")}
-        const a=val("currentPin"),b=val("newPin"),c=val("confirmPin");
-        if(a!==pin())return msg("pinSettingsMessage","Current PIN incorrect.");
-        if(!/^\d{4}$/.test(b))return msg("pinSettingsMessage","New PIN exactly 4 digits होना चाहिए.");
-        if(b!==c)return msg("pinSettingsMessage","New PIN और confirmation match नहीं हैं.");
-        try{
-            await changeSharedPin(b);
-            f.reset();
-            msg("pinSettingsMessage","PIN changed successfully ✓",true);
-            showSuccessToast("PIN Updated","New PIN is now saved to Firebase");
-        }catch(error){
-            console.error(error);
-            msg("pinSettingsMessage","PIN save नहीं हुआ. Firebase Rules check करें.");
+
+
+        let a=val("currentPin");
+        let b=val("newPin");
+        let c=val("confirmPin");
+
+
+        if(a!==pin()){
+
+            return msg(
+                "pinSettingsMessage",
+                "Current PIN incorrect."
+            );
         }
+
+
+        if(!/^\d{4}$/.test(b)){
+
+            return msg(
+                "pinSettingsMessage",
+                "New PIN exactly 4 digits होना चाहिए."
+            );
+        }
+
+
+        if(b!==c){
+
+            return msg(
+                "pinSettingsMessage",
+                "New PIN और confirmation match नहीं हैं."
+            );
+        }
+
+
+        changeSharedPin(b)
+            .then(()=>{
+                f.reset();
+                msg("pinSettingsMessage","PIN changed successfully ✓",true);
+                showSuccessToast("PIN Updated","New PIN is now saved to Firebase");
+            })
+            .catch(error=>{
+                console.error(error);
+                msg("pinSettingsMessage","PIN save नहीं हुआ. Firebase Rules check करें.");
+            });
     };
 }
 
 
-let repairListenerStarted=false;
 
-function subscribeInventory(){
-    if(isAdminPage)return;
-    onSnapshot(collection(db,SECOND_COL),snap=>{ secondHand=snap.docs.map(d=>({id:d.id,...d.data()})); if($("secondStockCount"))$("secondStockCount").textContent=String(secondHand.length); renderSecondHand(); },e=>console.warn("Second hand load:",e));
-    onSnapshot(collection(db,ACCESSORY_COL),snap=>{ accessories=snap.docs.map(d=>({id:d.id,...d.data()})); if($("accessoryStockCount"))$("accessoryStockCount").textContent=String(accessories.reduce((n,x)=>n+Number(x.quantity||0),0)); renderAccessories(); },e=>console.warn("Accessories load:",e));
-}
-function renderSecondHand(){ const box=$("secondResults"); if(!box)return; const q=val("secondSearchInput").toLowerCase(); const rows=secondHand.filter(x=>!q||[x.customerName,x.phone,x.device,x.imei,x.condition].join(" ").toLowerCase().includes(q)); box.innerHTML=rows.length?rows.map(x=>`<article class="result"><div class="result-name">${esc(x.device||"Second Hand Phone")}</div><div class="result-meta">${esc(x.customerName||"")} • ${esc(x.phone||"")}</div><div class="result-grid">${item("IMEI",x.imei||"")}${item("Condition",x.condition||"")}${item("Purchase Price",`₹${Number(x.price||0).toLocaleString("en-IN")}`)}${item("Sale Price",`₹${Number(x.salePrice||0).toLocaleString("en-IN")}`)}</div></article>`).join(""):"<div class=\"empty\">No second-hand records found.</div>"; }
-function renderAccessories(){ const box=$("accessoryResults"); if(!box)return; const q=val("accessorySearchInput").toLowerCase(); const rows=accessories.filter(x=>!q||[x.name,x.category].join(" ").toLowerCase().includes(q)); box.innerHTML=rows.length?rows.map(x=>`<article class="result"><div class="result-name">${esc(x.name||"Accessory")}</div><div class="result-meta">${esc(x.category||"")}</div><div class="result-grid">${item("Quantity",x.quantity||0)}${item("Purchase Price",`₹${Number(x.price||0).toLocaleString("en-IN")}`)}${item("Sale Price",`₹${Number(x.salePrice||0).toLocaleString("en-IN")}`)}</div></article>`).join(""):"<div class=\"empty\">No accessories found.</div>"; }
-async function saveSecondHand(e){ e.preventDefault(); const data={customerName:val("secondCustomerName"),phone:val("secondPhone").replace(/\D/g,""),device:val("secondDevice"),imei:val("secondImei"),condition:val("secondCondition"),price:Number(val("secondPrice")||0),salePrice:Number(val("secondSalePrice")||0),createdAt:serverTimestamp(),createdBy:user?.uid||null}; if(!data.customerName||!/^\d{10}$/.test(data.phone)||!data.device){msg("secondMessage","Customer name, valid 10 digit phone और phone model भरें.");return;} try{await addDoc(collection(db,SECOND_COL),data);await audit("second_hand_add",{section:"Second Hand",customerName:data.customerName,description:`Second-hand phone added: ${data.device}`,extra:{phone:data.phone,imei:data.imei}});e.target.reset();msg("secondMessage","Successfully added.",true);showSuccessToast("Second Hand Saved","Phone stock में add हो गया.");}catch(err){console.error(err);msg("secondMessage",err?.message||"Save failed.");}}
-async function saveAccessory(e){ e.preventDefault(); const data={name:val("accessoryName"),category:val("accessoryCategory"),quantity:Number(val("accessoryQty")||0),price:Number(val("accessoryPrice")||0),salePrice:Number(val("accessorySalePrice")||0),createdAt:serverTimestamp(),createdBy:user?.uid||null}; if(!data.name||!data.category||data.quantity<1){msg("accessoryMessage","Name, category और quantity भरें.");return;} try{await addDoc(collection(db,ACCESSORY_COL),data);await audit("accessory_add",{section:"Accessories",description:`Accessory added: ${data.name}`,extra:{category:data.category,quantity:data.quantity}});e.target.reset();msg("accessoryMessage","Successfully added.",true);showSuccessToast("Accessory Saved","Accessory stock में add हो गया.");}catch(err){console.error(err);msg("accessoryMessage",err?.message||"Save failed.");}}
+let repairing=[];
+let repairListenerStarted=false;
 function subscribeRepairing(){
     if(repairListenerStarted)return;
     repairListenerStarted=true;
@@ -1841,7 +2035,13 @@ function subscribeRepairing(){
 function renderRepairing(){
     const box=$("repairResults");if(!box)return;
     const s=val("repairSearchInput").toLowerCase();
-    const arr=repairing.filter(r=>!s||[r.customerName,r.phone,r.device,r.problem,r.repairBy,r.payment,formatDateTime(r)].join(" ").toLowerCase().includes(s));
+    const date=val("repairSearchDate");
+    const arr=repairing.filter(r=>{
+        const text=[r.customerName,r.phone,r.device,r.problem,r.repairBy,r.payment,formatDateTime(r)].join(" ").toLowerCase();
+        const created=r.createdAt?.toDate?.();
+        const rowDate=created?new Intl.DateTimeFormat("en-CA").format(created):"";
+        return (!s||text.includes(s)) && (!date||rowDate===date);
+    });
     if(!arr.length){box.innerHTML=`<div class="empty">${s?"No repairing record found.":"No repairing records yet."}</div>`;return}
     box.innerHTML=arr.map(r=>`<article class="result">
       <div class="result-name">${esc(r.customerName||"")}</div><div class="result-meta">${esc(r.phone||"")} • ${esc(formatDateTime(r))}</div>
@@ -1850,7 +2050,6 @@ function renderRepairing(){
 }
 async function saveRepair(e){
     e.preventDefault();
-    if(enforceWriteLock("repairMessage"))return;
     const ids=["repairCustomerName","repairPhone","repairDevice","repairProblem","repairBy","repairPayment"];
     for(const id of ids)if(!val(id)){ $(id)?.focus();msg("repairMessage","सभी fields भरना जरूरी है.");return }
     const phone=val("repairPhone").replace(/\D/g,"");
@@ -1859,7 +2058,7 @@ async function saveRepair(e){
     if(saveBtn) saveBtn.disabled=true;
 
     try{
-        const repairRef=await addDoc(collection(db,REPAIR_COL),{
+        await addDoc(collection(db,REPAIR_COL),{
             customerName:val("repairCustomerName"),
             phone,
             device:val("repairDevice"),
@@ -1869,7 +2068,7 @@ async function saveRepair(e){
             createdAt:serverTimestamp(),
             createdBy:user?.uid||null
         });
-        await audit("repairing_add",{section:"Kabir Repairing Data",customerId:repairRef.id,customerName:val("repairCustomerName"),description:`Repairing added: ${val("repairProblem")||"Problem"}`,extra:{phone,device:val("repairDevice"),problem:val("repairProblem"),payment:Number(val("repairPayment"))}});
+        await audit("REPAIR_ADDED",{customerName:val("repairCustomerName"),problem:val("repairProblem"),payment:Number(val("repairPayment"))});
 
         $("repairForm").reset();
         msg("repairMessage","");
@@ -1891,7 +2090,6 @@ async function exportXlsx(rows,filename,sheet){
 }
 function exportCustomers(){
     if(!customers.length){alert("Customer data अभी उपलब्ध नहीं है.");return}
-    audit("customer_export",{section:"Kabir Mobile Data",description:`Customer Excel downloaded (${customers.length} records)`});
     exportXlsx(customers.map(c=>({"Customer Code":c.customerCode||"","Date & Time":formatDateTime(c),"Customer Name":c.customerName||"",
       "Phone":c.phone||"","Address":c.address||"","PIN Code":c.pincode||"","City":c.city||"","State":c.state||"",
       "Brand":c.brand||"","Model":c.model||"","IMEI":c.imei||"","Colour":c.colour||"","RAM + Storage":c.storage||"",
@@ -1901,7 +2099,6 @@ function exportCustomers(){
 }
 function exportRepairing(){
     if(!repairing.length){alert("Repairing data अभी उपलब्ध नहीं है.");return}
-    audit("repairing_export",{section:"Kabir Repairing Data",description:`Repairing Excel downloaded (${repairing.length} records)`});
     exportXlsx(repairing.map(r=>({"Date & Time":formatDateTime(r),"Customer Name":r.customerName||"","Phone":r.phone||"",
       "Brand / Model":r.device||"","Problem":r.problem||"","Repairing By":r.repairBy||"","Payment":r.payment||0})),
       "Kabir_Repairing_Data.xlsx","Repairing");
@@ -1909,7 +2106,6 @@ function exportRepairing(){
 async function downloadCustomerPdf(){
     const c=customers.find(x=>x.id===activeCustomerId);if(!c)return;
     try{
-        await audit("customer_pdf",{section:"Kabir Mobile Data",customerId:c.id,customerCode:c.customerCode,customerName:c.customerName,description:`PDF downloaded for ${c.customerName||c.customerCode||c.id}`});
         if(!window.jspdf)await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
         const pdf=new window.jspdf.jsPDF();let y=18;
         pdf.setFontSize(18);pdf.text("KABIR MOBILE DATA",14,y);y+=10;pdf.setFontSize(10);
@@ -1957,8 +2153,9 @@ function themeSystem(){
 
 function featureNav(){
     $("addRepairingCard")?.addEventListener("click",()=>show("repairAddSection"));
-    $("searchRepairingCard")?.addEventListener("click",()=>{show("repairSearchSection");renderRepairing();$("repairSearchInput")?.focus();audit("repairing_search",{section:"Kabir Repairing Data",description:"Repairing search opened"})});
+    $("searchRepairingCard")?.addEventListener("click",()=>{show("repairSearchSection");renderRepairing();$("repairSearchInput")?.focus()});
     $("repairSearchInput")?.addEventListener("input",renderRepairing);
+    $("repairSearchDate")?.addEventListener("change",renderRepairing);
     $("repairForm")?.addEventListener("submit",saveRepair);
     $("exportCustomersButton")?.addEventListener("click",exportCustomers);
     $("exportRepairingButton")?.addEventListener("click",exportRepairing);
@@ -1972,10 +2169,23 @@ function featureNav(){
    INITIALIZE
 ========================================================= */
 
-async function init(){
-    setupPin();
-    authInit();
-    loadSharedPin().catch(e=>console.warn(e));
+function init(){
+    loadSharedPin();
+
+    // Firebase authentication must finish before accessUsers/auditLogs are touched.
+    authInit().then(()=>{
+        if(currentPageIsAdmin()){
+            adminFeatureNav();
+        }else{
+            setupKabirLogin();
+            ensureAccessOnMain();
+        }
+    }).catch(e=>{
+        console.error("Firebase initialization failed:",e);
+        if(currentPageIsAdmin()){
+            msg("adminFirebaseStatus","Firebase initialization error.");
+        }
+    });
 
     nav();
 
@@ -2003,15 +2213,9 @@ async function init(){
      */
     themeSystem();
     featureNav();
-    setupHomeDateFilter();
-    adminAnalytics();
-    if($('appScreen')?.classList.contains('admin')) audit('page_open',{section:'Admin Panel',description:'Admin Panel opened'});
 
-    authReady.then(()=>{
-        subscribe();
-        subscribeRepairing();
-    subscribeInventory();
-    });
+    subscribe();
+    subscribeRepairing();
 
     $("customerForm")
         ?.addEventListener(
@@ -2021,4 +2225,8 @@ async function init(){
 }
 
 
-document.addEventListener("DOMContentLoaded",()=>{init()});
+document.addEventListener(
+    "DOMContentLoaded",
+    init
+);
+\nwindow.addEventListener("beforeunload",()=>{\n    // Do not automatically mark offline here: refreshes should not log the user out.\n});\n
