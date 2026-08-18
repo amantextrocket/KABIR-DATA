@@ -537,7 +537,7 @@ function renderManagementData(type){
     const box=$("trafficManagementDetail");if(!box)return;
     let title="",rows=[];
     if(type==="finance"){title="Finance Management";rows=customers.map(x=>[x.customerName,x.phone,`${x.brand||""} ${x.model||""}`,x.imei,`₹${x.phoneAmount||0}`]);}
-    if(type==="repairing"){title="Repairing Management";rows=repairing.map(x=>[x.customerName,x.phone,x.device,x.problem,`₹${x.payment||0}`]);}
+    if(type==="repairing"){title="Repairing Management";rows=repairing.map(x=>[x.customerName,x.phone,x.device,x.problem,`₹${x.total??x.payment??0}`,`₹${x.partsPrice||0}`,`₹${x.profit??(Number(x.total??x.payment??0)-Number(x.partsPrice||0))}`]);}
     if(type==="secondHand"){title="Second Hand Management";rows=secondHand.map(x=>[x.customerName,`${x.brand||""} ${x.model||x.device||""}`,x.imei,x.condition,`₹${x.price||0}`,`₹${x.salePrice||0}`,`₹${x.profit??(Number(x.salePrice||0)-Number(x.price||0))}`]);}
     if(type==="accessories"){title="Accessories Management";rows=accessories.map(x=>[x.name,x.category,x.sn,x.quantity,`₹${x.price||0}`,`₹${x.salePrice||0}`,`₹${x.profit??(Number(x.salePrice||0)-Number(x.price||0))}`]);}
     box.innerHTML=`<div class="section-head"><div><div class="eyebrow">SELECTED MANAGEMENT</div><h3>${esc(title)}</h3></div><b>${rows.length} Records</b></div>`+(rows.length?`<div class="admin-data-table">${rows.slice(0,500).map(r=>`<div class="admin-data-row">${r.map(v=>`<span>${esc(v)}</span>`).join("")}</div>`).join("")}</div>`:'<div class="empty">No data found.</div>');
@@ -1691,6 +1691,14 @@ function setupSecondHandFields(){
     ["secondPrice","secondSalePrice"].forEach(id=>$(id)?.addEventListener("input",updateSecondProfit));
 }
 function updateSecondProfit(){const p=Number(val("secondPrice")||0),s=Number(val("secondSalePrice")||0);if($("secondProfit"))$("secondProfit").textContent=`₹${(s-p).toLocaleString("en-IN")}`;}
+function updateRepairProfit(){
+    const total=Number(val("repairTotal")||0),parts=Number(val("repairPartsPrice")||0);
+    if($("repairProfit"))$("repairProfit").textContent=`₹${(total-parts).toLocaleString("en-IN")}`;
+}
+function setupRepairFields(){
+    ["repairTotal","repairPartsPrice"].forEach(id=>$(id)?.addEventListener("input",updateRepairProfit));
+    updateRepairProfit();
+}
 function setupAccessoryFields(){["accessoryPrice","accessorySalePrice"].forEach(id=>$(id)?.addEventListener("input",updateAccessoryProfit));}
 function updateAccessoryProfit(){const p=Number(val("accessoryPrice")||0),s=Number(val("accessorySalePrice")||0);if($("accessoryProfit"))$("accessoryProfit").textContent=`₹${(s-p).toLocaleString("en-IN")}`;}
 async function saveSecondHand(e){
@@ -1722,7 +1730,7 @@ function showUnifiedCustomerHistory(phone,name){
     const finance=customers.filter(same),repair=repairing.filter(same),second=secondHand.filter(same),acc=accessories.filter(same);
     const title=name||finance[0]?.customerName||repair[0]?.customerName||second[0]?.customerName||acc[0]?.customerName||"Customer";
     $("detailTitle").textContent=`${title} • Complete History`;activeCustomerId=finance[0]?.id||null;
-    const rows=[];finance.forEach(x=>rows.push(`<article class="history-row"><b>💳 Finance / Phone</b><small>${esc(formatDateTime(x))}</small><span>${esc(`${x.brand||""} ${x.model||""}`)} • IMEI ${esc(x.imei||"—")} • ₹${Number(x.phoneAmount||0).toLocaleString("en-IN")}</span></article>`));repair.forEach(x=>rows.push(`<article class="history-row"><b>🛠 Repairing</b><small>${esc(formatDateTime(x))}</small><span>${esc(x.device||"")} • ${esc(x.problem||"")} • ₹${Number(x.payment||0).toLocaleString("en-IN")}</span></article>`));second.forEach(x=>rows.push(`<article class="history-row"><b>📱 Second Hand</b><small>${esc(formatDateTime(x))}</small><span>${esc(`${x.brand||""} ${x.model||x.device||""}`)} • IMEI ${esc(x.imei||"—")} • Profit ₹${Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))).toLocaleString("en-IN")}</span></article>`));acc.forEach(x=>rows.push(`<article class="history-row"><b>🎧 Accessories</b><small>${esc(formatDateTime(x))}</small><span>${esc(x.name||"")} • SN ${esc(x.sn||"—")} • Profit ₹${Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))).toLocaleString("en-IN")}</span></article>`));
+    const rows=[];finance.forEach(x=>rows.push(`<article class="history-row"><b>💳 Finance / Phone</b><small>${esc(formatDateTime(x))}</small><span>${esc(`${x.brand||""} ${x.model||""}`)} • IMEI ${esc(x.imei||"—")} • ₹${Number(x.phoneAmount||0).toLocaleString("en-IN")}</span></article>`));repair.forEach(x=>rows.push(`<article class="history-row"><b>🛠 Repairing</b><small>${esc(formatDateTime(x))}</small><span>${esc(x.device||"")} • ${esc(x.problem||"")} • Total ₹${Number(x.total??x.payment??0).toLocaleString("en-IN")} • Parts ₹${Number(x.partsPrice||0).toLocaleString("en-IN")} • Profit ₹${Number(x.profit??(Number(x.total??x.payment??0)-Number(x.partsPrice||0))).toLocaleString("en-IN")}</span></article>`));second.forEach(x=>rows.push(`<article class="history-row"><b>📱 Second Hand</b><small>${esc(formatDateTime(x))}</small><span>${esc(`${x.brand||""} ${x.model||x.device||""}`)} • IMEI ${esc(x.imei||"—")} • Profit ₹${Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))).toLocaleString("en-IN")}</span></article>`));acc.forEach(x=>rows.push(`<article class="history-row"><b>🎧 Accessories</b><small>${esc(formatDateTime(x))}</small><span>${esc(x.name||"")} • SN ${esc(x.sn||"—")} • Profit ₹${Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))).toLocaleString("en-IN")}</span></article>`));
     $("customerDetailBody").innerHTML=`<div class="detail-grid">${detailItem("Customer",title)}${detailItem("Phone",p||finance[0]?.phone||repair[0]?.phone||second[0]?.phone||acc[0]?.customerPhone||"—")}${detailItem("Finance Records",finance.length)}${detailItem("Repairing Records",repair.length)}${detailItem("Second Hand Records",second.length)}${detailItem("Accessories Records",acc.length)}</div><div class="history-list">${rows.join("")||'<div class="empty">इस customer का कोई history record नहीं मिला.</div>'}</div>`;$("customerDetailModal")?.classList.remove("hidden");
 }
 
@@ -1758,20 +1766,25 @@ function subscribeRepairing(){
 function renderRepairing(){
     const box=$("repairResults");if(!box)return;
     const s=val("repairSearchInput").toLowerCase();
-    const arr=repairing.filter(r=>!s||[r.customerName,r.phone,r.device,r.problem,r.repairBy,r.payment,formatDateTime(r)].join(" ").toLowerCase().includes(s));
+    const arr=repairing.filter(r=>!s||[r.customerName,r.phone,r.device,r.problem,r.repairBy,r.total,r.partsPrice,r.profit,r.payment,formatDateTime(r)].join(" ").toLowerCase().includes(s));
     if(!arr.length){box.innerHTML=`<div class="empty">${s?"No repairing record found.":"No repairing records yet."}</div>`;return}
     box.innerHTML=arr.map(r=>`<article class="result">
       <div class="result-name">${esc(r.customerName||"")}</div><div class="result-meta">${esc(r.phone||"")} • ${esc(formatDateTime(r))}</div>
-      <div class="result-grid">${item("Brand / Model",r.device)}${item("Problem",r.problem)}${item("Repairing By",r.repairBy)}${item("Payment",`₹${Number(r.payment||0).toLocaleString("en-IN")}`)}</div>
+      <div class="result-grid">${item("Brand / Model",r.device)}${item("Problem",r.problem)}${item("Repairing By",r.repairBy)}${item("Total",`₹${Number(r.total??r.payment??0).toLocaleString("en-IN")}`)}${item("Parts Price",`₹${Number(r.partsPrice||0).toLocaleString("en-IN")}`)}${item("Profit",`₹${Number(r.profit??(Number(r.total??r.payment??0)-Number(r.partsPrice||0))).toLocaleString("en-IN")}`)}</div>
     </article>`).join("");
 }
 async function saveRepair(e){
     e.preventDefault();
     if(enforceWriteLock("repairMessage"))return;
-    const ids=["repairCustomerName","repairPhone","repairDevice","repairProblem","repairBy","repairPayment"];
+    const ids=["repairCustomerName","repairPhone","repairDevice","repairProblem","repairBy","repairTotal","repairPartsPrice"];
     for(const id of ids)if(!val(id)){ $(id)?.focus();msg("repairMessage","सभी fields भरना जरूरी है.");return }
     const phone=val("repairPhone").replace(/\D/g,"");
     if(!/^\d{10}$/.test(phone)){msg("repairMessage","10 digit customer phone number डालें.");return}
+
+    const total=Number(val("repairTotal")||0);
+    const partsPrice=Number(val("repairPartsPrice")||0);
+    const profit=total-partsPrice;
+
     const saveBtn = $("repairForm")?.querySelector("button[type='submit']");
     if(saveBtn) saveBtn.disabled=true;
 
@@ -1782,13 +1795,16 @@ async function saveRepair(e){
             device:val("repairDevice"),
             problem:val("repairProblem"),
             repairBy:val("repairBy"),
-            payment:Number(val("repairPayment")),
+            total,
+            partsPrice,
+            profit,
             createdAt:serverTimestamp(),
             createdBy:user?.uid||null
         });
-        await audit("repairing_add",{section:"Kabir Repairing Data",customerId:repairRef.id,customerName:val("repairCustomerName"),description:`Repairing added: ${val("repairProblem")||"Problem"}`,extra:{phone,device:val("repairDevice"),problem:val("repairProblem"),payment:Number(val("repairPayment"))}});
+        await audit("repairing_add",{section:"Kabir Repairing Data",customerId:repairRef.id,customerName:val("repairCustomerName"),description:`Repairing added: ${val("repairProblem")||"Problem"}`,extra:{phone,device:val("repairDevice"),problem:val("repairProblem"),total,partsPrice,profit}});
 
         $("repairForm").reset();
+        updateRepairProfit();
         msg("repairMessage","");
         showSuccessToast("Successfully Saved","Repairing data saved successfully");
     }catch(e){
@@ -1820,7 +1836,7 @@ function exportRepairing(){
     if(!repairing.length){alert("Repairing data अभी उपलब्ध नहीं है.");return}
     audit("repairing_export",{section:"Kabir Repairing Data",description:`Repairing Excel downloaded (${repairing.length} records)`});
     exportXlsx(repairing.map(r=>({"Date & Time":formatDateTime(r),"Customer Name":r.customerName||"","Phone":r.phone||"",
-      "Brand / Model":r.device||"","Problem":r.problem||"","Repairing By":r.repairBy||"","Payment":r.payment||0})),
+      "Brand / Model":r.device||"","Problem":r.problem||"","Repairing By":r.repairBy||"","Total":r.total??r.payment??0,"Parts Price":r.partsPrice||0,"Profit":r.profit??(Number(r.total??r.payment??0)-Number(r.partsPrice||0))})),
       "Kabir_Repairing_Data.xlsx","Repairing");
 }
 async function downloadCustomerPdf(){
@@ -1849,7 +1865,7 @@ async function downloadFullPdf(){
         const title=(t)=>{pdf.setFontSize(20);pdf.setFont(undefined,"bold");pdf.text(t,14,16);pdf.setFontSize(9);pdf.setFont(undefined,"normal");pdf.text(`Generated: ${new Date().toLocaleString("en-IN")}`,14,22);};
         const table=(headers,rows)=>{let y=29;const widths=headers.map((_,i)=>180/headers.length);pdf.setFontSize(8);pdf.setFont(undefined,"bold");headers.forEach((h,i)=>pdf.text(String(h),14+widths.slice(0,i).reduce((a,b)=>a+b,0),y));y+=5;pdf.setFont(undefined,"normal");rows.forEach(r=>{if(y>190){pdf.addPage();y=16;}r.forEach((v,i)=>pdf.text(String(v??"—").slice(0,32),14+widths.slice(0,i).reduce((a,b)=>a+b,0),y));y+=5;});};
         title("KABIR MOBILE DATA — COMPLETE DATABASE");table(["Customer","Phone","Brand / Model","IMEI","Amount"],customers.map(x=>[x.customerName,x.phone,`${x.brand||""} ${x.model||""}`,x.imei,`₹${x.phoneAmount||0}`]));
-        pdf.addPage();title("KABIR REPAIRING DATA");table(["Customer","Phone","Device","Problem","Payment"],repairing.map(x=>[x.customerName,x.phone,x.device,x.problem,`₹${x.payment||0}`]));
+        pdf.addPage();title("KABIR REPAIRING DATA");table(["Customer","Phone","Device","Problem","Total","Parts","Profit"],repairing.map(x=>[x.customerName,x.phone,x.device,x.problem,`₹${x.total??x.payment??0}`,`₹${x.partsPrice||0}`,`₹${x.profit??(Number(x.total??x.payment??0)-Number(x.partsPrice||0))}`]));
         pdf.addPage();title("SECOND HAND DATA");table(["Customer","Brand / Model","IMEI","Purchase","Sell","Profit"],secondHand.map(x=>[x.customerName,`${x.brand||""} ${x.model||x.device||""}`,x.imei,`₹${x.price||0}`,`₹${x.salePrice||0}`,`₹${x.profit??(Number(x.salePrice||0)-Number(x.price||0))}`]));
         pdf.addPage();title("ACCESSORIES DATA");table(["Name","Category","SN","Qty","Purchase","Sell","Profit"],accessories.map(x=>[x.name,x.category,x.sn,x.quantity,`₹${x.price||0}`,`₹${x.salePrice||0}`,`₹${x.profit??(Number(x.salePrice||0)-Number(x.price||0))}`]));
         pdf.save(`Kabir_Data_Complete_${new Date().toISOString().slice(0,10)}.pdf`);
@@ -1914,6 +1930,7 @@ async function init(){
     brands();
 
     setupFinanceCompany();
+    setupRepairFields();
 
     pincode();
 
