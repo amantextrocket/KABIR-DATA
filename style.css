@@ -202,19 +202,3 @@ html[data-theme="ocean"] body{background:radial-gradient(circle at 10% 5%,rgba(3
 @media(max-width:380px){.module-page-content,.admin-management-grid{grid-template-columns:1fr}.premium-brandbar{padding:10px!important}.premium-brand h2{font-size:16px}.brand-orb{width:38px;height:38px}}
 /* Traffic management controls are intentionally one-line premium rows, not square cards. */
 .admin-management-grid{grid-template-columns:1fr!important;gap:8px!important}.admin-management-grid .action{min-height:72px!important;display:grid!important;grid-template-columns:42px 1fr auto!important;grid-template-rows:auto auto!important;align-items:center!important;text-align:left!important;padding:12px 14px!important;border-radius:18px!important}.admin-management-grid .action .icon{grid-row:1 / span 2}.admin-management-grid .action strong{align-self:end}.admin-management-grid .action small{align-self:start}.admin-management-grid .action::after{content:'›';grid-column:3;grid-row:1 / span 2;font-size:25px;opacity:.55}
-
-/* ===== 18 AUG 2026 — DEVICE AUDIT + KABIR AI ===== */
-.work-timeline-legend{display:flex;flex-wrap:wrap;gap:7px;margin:0 0 12px;padding:9px 11px;border:1px solid var(--border);border-radius:16px;background:rgba(255,255,255,.035)}
-.work-timeline-legend span{font-size:9px;color:var(--muted);padding:5px 8px;border-radius:999px;background:rgba(255,255,255,.045)}
-.ai-home-button{font-size:10px!important;font-weight:950!important;letter-spacing:.4px!important;background:linear-gradient(145deg,rgba(140,120,255,.22),rgba(255,255,255,.07))!important;border-color:rgba(155,135,255,.30)!important;box-shadow:0 8px 26px rgba(100,80,220,.16),inset 0 1px 0 rgba(255,255,255,.18)!important}
-.ai-card{max-width:560px!important;width:calc(100% - 24px)!important;overflow:hidden;background:linear-gradient(145deg,rgba(20,23,38,.92),rgba(10,12,20,.84))!important;box-shadow:0 35px 100px rgba(0,0,0,.52),inset 0 1px 0 rgba(255,255,255,.12)!important}
-.ai-messages{height:min(48vh,420px);overflow:auto;display:flex;flex-direction:column;gap:9px;padding:8px 2px 12px;scroll-behavior:smooth}
-.ai-message{max-width:86%;padding:11px 13px;border-radius:17px;font-size:12px;line-height:1.48;animation:aiBubble .28s cubic-bezier(.2,.9,.2,1) both;white-space:pre-wrap}
-.ai-message.assistant{align-self:flex-start;background:rgba(255,255,255,.065);border:1px solid rgba(255,255,255,.08);border-bottom-left-radius:6px}
-.ai-message.user{align-self:flex-end;background:linear-gradient(135deg,rgba(110,100,255,.28),rgba(80,145,255,.16));border:1px solid rgba(140,130,255,.22);border-bottom-right-radius:6px}
-.ai-typing{letter-spacing:5px;opacity:.7}
-.ai-suggestions{display:flex;gap:7px;overflow-x:auto;padding:4px 0 10px;scrollbar-width:none}.ai-suggestions::-webkit-scrollbar{display:none}
-.ai-suggestions button{flex:0 0 auto;border:1px solid var(--border);border-radius:999px;padding:8px 10px;background:rgba(255,255,255,.045);color:inherit;font-size:9px;white-space:nowrap}
-.ai-input-row{display:grid;grid-template-columns:1fr 42px 46px;gap:7px;align-items:center}.ai-input-row input{min-width:0;border-radius:16px!important;padding:12px 13px!important;background:rgba(255,255,255,.055)!important}.ai-round,.ai-send{height:42px;border:1px solid var(--border);border-radius:14px;color:inherit;background:rgba(255,255,255,.07);font-size:16px}.ai-send{background:linear-gradient(135deg,rgba(120,110,255,.30),rgba(70,145,255,.18));font-size:18px}.ai-voice-status{min-height:15px;margin-top:5px;text-align:center;font-size:9px;color:var(--muted)}
-@keyframes aiBubble{from{opacity:0;transform:translateY(8px) scale(.97)}to{opacity:1;transform:none}}
-@media(max-width:430px){.ai-card{padding:14px!important}.ai-messages{height:46vh}.ai-message{font-size:11px;max-width:91%}}
