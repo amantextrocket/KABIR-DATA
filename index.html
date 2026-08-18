@@ -23,11 +23,10 @@
 
 <main id="appScreen" class="app hidden">
 <header class="glass topbar premium-brandbar">
-  <div class="premium-brand"><span class="brand-orb">KM</span><div><div class="eyebrow">KABIR DATA</div><h2>KABIR MOBILE</h2><small>Premium Business Database</small></div></div>
+  <div class="premium-brand"><span class="brand-orb">KM</span><div><h2>KABIR MOBILE</h2></div></div>
   <div class="top-actions">
     <button id="homeDateWorkButton" class="round" type="button" title="Date Wise Work">📅</button>
     <button id="homePdfButton" class="round pdf-home-button" type="button" title="Download Complete PDF">PDF</button>
-    <button id="aiHomeButton" class="round ai-home-button" type="button" title="Kabir AI">AI</button>
     <button id="themeButton" class="round" type="button" title="Theme">◐</button>
     <button id="lockButton" class="round" type="button">⌑</button>
   </div>
@@ -190,22 +189,6 @@
   <div class="search"><span>⌕</span><input id="repairSearchInput" type="search" placeholder="Name, phone, problem, brand/model, total…" autocomplete="off"></div>
   <div id="repairResults" class="results"></div>
 </section>
-<div id="aiModal" class="modal hidden">
-  <div class="glass modal-card ai-card">
-    <div class="section-head"><div><div class="eyebrow">KABIR AI</div><h2>AI Assistant</h2><small class="section-subtitle">अपने पूरे Kabir Data के बारे में पूछें</small></div><button id="closeAiButton" class="close" type="button">×</button></div>
-    <div id="aiMessages" class="ai-messages"><div class="ai-message assistant">नमस्ते! मैं आपके Kabir Data को समझकर Hindi, English या Hinglish में जवाब दे सकता हूँ।</div></div>
-    <div class="ai-suggestions">
-      <button type="button" data-ai-q="आज कितने customer हैं?">Customers</button>
-      <button type="button" data-ai-q="कुल repairing कितनी है?">Repairing</button>
-      <button type="button" data-ai-q="second hand stock कितना है?">Second Hand</button>
-      <button type="button" data-ai-q="accessories stock कितना है?">Accessories</button>
-      <button type="button" data-ai-q="आज का पूरा काम बताओ">आज का काम</button>
-    </div>
-    <div class="ai-input-row"><input id="aiInput" type="text" autocomplete="off" placeholder="Type your question…"><button id="aiVoiceButton" class="ai-round" type="button" title="Voice">🎙️</button><button id="aiSendButton" class="ai-send" type="button">➤</button></div>
-    <div id="aiVoiceStatus" class="ai-voice-status"></div>
-  </div>
-</div>
-
 <div id="customerDetailModal" class="modal hidden"><div class="glass modal-card detail-card">
   <div class="section-head"><div><div class="eyebrow">CUSTOMER DETAILS</div><h2 id="detailTitle">Customer</h2></div><button id="closeDetailButton" class="close">×</button></div>
   <div id="customerDetailBody"></div>
