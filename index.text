@@ -164,18 +164,6 @@
   <div id="themeChoices" class="theme-grid"><button data-theme="dark">🌑 Dark</button><button data-theme="light">☀️ Light</button><button data-theme="midnight">🌌 Midnight</button><button data-theme="silver">◽ Silver</button><button data-theme="glass">✨ Glass</button></div>
 </div></div>
 <div id="scannerModal" class="modal hidden"><div class="glass modal-card"><div class="section-head"><div><div class="eyebrow">CAMERA</div><h2>Scan IMEI</h2></div><button id="closeScannerButton" class="close">×</button></div><video id="scannerVideo" playsinline muted></video><p id="scannerMessage" class="message">Point the camera at a QR/barcode.</p></div></div>
-<div id="aiModal" class="modal hidden ai-modal"><div class="glass modal-card ai-card">
-  <div class="section-head ai-head"><div><div class="eyebrow">KABIR AI</div><h2>AI Assistant <span class="ai-live-dot"></span></h2><small class="section-subtitle">आपके Kabir Data को समझकर जवाब देगा</small></div><button id="closeAiButton" class="close" type="button">×</button></div>
-  <div id="aiMessages" class="ai-messages"><article class="ai-msg ai"><div class="ai-avatar">✦</div><div><b>Kabir AI</b><p>नमस्ते! मैं आपके Kabir Mobile Data की मदद कर सकता हूँ। आप Hindi या English में पूछ सकते हैं।</p></div></article></div>
-  <div class="ai-suggestions">
-    <button type="button" data-ai-q="आज कितने customer add हुए?">आज का काम</button>
-    <button type="button" data-ai-q="कुल कितने customer हैं?">Total Customers</button>
-    <button type="button" data-ai-q="सबसे ज्यादा कौन सा brand है?">Top Brand</button>
-    <button type="button" data-ai-q="repairing कितनी है?">Repairing</button>
-  </div>
-  <form id="aiForm" class="ai-input-row"><input id="aiInput" type="text" autocomplete="off" placeholder="AI से कुछ भी पूछें…"><button id="aiMicButton" type="button" title="Voice">🎙️</button><button class="ai-send" type="submit">↑</button></form>
-  <small id="aiStatus" class="ai-status">Data आपके device/browser में process हो रहा है • Voice supported phones पर उपलब्ध</small>
-</div></div>
 <script type="module" src="script.js"></script>
 </body>
 </html>
