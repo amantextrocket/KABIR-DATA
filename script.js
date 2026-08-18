@@ -1729,7 +1729,16 @@ function renderAllCustomers(){
     customers.forEach(x=>add(x,"Finance",x.customerName,x.phone));repairing.forEach(x=>add(x,"Repairing",x.customerName,x.phone));secondHand.forEach(x=>add(x,"Second Hand",x.customerName,x.phone));accessories.forEach(x=>add(x,"Accessories",x.customerName,x.customerPhone));
     const rows=[...map.values()].filter(x=>!q||[x.name,x.phone,[...x.types].join(" ")].join(" ").toLowerCase().includes(q));
     box.innerHTML=rows.length?rows.map((x,i)=>`<article class="result all-customer-result" data-phone="${esc(x.phone)}" data-name="${esc(x.name)}"><div class="result-top"><div><div class="result-name">${esc(x.name)}</div><div class="result-meta">${esc(x.phone||"Phone not available")}</div></div><div class="work-log-tag">${esc([...x.types].join(" • "))}</div></div><div class="result-open-hint">Tap करके आज तक का पूरा data देखें</div></article>`).join(""):"<div class=\"empty\">No customer found.</div>";
-    box.querySelectorAll(".all-customer-result").forEach(card=>card.addEventListener("click",()=>showUnifiedCustomerHistory(card.dataset.phone,card.dataset.name)));
+    box.querySelectorAll(".all-customer-result").forEach(card=>card.addEventListener("click",()=>{
+        const phone=String(card.dataset.phone||"").replace(/\D/g,"");
+        const name=String(card.dataset.name||"").trim().toLowerCase();
+        const primary=customers.find(c=>{
+            const cp=String(c.phone||"").replace(/\D/g,"");
+            return (phone&&cp===phone)||(!phone&&name&&String(c.customerName||"").trim().toLowerCase()===name);
+        });
+        if(primary) showCustomerDetail(primary);
+        else showUnifiedCustomerHistory(card.dataset.phone,card.dataset.name);
+    }));
 }
 function showUnifiedCustomerHistory(phone,name){
     const p=String(phone||"").replace(/\D/g,"");const n=String(name||"").trim().toLowerCase();
@@ -1880,7 +1889,7 @@ async function downloadFullPdf(){
 }
 
 function applyTheme(theme){
-    const allowed=["dark","light","midnight","silver","glass"];
+    const allowed=["dark","light","midnight","glass","aurora","emerald","royal","sunset"];
     if(!allowed.includes(theme)) theme="dark";
 
     document.documentElement.setAttribute("data-theme",theme);
