@@ -2124,106 +2124,6 @@ function themeSystem(){
     });
 }
 
-
-/* =========================================================
-   KABIR AI ASSISTANT — MAIN WEBSITE ONLY
-   Smart data assistant: Hindi/English queries, voice input,
-   and answers from the currently synced Firebase data.
-========================================================= */
-function aiAddMessage(type,text){
-    const box=$("aiMessages"); if(!box)return;
-    const article=document.createElement("article");
-    article.className=`ai-msg ${type}`;
-    article.innerHTML=`<div class="ai-avatar">${type==="ai"?"✦":"You"}</div><div><b>${type==="ai"?"Kabir AI":"You"}</b><p>${esc(text).replace(/\n/g,"<br>")}</p></div>`;
-    box.appendChild(article);
-    box.scrollTop=box.scrollHeight;
-}
-function aiDateKey(row){return recordDay(row)||""}
-function aiTodayRows(){
-    const today=new Date().toLocaleDateString("en-CA");
-    return {customers:customers.filter(x=>aiDateKey(x)===today),repairing:repairing.filter(x=>aiDateKey(x)===today)};
-}
-function aiTopBrand(){
-    const map={};
-    customers.forEach(c=>{const b=String(c.brand||"").trim();if(b)map[b]=(map[b]||0)+1});
-    const rows=Object.entries(map).sort((a,b)=>b[1]-a[1]);
-    return rows[0]||null;
-}
-function aiSearchCustomer(q){
-    const terms=q.toLowerCase().replace(/[^a-z0-9@.\-\s]/g," ").split(/\s+/).filter(x=>x.length>1);
-    if(!terms.length)return [];
-    return customers.filter(c=>{
-        const hay=[c.customerCode,c.customerName,c.phone,c.imei,c.pincode,c.city,c.state,c.brand,c.model,c.financeCompany,c.lockName,c.stock,c.counter,c.financerName,formatDateTime(c)].filter(Boolean).join(" ").toLowerCase();
-        return terms.some(t=>hay.includes(t));
-    }).slice(0,5);
-}
-function aiAnswer(raw){
-    const q=String(raw||"").trim();
-    const l=q.toLowerCase();
-    if(!q)return "कुछ पूछिए — जैसे ‘आज कितने customer add हुए?’";
-
-    const today=aiTodayRows();
-    const top=aiTopBrand();
-    const repairCount=repairing.length;
-    const secondCount=secondHand.length;
-    const accessoryCount=accessories.reduce((n,x)=>n+(Number(x.qty)||0),0);
-
-    if(/^(hi|hello|hey|namaste|नमस्ते|हेलो)/i.test(q)) return "नमस्ते! 👋 मैं Kabir AI हूँ। Customer, repairing, stock, brand या आज के work के बारे में पूछिए।";
-    if(/आज|today/.test(l) && /customer|कस्टमर|ग्राहक/.test(l)) return `आज ${today.customers.length} customer record add हुआ है।`;
-    if(/आज|today/.test(l) && /repair|repairing|रिपेयर/.test(l)) return `आज ${today.repairing.length} repairing record हुआ है।`;
-    if(/total|कुल|कितने|कितना/.test(l) && /customer|कस्टमर|ग्राहक/.test(l)) return `कुल ${customers.length} customer records मौजूद हैं।`;
-    if(/total|कुल|कितने|कितना/.test(l) && /device|phone|मोबाइल|फोन/.test(l)){
-        const n=customers.reduce((t,c)=>t+(Number(c.deviceCount)>0?Number(c.deviceCount):1),0);
-        return `कुल ${n} devices हैं।`;
-    }
-    if(/repair|repairing|रिपेयर/.test(l) && /total|कुल|कितने|है/.test(l)) return `Kabir Repairing Data में कुल ${repairCount} records हैं।`;
-    if(/second|second hand|सेकंड/.test(l) && /stock|स्टॉक|कितने|total|कुल/.test(l)) return `Second Hand में ${secondCount} records हैं।`;
-    if(/accessor|accessories|एक्सेसरी|स्टॉक/.test(l) && /stock|कितने|total|कुल/.test(l)) return `Accessories में कुल ${accessoryCount} quantity stock है।`;
-    if(/top|सबसे ज्यादा|ज्यादा|popular|brand/.test(l) && /brand|ब्रांड/.test(l)) return top?`${top[0]} सबसे ज्यादा है — ${top[1]} customer records में।`:"अभी brand data उपलब्ध नहीं है।";
-    if(/आज|today/.test(l) && /काम|work|entry|entries|record/.test(l)) return `आज ${today.customers.length} customer और ${today.repairing.length} repairing entries हुई हैं।`;
-
-    const matches=aiSearchCustomer(q);
-    if(matches.length){
-        if(matches.length===1){
-            const c=matches[0];
-            return `मुझे ${c.customerName||"Customer"} मिला। Code: ${c.customerCode||"—"}, Phone: ${c.phone||"—"}, Device: ${[c.brand,c.model].filter(Boolean).join(" ")||"—"}, IMEI: ${c.imei||"—"}.`;
-        }
-        return `मुझे ${matches.length} matching records मिले: ${matches.map(c=>`${c.customerName||"Customer"} (${c.customerCode||"—"})`).join(", ")}.`;
-    }
-    return "मैं अभी आपके synced Kabir Data से customer, device, repairing, second-hand, accessories और daily work से जुड़े सवालों का जवाब दे सकता हूँ। उदाहरण: ‘KM1234 की जानकारी’, ‘आज कितने customer add हुए?’ या ‘सबसे ज्यादा कौन सा brand है?’";
-}
-function setupAi(){
-    const modal=$("aiModal");
-    const form=$("aiForm");
-    const input=$("aiInput");
-    if(!modal||!form||!input)return;
-    const open=()=>{modal.classList.remove("hidden");setTimeout(()=>input.focus(),220)};
-    const close=()=>modal.classList.add("hidden");
-    $("aiButton")?.addEventListener("click",open);
-    $("closeAiButton")?.addEventListener("click",close);
-    modal.addEventListener("click",e=>{if(e.target===modal)close()});
-    document.querySelectorAll("[data-ai-q]").forEach(b=>b.addEventListener("click",()=>{input.value=b.dataset.aiQ||"";form.requestSubmit()}));
-    form.addEventListener("submit",e=>{
-        e.preventDefault();
-        const q=input.value.trim(); if(!q)return;
-        aiAddMessage("user",q); input.value="";
-        const status=$("aiStatus"); if(status)status.textContent="Kabir AI सोच रहा है…";
-        setTimeout(()=>{aiAddMessage("ai",aiAnswer(q));if(status)status.textContent="Data आपके device/browser में process हो रहा है • Voice supported phones पर उपलब्ध"},260);
-    });
-    const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition;
-    const mic=$("aiMicButton");
-    if(!SpeechRecognition){
-        if(mic){mic.disabled=true;mic.title="Voice आपके browser में supported नहीं है"}
-        return;
-    }
-    const recognition=new SpeechRecognition();
-    recognition.lang="hi-IN"; recognition.interimResults=false; recognition.maxAlternatives=1;
-    mic?.addEventListener("click",()=>{try{recognition.start();mic.classList.add("listening");$("aiStatus").textContent="सुन रहा हूँ… Hindi/English में बोलें"}catch(_){}});
-    recognition.onresult=e=>{input.value=e.results?.[0]?.[0]?.transcript||"";form.requestSubmit()};
-    recognition.onerror=()=>{$("aiStatus").textContent="Voice input नहीं मिल पाया। फिर से try करें।"};
-    recognition.onend=()=>mic?.classList.remove("listening");
-}
-
 function featureNav(){
     $("addRepairingCard")?.addEventListener("click",()=>show("repairAddSection"));
     $("searchRepairingCard")?.addEventListener("click",()=>{show("repairSearchSection");renderRepairing();$("repairSearchInput")?.focus();audit("repairing_search",{section:"Kabir Repairing Data",description:"Repairing search opened"})});
@@ -2268,7 +2168,6 @@ async function init(){
      * featureNav() was never called, so the buttons did nothing.
      */
     themeSystem();
-    setupAi();
     featureNav();
     setupHomePdf();
     setupHomeModuleReorder();
