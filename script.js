@@ -299,8 +299,14 @@ let sharedPin=/^\d{4}$/.test(localStorage.getItem(PIN_KEY)||"")?localStorage.get
 let pinLoaded=/^\d{4}$/.test(localStorage.getItem(PIN_KEY)||"");
 let pinLoadPromise=null;
 
-async function loadSharedPin(){
-    if(pinLoadPromise)return pinLoadPromise;
+async function loadSharedPin(force=false){
+    if(pinLoadPromise && !force)return pinLoadPromise;
+    // Before Firebase Authentication is ready, use the cached/default PIN.
+    // A later authenticated state will force-refresh it from Firestore.
+    if(!user && !force){
+        pinLoaded=true;
+        return sharedPin;
+    }
     pinLoadPromise=(async()=>{
         const securityRef=doc(db,SETTINGS_COL,SETTINGS_DOC);
         try{
@@ -347,7 +353,10 @@ async function loadSharedPin(){
                 sharedPin=cached;
                 return sharedPin;
             }
-            throw Error("PIN load नहीं हुआ. Firebase connection check करें.");
+            // Keep the first-use experience functional even if Firebase is
+            // unavailable. The default PIN is synchronized once auth works.
+            sharedPin=DEFAULT_PIN;
+            return sharedPin;
         }finally{
             pinLoaded=true;
         }
@@ -388,6 +397,7 @@ function auditLabel(action){
         login_success:"Login Success",
         login_failed:"Login Failed",
         page_open:"Website Opened",
+        logout:"Logout",
         second_hand_add:"Second Hand Phone Added",
         accessory_add:"Accessory Added"
     };
@@ -635,19 +645,39 @@ const authReady=new Promise(resolve=>{authReadyResolve=resolve});
 async function authInit(){
     let resolved=false;
     const finish=()=>{if(!resolved){resolved=true;authReadyResolve(user)}};
+
+    // Always resolve authReady, even when Firebase Authentication is disabled,
+    // blocked, or temporarily unavailable. This prevents the UI from getting
+    // stuck forever on "Firebase connecting…".
     onAuthStateChanged(auth,u=>{
-        user=u;
+        user=u||null;
         updateAdmin();
+
+        // Once anonymous auth is ready, refresh the shared PIN from Firestore.
+        if(user){
+            pinLoaded=false;
+            pinLoadPromise=null;
+            loadSharedPin(true).catch(err=>console.warn("Shared PIN refresh:",err));
+        }
         finish();
     },e=>{
         console.error("Auth state error:",e);
+        user=null;
+        updateAdmin("Firebase Authentication error");
         finish();
     });
+
     try{
-        await signInAnonymously(auth);
+        // Do not wait forever for Firebase. The PIN screen remains usable
+        // with the cached/default PIN while Firebase reconnects.
+        const authTask=signInAnonymously(auth);
+        await Promise.race([
+            authTask,
+            new Promise((_,reject)=>setTimeout(()=>reject(new Error("Firebase Authentication timeout")),8000))
+        ]);
     }catch(e){
-        console.error(e);
-        if($("adminFirebaseStatus"))msg("adminFirebaseStatus","Firebase authentication error: "+(e?.message||""));
+        console.error("Firebase authentication failed:",e);
+        updateAdmin(e?.message||"Firebase Authentication unavailable");
         finish();
     }
     return authReady;
@@ -722,8 +752,7 @@ function counts(){
 }
 
 
-function updateAdmin(){
-
+function updateAdmin(statusText=""){
     if($("adminCustomers"))
         $("adminCustomers").textContent=customers.length;
 
@@ -734,10 +763,14 @@ function updateAdmin(){
                 0
             );
 
+    const status=user
+        ? "Firebase connected ✓"
+        : (statusText || "Firebase reconnecting…");
+
     if($("adminFirebaseStatus"))
-        $("adminFirebaseStatus").textContent=user?"Firebase connected":"Connecting to Firebase…";
+        $("adminFirebaseStatus").textContent=status;
     if($("connectionStatus"))
-        $("connectionStatus").textContent=user?"Firebase connected ✓":"Firebase connecting…";
+        $("connectionStatus").textContent=status;
 }
 
 
@@ -2140,12 +2173,14 @@ const isAdminPage = document.body.classList.contains('admin') || location.pathna
 function deviceInfo(){
     const ua=navigator.userAgent||'';
     let brand='Unknown', model='Browser';
-    if(/iPhone|iPad/i.test(ua)){brand='Apple';model=/iPad/i.test(ua)?'iPad':'iPhone';}
-    else if(/Samsung/i.test(ua)){brand='Samsung';model='Samsung device';}
-    else if(/Pixel/i.test(ua)){brand='Google';model='Pixel';}
-    else if(/OnePlus/i.test(ua)){brand='OnePlus';model='OnePlus device';}
-    else if(/Android/i.test(ua)){brand='Android';model='Android device';}
-    return {brand,model,browser:/CriOS/i.test(ua)?'Chrome iOS':/Safari/i.test(ua)?'Safari':/Firefox/i.test(ua)?'Firefox':'Browser'};
+    if(/iPhone/i.test(ua)){brand='Apple';model='iPhone (exact model not exposed by Safari)';}
+    else if(/iPad/i.test(ua)){brand='Apple';model='iPad (exact model not exposed by Safari)';}
+    else if(/Samsung/i.test(ua)){brand='Samsung';model=(ua.match(/Samsung[^;) ]*/i)||['Samsung device'])[0];}
+    else if(/Pixel/i.test(ua)){brand='Google';model=(ua.match(/Pixel[^;) ]*/i)||['Pixel'])[0];}
+    else if(/OnePlus/i.test(ua)){brand='OnePlus';model=(ua.match(/OnePlus[^;) ]*/i)||['OnePlus device'])[0];}
+    else if(/Android/i.test(ua)){brand='Android';model=(ua.match(/Android[^;)]*/i)||['Android device'])[0].trim();}
+    const browser=/CriOS/i.test(ua)?'Chrome iOS':/EdgiOS/i.test(ua)?'Edge iOS':/FxiOS/i.test(ua)?'Firefox iOS':/Chrome/i.test(ua)?'Chrome':/Safari/i.test(ua)?'Safari':/Firefox/i.test(ua)?'Firefox':'Browser';
+    return {brand,model,browser,platform:navigator.platform||'',language:navigator.language||''};
 }
 
 async function audit(action,details={}){
@@ -2156,7 +2191,7 @@ async function audit(action,details={}){
             userName:localStorage.getItem('kabir_current_user')||'Kabir User',section:details.section||'Kabir Mobile Data',
             customerId:details.customerId||null,customerCode:details.customerCode||null,customerName:details.customerName||null,
             description:details.description||auditLabel(action),details:details.extra||null,
-            deviceBrand:d.brand,deviceModel:d.model,browser:d.browser,clientTime:new Date().toISOString(),createdAt:serverTimestamp()
+            deviceBrand:d.brand,deviceModel:d.model,browser:d.browser,platform:d.platform,language:d.language,clientTime:new Date().toISOString(),createdAt:serverTimestamp()
         });
     }catch(e){console.warn('Audit log failed:',e?.message||e)}
 }
@@ -2166,11 +2201,11 @@ function renderWorkHistory(){
     const q=val('workSearchInput').toLowerCase();
     const rows=auditLogs.filter(x=>!q||[x.label,x.action,x.userName,x.userUid,x.section,x.customerCode,x.customerName,x.description,x.deviceBrand,x.deviceModel,auditTime(x)].join(' ').toLowerCase().includes(q));
     if(!rows.length){box.innerHTML='<div class="empty">अभी कोई work history उपलब्ध नहीं है.</div>';return;}
-    const iconMap={customer_add:'👤',customer_edit:'✏️',customer_delete:'🗑️',customer_bill_update:'🧾',repairing_add:'🛠️',customer_search:'🔎',repairing_search:'🔎',customer_export:'📥',repairing_export:'📥',customer_pdf:'🔵',pin_change:'🔐',login_success:'🟡',login_failed:'🔴',page_open:'🟡',second_hand_add:'📱',accessory_add:'🎧'};
+    const iconMap={customer_add:'👤',customer_edit:'✏️',customer_delete:'🗑️',customer_bill_update:'🧾',repairing_add:'🛠️',customer_search:'🔎',repairing_search:'🔎',customer_export:'📥',repairing_export:'📥',customer_pdf:'🔵',pin_change:'🔐',login_success:'🟢',login_failed:'🔴',page_open:'🟡',logout:'⚪',second_hand_add:'📱',accessory_add:'🎧'};
     box.innerHTML=rows.slice(0,300).map((x,i)=>`<article class="result work-log">
       <div class="work-log-head"><div class="work-log-icon">${iconMap[x.action]||'⚡'}</div><div class="work-log-title"><b>${esc(x.label||auditLabel(x.action))}</b><small>${esc(x.section||'Kabir Mobile Data')} • ${esc(x.userName||x.userUid||'Kabir User')}</small></div><time class="work-log-time">${esc(auditTime(x))}</time></div>
       <div class="work-log-desc">${esc(x.description||auditLabel(x.action))}</div>
-      <div class="work-log-device"><span>📱 ${esc(x.deviceBrand||'Device')} • ${esc(x.deviceModel||'Unknown model')}</span><span>🌐 ${esc(x.browser||'Browser')}</span></div>
+      <div class="work-log-device"><span>${x.action==='login_success'?'🟢 Login Success':x.action==='login_failed'?'🔴 Login Failed':x.action==='page_open'?'🟡 Website Open':x.action==='customer_pdf'?'🔵 PDF Download':x.action==='logout'?'⚪ Logout':'⚡ Work'}</span><span>📱 ${esc(x.deviceBrand||'Device')} • ${esc(x.deviceModel||'Unknown model')}</span><span>🌐 ${esc(x.browser||'Browser')}</span></div>
       <div class="work-log-tags"><span class="work-log-tag">#${i+1}</span>${x.customerCode?`<span class="work-log-tag">${esc(x.customerCode)}</span>`:''}${x.customerName?`<span class="work-log-tag">${esc(x.customerName)}</span>`:''}<span class="work-log-tag">${esc(x.action||'work')}</span></div>
     </article>`).join('');
 }
@@ -2357,13 +2392,82 @@ function subscribeInventory(){onSnapshot(collection(db,SECOND_COL),snap=>{second
 
 
 /* =========================================================
+   KABIR AI ASSISTANT — LOCAL DATA INTELLIGENCE
+========================================================= */
+function aiLocale(q){
+    const t=String(q||'');
+    const hi=/[\u0900-\u097F]/.test(t);
+    const hinglish=/\b(kya|kitna|kitne|kitni|batao|dikhao|aaj|kal|customer|repairing|stock|profit|sale|sell|purchase|data|hai|hain|ka|ki|ke|mein|me|total)\b/i.test(t);
+    return hi?'hi':hinglish?'hinglish':'en';
+}
+function aiMoney(n){return `₹${Number(n||0).toLocaleString('en-IN')}`}
+function aiCustomerMatches(q){
+    const s=String(q||'').toLowerCase();
+    return customers.filter(c=>[c.customerName,c.phone,c.customerCode,c.imei,c.brand,c.model].filter(Boolean).join(' ').toLowerCase().includes(s));
+}
+function aiAnswer(question){
+    const q=String(question||'').trim();
+    if(!q)return '';
+    const l=q.toLowerCase(), lang=aiLocale(q);
+    const today=new Date().toLocaleDateString('en-CA');
+    const todayCustomers=customers.filter(x=>recordDay(x)===today).length;
+    const todayRepair=repairing.filter(x=>recordDay(x)===today).length;
+    const secondProfit=secondHand.reduce((n,x)=>n+Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))),0);
+    const accessoryProfit=accessories.reduce((n,x)=>n+Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))),0);
+    const repairProfit=repairing.reduce((n,x)=>n+Number(x.profit??(Number(x.total??x.payment||0)-Number(x.partsPrice||0))),0);
+    const totalProfit=secondProfit+accessoryProfit+repairProfit;
+    const customerQuery=l.replace(/(customer|ka|ki|ke|data|details|detail|history|dikhao|batao|show|find|search|about|hai|hain|who|what|of|for)/gi,' ').replace(/\s+/g,' ').trim();
+    let matches=[];
+    if(customerQuery.length>=3) matches=aiCustomerMatches(customerQuery);
+    if(/(total|kitne|kitni|how many|count|customers?)/i.test(l) && /(customer|grahak)/i.test(l)){
+        return lang==='en'?`Total customers: ${customers.length}. Total devices: ${customers.reduce((n,c)=>n+Number(c.deviceCount||1),0)}.`:lang==='hinglish'?`Total ${customers.length} customers hain aur ${customers.reduce((n,c)=>n+Number(c.deviceCount||1),0)} devices hain.`:`कुल ${customers.length} customers हैं और ${customers.reduce((n,c)=>n+Number(c.deviceCount||1),0)} devices हैं।`;
+    }
+    if(/repair/i.test(l) && /(total|kitne|kitni|count|how many|aaj|today)/i.test(l)) return lang==='en'?`Total repairing records: ${repairing.length}. Today: ${todayRepair}.`:`कुल repairing records ${repairing.length} हैं। आज ${todayRepair} repairing entries हुई हैं।`;
+    if(/second|used|second.?hand/i.test(l) && /(stock|total|count|kitne|kitni|how many)/i.test(l)) return lang==='en'?`Second-hand stock: ${secondHand.length} phones.`:`Second-hand stock में ${secondHand.length} phones हैं।`;
+    if(/accessor/i.test(l) && /(stock|total|count|kitne|kitni|how many)/i.test(l)) return lang==='en'?`Accessories: ${accessories.length} records, total quantity ${accessories.reduce((n,x)=>n+Number(x.quantity||0),0)}.`:`Accessories में ${accessories.length} records हैं और total quantity ${accessories.reduce((n,x)=>n+Number(x.quantity||0),0)} है।`;
+    if(/profit|munafa|faayda|कमाई|लाभ/i.test(l)) return lang==='en'?`Current calculated profit: ${aiMoney(totalProfit)}. Repairing ${aiMoney(repairProfit)}, Second Hand ${aiMoney(secondProfit)}, Accessories ${aiMoney(accessoryProfit)}.`:`अभी calculated profit ${aiMoney(totalProfit)} है। Repairing ${aiMoney(repairProfit)}, Second Hand ${aiMoney(secondProfit)}, Accessories ${aiMoney(accessoryProfit)}।`;
+    if(/aaj|today|आज/i.test(l) && /(work|kaam|काम|data|activity)/i.test(l)) return lang==='en'?`Today: ${todayCustomers} customer entries and ${todayRepair} repairing entries.`:`आज ${todayCustomers} customer entries और ${todayRepair} repairing entries हुई हैं।`;
+    if(matches.length){
+        const c=matches[0];
+        return lang==='en'?`${c.customerName||'Customer'} (${c.customerCode||'-'}): ${c.phone||'-'}, ${c.brand||''} ${c.model||''}, IMEI ${c.imei||'-'}.`:`${c.customerName||'Customer'} (${c.customerCode||'-'}) का phone ${c.phone||'-'} है। Device: ${c.brand||''} ${c.model||''}, IMEI ${c.imei||'-'}।`;
+    }
+    if(/(brand|सबसे ज्यादा|most)/i.test(l)){
+        const map={};customers.forEach(c=>{if(c.brand)map[c.brand]=(map[c.brand]||0)+1});const top=Object.entries(map).sort((a,b)=>b[1]-a[1])[0];
+        return top?(lang==='en'?`Most common brand in customer records is ${top[0]} with ${top[1]} records.`:`सबसे ज्यादा customer records वाला brand ${top[0]} है, ${top[1]} records के साथ।`):'अभी brand data उपलब्ध नहीं है।';
+    }
+    return lang==='en'?`I can answer from your live Kabir Data: customers, devices, repairing, second-hand, accessories, profit, today's work, and customer details. Try asking a specific question.`:lang==='hinglish'?`Main live Kabir Data se customers, devices, repairing, second-hand, accessories, profit, aaj ka work aur customer details bata sakta hoon. Thoda specific question pucho.`:`मैं आपके live Kabir Data से customers, devices, repairing, second-hand, accessories, profit, आज का काम और customer details बता सकता हूँ। कोई specific सवाल पूछें।`;
+}
+function aiAddMessage(text,role='assistant'){
+    const box=$('aiMessages');if(!box)return;const div=document.createElement('div');div.className=`ai-message ${role}`;div.textContent=text;box.appendChild(div);box.scrollTop=box.scrollHeight;}
+function aiAsk(){const input=$('aiInput');const q=input?.value.trim();if(!q)return;aiAddMessage(q,'user');input.value='';const typing=document.createElement('div');typing.className='ai-message assistant ai-typing';typing.textContent='…';$('aiMessages')?.appendChild(typing);setTimeout(()=>{typing.remove();aiAddMessage(aiAnswer(q),'assistant')},260);}
+function aiVoice(){
+    const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+    if(!SR){$('aiVoiceStatus').textContent='इस browser में voice input उपलब्ध नहीं है। Typing से पूछें।';return;}
+    const r=new SR();r.lang=/[\u0900-\u097F]/.test(navigator.language||'')?'hi-IN':'en-IN';r.interimResults=false;r.maxAlternatives=1;
+    $('aiVoiceStatus').textContent='🎙️ सुन रहा हूँ…';
+    r.onresult=e=>{$('aiInput').value=e.results[0][0].transcript;$('aiVoiceStatus').textContent='';aiAsk()};
+    r.onerror=()=>{$('aiVoiceStatus').textContent='Voice input नहीं मिला। फिर कोशिश करें।'};
+    r.onend=()=>{if($('aiVoiceStatus').textContent.includes('सुन रहा'))$('aiVoiceStatus').textContent=''};
+    try{r.start()}catch(_){$('aiVoiceStatus').textContent='Voice input अभी busy है।'}
+}
+function setupKabirAI(){
+    $('aiHomeButton')?.addEventListener('click',()=>{$('aiModal')?.classList.remove('hidden');setTimeout(()=>$('aiInput')?.focus(),120)});
+    $('closeAiButton')?.addEventListener('click',()=>{$('aiModal')?.classList.add('hidden')});
+    $('aiSendButton')?.addEventListener('click',aiAsk);$('aiVoiceButton')?.addEventListener('click',aiVoice);
+    $('aiInput')?.addEventListener('keydown',e=>{if(e.key==='Enter')aiAsk()});
+    $('aiSuggestions')?.addEventListener('click',e=>{const b=e.target.closest('[data-ai-q]');if(b){$('aiInput').value=b.dataset.aiQ;aiAsk()}});
+    document.querySelectorAll('[data-ai-q]').forEach(b=>b.addEventListener('click',()=>{$('aiInput').value=b.dataset.aiQ;aiAsk()}));
+}
+
+/* =========================================================
    INITIALIZE
 ========================================================= */
 
 async function init(){
     setupPin();
     authInit();
-    loadSharedPin().catch(e=>console.warn(e));
+    // setupPin already has cached/default PIN available. Firebase refresh is
+    // performed automatically after anonymous authentication succeeds.
 
     nav();
 
@@ -2390,6 +2494,7 @@ async function init(){
      * featureNav() was never called, so the buttons did nothing.
      */
     themeSystem();
+    setupKabirAI();
     featureNav();
     setupSecondHandFields();
     profitWatch("secondPrice","secondSalePrice","secondProfit");
