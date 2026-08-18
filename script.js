@@ -784,6 +784,13 @@ function nav(){
     $("accessoriesModule")?.addEventListener("click",()=>open("accessoriesPage"));
     $("customerModule")?.addEventListener("click",()=>{open("customerPage");renderAllCustomers();});
     document.querySelectorAll("[data-page-back]").forEach(b=>b.addEventListener("click",()=>open(b.dataset.pageBack)));
+    document.querySelectorAll("[data-close]").forEach(b=>b.addEventListener("click",()=>{
+        const target=b.dataset.close;
+        if(target==="homeView"){open("homeView");return;}
+        const el=$(target);
+        if(el)el.classList.add("hidden");
+        open("homeView");
+    }));
     $("searchCustomerCard")?.addEventListener("click",()=>{open("searchSection");$("searchInput")?.focus();renderSearch();audit("customer_search",{section:"Kabir Mobile Data",description:"Customer search opened"});});
     $("addCustomerCard")?.addEventListener("click",()=>open("addSection"));
     $("totalCustomersCard")?.addEventListener("click",()=>{open("searchSection");renderSearch();});
