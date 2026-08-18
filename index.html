@@ -120,13 +120,15 @@
     <label>3. Brand or Model<input id="repairDevice" required></label>
     <label>4. Problem<input id="repairProblem" required placeholder="Problem manually type करें"></label>
     <label>5. Repairing By<input id="repairBy" required></label>
-    <label>6. Payment<input id="repairPayment" type="number" inputmode="decimal" min="0" required placeholder="₹"></label>
+    <label>6. Total<input id="repairTotal" type="number" inputmode="decimal" min="0" required placeholder="₹"></label>
+    <label>7. Parts Price<input id="repairPartsPrice" type="number" inputmode="decimal" min="0" required placeholder="₹"></label>
+    <div id="repairProfitBox" class="bill-box"><span><strong>Profit</strong><small>Total − Parts Price</small></span><em id="repairProfit">₹0</em></div>
     <button class="save" type="submit">SAVE REPAIRING</button><p id="repairMessage" class="message"></p>
   </form>
 </section>
 <section id="repairSearchSection" data-page class="glass panel hidden app-page">
   <div class="section-head"><div><div class="eyebrow">REPAIRING DATABASE</div><h2>Search Repairing</h2></div><button class="close" data-close="repairSearchSection">×</button></div>
-  <div class="search"><span>⌕</span><input id="repairSearchInput" type="search" placeholder="Name, phone, problem, brand/model, payment…" autocomplete="off"></div>
+  <div class="search"><span>⌕</span><input id="repairSearchInput" type="search" placeholder="Name, phone, problem, brand/model, total, parts price…" autocomplete="off"></div>
   <div id="repairResults" class="results"></div>
 </section>
 
