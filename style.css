@@ -188,3 +188,6 @@ button,.module-card,.action,.stat,.round,.save,.close,input,select,textarea{tran
 button:active{transform:scale(.975)}
 
 .admin-page-grid{margin-top:14px}.admin-wide-button{margin-bottom:12px}.traffic-management-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.traffic-management-grid .action{min-height:125px}.admin-data-table{display:grid;gap:7px}.admin-data-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:7px;padding:10px;border:1px solid var(--border);border-radius:14px;background:rgba(255,255,255,.04);font-size:10px}.admin-data-row span{overflow-wrap:anywhere}.admin-page{animation:pageIn .32s cubic-bezier(.2,.8,.2,1)}@media(max-width:430px){.traffic-management-grid{grid-template-columns:1fr 1fr}.admin-data-row{font-size:9px}}
+
+/* ===== REQUESTED PDF BUTTON TEXT SIZE FIX ===== */
+#homePdfButton{font-size:12px!important;font-weight:700!important;letter-spacing:.3px!important}
