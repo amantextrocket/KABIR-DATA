@@ -1,7 +1,6 @@
-import {initializeApp} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
-import {getAuth,signInAnonymously,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js";
-import {getFirestore,collection,addDoc,updateDoc,deleteDoc,setDoc,getDoc,doc,onSnapshot,query,orderBy,serverTimestamp} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
-
+/* Firebase is loaded lazily so a slow/blocked Firebase CDN can NEVER prevent the PIN screen from starting. */
+let initializeApp,getAuth,signInAnonymously,onAuthStateChanged,getFirestore,collection,addDoc,updateDoc,deleteDoc,setDoc,getDoc,doc,onSnapshot,query,orderBy,serverTimestamp;
+let auth=null,db=null,firebaseReady=false;
 const firebaseConfig={
     apiKey:"AIzaSyDWD2S7Zvcy-T_Ddr8Ytbqwv9tNEBNIJg4",
     authDomain:"kabir-data.firebaseapp.com",
@@ -11,11 +10,16 @@ const firebaseConfig={
     appId:"1:261218356495:web:2bbfeae7c70df8d3a2c27a",
     measurementId:"G-EYTJPH33KQ"
 };
-
-const app=initializeApp(firebaseConfig);
-
-const auth=getAuth(app);
-const db=getFirestore(app);
+const firebaseReadyPromise=Promise.all([
+    import("https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js"),
+    import("https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js"),
+    import("https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js")
+]).then(([appMod,authMod,fsMod])=>{
+    initializeApp=appMod.initializeApp;
+    getAuth=authMod.getAuth; signInAnonymously=authMod.signInAnonymously; onAuthStateChanged=authMod.onAuthStateChanged;
+    getFirestore=fsMod.getFirestore; collection=fsMod.collection; addDoc=fsMod.addDoc; updateDoc=fsMod.updateDoc; deleteDoc=fsMod.deleteDoc; setDoc=fsMod.setDoc; getDoc=fsMod.getDoc; doc=fsMod.doc; onSnapshot=fsMod.onSnapshot; query=fsMod.query; orderBy=fsMod.orderBy; serverTimestamp=fsMod.serverTimestamp;
+    const app=initializeApp(firebaseConfig); auth=getAuth(app); db=getFirestore(app); firebaseReady=true; return true;
+}).catch(e=>{ console.warn("Firebase SDK unavailable; starting in PIN/offline mode.",e); return false; });
 
 const PIN_KEY="kabir_mobile_pin";
 const DEFAULT_PIN="0000";
@@ -302,55 +306,31 @@ let pinLoadPromise=null;
 async function loadSharedPin(){
     if(pinLoadPromise)return pinLoadPromise;
     pinLoadPromise=(async()=>{
-        const securityRef=doc(db,SETTINGS_COL,SETTINGS_DOC);
         try{
-            // Primary location used by both Main Website and Admin Panel.
-            const securitySnap=await getDoc(securityRef);
+            const ready=await firebaseReadyPromise;
+            if(!ready || !db) throw Error("Firebase unavailable");
+            const securityRef=doc(db,SETTINGS_COL,SETTINGS_DOC);
+            const securitySnap=await Promise.race([getDoc(securityRef),new Promise((_,rej)=>setTimeout(()=>rej(Error("PIN read timeout")),5000))]);
             if(securitySnap.exists()){
                 const p=String(securitySnap.data()?.pin||"");
-                if(/^\d{4}$/.test(p)){
-                    sharedPin=p;
-                    localStorage.setItem(PIN_KEY,p);
-                    pinLoaded=true;
-                    return p;
-                }
+                if(/^\d{4}$/.test(p)){sharedPin=p;localStorage.setItem(PIN_KEY,p);return p;}
             }
-
-            // Backward compatibility with the earlier settings/app document.
-            const legacyRef=doc(db,SETTINGS_COL,"app");
-            const legacySnap=await getDoc(legacyRef);
+            const legacySnap=await getDoc(doc(db,SETTINGS_COL,"app"));
             if(legacySnap.exists()){
                 const p=String(legacySnap.data()?.pin||"");
-                if(/^\d{4}$/.test(p)){
-                    sharedPin=p;
-                    localStorage.setItem(PIN_KEY,p);
-                    await setDoc(securityRef,{pin:p,updatedAt:serverTimestamp()},{merge:true});
-                    pinLoaded=true;
-                    return p;
-                }
+                if(/^\d{4}$/.test(p)){sharedPin=p;localStorage.setItem(PIN_KEY,p);await setDoc(securityRef,{pin:p,updatedAt:serverTimestamp()},{merge:true});return p;}
             }
-
             const cached=localStorage.getItem(PIN_KEY);
-            if(/^\d{4}$/.test(cached||"")){
-                sharedPin=cached;
-                await setDoc(securityRef,{pin:sharedPin,updatedAt:serverTimestamp()},{merge:true});
-            }else{
-                sharedPin=DEFAULT_PIN;
-                await setDoc(securityRef,{pin:sharedPin,updatedAt:serverTimestamp()},{merge:true});
-                localStorage.setItem(PIN_KEY,sharedPin);
-            }
+            sharedPin=/^\d{4}$/.test(cached||"")?cached:DEFAULT_PIN;
+            localStorage.setItem(PIN_KEY,sharedPin);
             return sharedPin;
         }catch(e){
-            console.error("Shared PIN load failed:",e);
+            console.warn("Shared PIN load skipped:",e);
             const cached=localStorage.getItem(PIN_KEY);
-            if(/^\d{4}$/.test(cached||"")){
-                sharedPin=cached;
-                return sharedPin;
-            }
-            throw Error("PIN load नहीं हुआ. Firebase connection check करें.");
-        }finally{
-            pinLoaded=true;
-        }
+            sharedPin=/^\d{4}$/.test(cached||"")?cached:(sharedPin||DEFAULT_PIN);
+            localStorage.setItem(PIN_KEY,sharedPin);
+            return sharedPin;
+        }finally{pinLoaded=true;}
     })();
     return pinLoadPromise;
 }
@@ -359,6 +339,7 @@ function pin(){return sharedPin||DEFAULT_PIN;}
 
 async function changeSharedPin(newPin){
     if(!/^\d{4}$/.test(newPin))throw Error("PIN must be exactly 4 digits.");
+    const ready=await firebaseReadyPromise;if(!ready||!db)throw Error("Firebase अभी उपलब्ध नहीं है. PIN change के लिए connection चाहिए.");
     await setDoc(doc(db,SETTINGS_COL,SETTINGS_DOC),{pin:newPin,updatedAt:serverTimestamp()},{merge:true});
     // Keep the legacy document synchronized so older deployments cannot disagree.
     await setDoc(doc(db,SETTINGS_COL,"app"),{pin:newPin,updatedAt:serverTimestamp()},{merge:true});
@@ -394,6 +375,7 @@ function auditLabel(action){
     return labels[action]||String(action||"Work").replaceAll("_"," ");
 }
 async function audit(action,details={}){
+    if(!firebaseReady || !db) return;
     try{
         await addDoc(collection(db,AUDIT_COL),{
             action:String(action||"work"),
@@ -435,7 +417,7 @@ function sortAudit(){
         return tb-ta;
     });
 }
-function subscribeAuditLogs(){
+function subscribeAuditLogs(){if(!firebaseReady || !db)return;
     if(auditListenerStarted || !$('workHistoryResults')) return;
     auditListenerStarted=true;
     onSnapshot(collection(db,AUDIT_COL),snap=>{
@@ -633,49 +615,14 @@ let authReadyResolve;
 const authReady=new Promise(resolve=>{authReadyResolve=resolve});
 
 async function authInit(){
-    let resolved=false;
-    let timer=null;
-    const setStatus=(text,ok=false)=>{
-        const a=$("connectionStatus");
-        const b=$("adminFirebaseStatus");
-        if(a){a.textContent=text;a.classList.toggle("connected",ok);}
-        if(b)b.textContent=text;
-    };
-    const finish=()=>{
-        if(resolved)return;
-        resolved=true;
-        if(timer)clearTimeout(timer);
-        updateAdmin();
-        authReadyResolve(user);
-    };
-    onAuthStateChanged(auth,u=>{
-        user=u;
-        if(u){
-            setStatus("Firebase connected ✓",true);
-            finish();
-        }else{
-            setStatus("Firebase connecting…",false);
-        }
-        updateAdmin();
-    },e=>{
-        console.error("Auth state error:",e);
-        setStatus("Firebase authentication unavailable",false);
-        finish();
-    });
-    timer=setTimeout(()=>{
-        if(!resolved){
-            console.warn("Firebase auth timed out; allowing local PIN UI to continue.");
-            setStatus("Firebase connection timed out",false);
-            finish();
-        }
-    },7000);
-    try{
-        await signInAnonymously(auth);
-    }catch(e){
-        console.error("Anonymous Firebase sign-in failed:",e);
-        setStatus("Firebase sign-in failed — PIN can still open locally",false);
-        finish();
-    }
+    let resolved=false,timer=null;
+    const setStatus=(text,ok=false)=>{const a=$("connectionStatus"),b=$("adminFirebaseStatus");if(a){a.textContent=text;a.classList.toggle("connected",ok);}if(b)b.textContent=text;};
+    const finish=()=>{if(resolved)return;resolved=true;if(timer)clearTimeout(timer);updateAdmin();authReadyResolve(user);};
+    const ready=await firebaseReadyPromise;
+    if(!ready || !auth){setStatus("PIN ready • Firebase offline",false);finish();return null;}
+    onAuthStateChanged(auth,u=>{user=u;if(u){setStatus("Firebase connected ✓",true);finish();}else setStatus("Firebase connecting…",false);updateAdmin();},e=>{console.warn("Auth state error:",e);setStatus("Firebase unavailable • PIN ready",false);finish();});
+    timer=setTimeout(()=>{if(!resolved){setStatus("Firebase timeout • PIN ready",false);finish();}},7000);
+    try{await signInAnonymously(auth);}catch(e){console.warn("Anonymous Firebase sign-in failed:",e);setStatus("Firebase sign-in failed • PIN ready",false);finish();}
     return authReady;
 }
 
@@ -683,7 +630,7 @@ async function authInit(){
    FIRESTORE CUSTOMER LISTENER
 ========================================================= */
 
-function subscribe(){
+function subscribe(){if(!firebaseReady || !db)return;
     onSnapshot(
         collection(db,COL),
         snap=>{
@@ -1826,7 +1773,7 @@ function changePin(){
 
 let repairListenerStarted=false;
 
-function subscribeInventory(){
+function subscribeInventory(){if(!firebaseReady || !db)return;
     if(isAdminPage)return;
     onSnapshot(collection(db,SECOND_COL),snap=>{ secondHand=snap.docs.map(d=>({id:d.id,...d.data()})); if($("secondStockCount"))$("secondStockCount").textContent=String(secondHand.length); renderSecondHand(); },e=>console.warn("Second hand load:",e));
     onSnapshot(collection(db,ACCESSORY_COL),snap=>{ accessories=snap.docs.map(d=>({id:d.id,...d.data()})); if($("accessoryStockCount"))$("accessoryStockCount").textContent=String(accessories.reduce((n,x)=>n+Number(x.quantity||0),0)); renderAccessories(); },e=>console.warn("Accessories load:",e));
@@ -1835,7 +1782,7 @@ function renderSecondHand(){ const box=$("secondResults"); if(!box)return; const
 function renderAccessories(){ const box=$("accessoryResults"); if(!box)return; const q=val("accessorySearchInput").toLowerCase(); const rows=accessories.filter(x=>!q||[x.name,x.category].join(" ").toLowerCase().includes(q)); box.innerHTML=rows.length?rows.map(x=>`<article class="result"><div class="result-name">${esc(x.name||"Accessory")}</div><div class="result-meta">${esc(x.category||"")}</div><div class="result-grid">${item("Quantity",x.quantity||0)}${item("Purchase Price",`₹${Number(x.price||0).toLocaleString("en-IN")}`)}${item("Sale Price",`₹${Number(x.salePrice||0).toLocaleString("en-IN")}`)}</div></article>`).join(""):"<div class=\"empty\">No accessories found.</div>"; }
 async function saveSecondHand(e){ e.preventDefault(); const data={customerName:val("secondCustomerName"),phone:val("secondPhone").replace(/\D/g,""),device:val("secondDevice"),imei:val("secondImei"),condition:val("secondCondition"),price:Number(val("secondPrice")||0),salePrice:Number(val("secondSalePrice")||0),createdAt:serverTimestamp(),createdBy:user?.uid||null}; if(!data.customerName||!/^\d{10}$/.test(data.phone)||!data.device){msg("secondMessage","Customer name, valid 10 digit phone और phone model भरें.");return;} try{await addDoc(collection(db,SECOND_COL),data);await audit("second_hand_add",{section:"Second Hand",customerName:data.customerName,description:`Second-hand phone added: ${data.device}`,extra:{phone:data.phone,imei:data.imei}});e.target.reset();msg("secondMessage","Successfully added.",true);showSuccessToast("Second Hand Saved","Phone stock में add हो गया.");}catch(err){console.error(err);msg("secondMessage",err?.message||"Save failed.");}}
 async function saveAccessory(e){ e.preventDefault(); const data={name:val("accessoryName"),category:val("accessoryCategory"),quantity:Number(val("accessoryQty")||0),price:Number(val("accessoryPrice")||0),salePrice:Number(val("accessorySalePrice")||0),createdAt:serverTimestamp(),createdBy:user?.uid||null}; if(!data.name||!data.category||data.quantity<1){msg("accessoryMessage","Name, category और quantity भरें.");return;} try{await addDoc(collection(db,ACCESSORY_COL),data);await audit("accessory_add",{section:"Accessories",description:`Accessory added: ${data.name}`,extra:{category:data.category,quantity:data.quantity}});e.target.reset();msg("accessoryMessage","Successfully added.",true);showSuccessToast("Accessory Saved","Accessory stock में add हो गया.");}catch(err){console.error(err);msg("accessoryMessage",err?.message||"Save failed.");}}
-function subscribeRepairing(){
+function subscribeRepairing(){if(!firebaseReady || !db)return;
     if(repairListenerStarted)return;
     repairListenerStarted=true;
 
@@ -2389,7 +2336,7 @@ function applyTheme(theme){const allowed=['dark','light','midnight','silver','gl
 function themeSystem(){applyTheme(localStorage.getItem('kabir_theme')||'dark');$('themeButton')?.addEventListener('click',()=>$('themeModal')?.classList.remove('hidden'));$('closeThemeButton')?.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();$('themeModal')?.classList.add('hidden')});$('themeChoices')?.addEventListener('click',e=>{const b=e.target.closest('button[data-theme]');if(!b)return;applyTheme(b.dataset.theme);setTimeout(()=>$('themeModal')?.classList.add('hidden'),180)})}
 function featureNav(){$('addRepairingCard')?.addEventListener('click',()=>show('repairAddSection'));$('searchRepairingCard')?.addEventListener('click',()=>{show('repairSearchSection');renderRepairing();$('repairSearchInput')?.focus();audit('repairing_search',{section:'Kabir Repairing Data',description:'Repairing search opened'})});$('repairSearchInput')?.addEventListener('input',renderRepairing);$('repairForm')?.addEventListener('submit',saveRepair);$('deleteCustomerButton')?.addEventListener('click',deleteCustomer);$('editCustomerButton')?.addEventListener('click',editCustomer);$('downloadCustomerPdfButton')?.addEventListener('click',downloadCustomerPdf);$('closeDetailButton')?.addEventListener('click',e=>closeSpecific('customerDetailModal',e))}
 
-function subscribeInventory(){onSnapshot(collection(db,SECOND_COL),snap=>{secondHand=snap.docs.map(d=>({id:d.id,...d.data()}));$('secondStockCount')&&($('secondStockCount').textContent=String(secondHand.length));renderSecondHand();},e=>console.warn('Second hand load:',e));onSnapshot(collection(db,ACCESSORY_COL),snap=>{accessories=snap.docs.map(d=>({id:d.id,...d.data()}));$('accessoryStockCount')&&($('accessoryStockCount').textContent=String(accessories.reduce((n,x)=>n+Number(x.quantity||0),0)));renderAccessories();},e=>console.warn('Accessories load:',e))}
+function subscribeInventory(){if(!firebaseReady || !db)return;onSnapshot(collection(db,SECOND_COL),snap=>{secondHand=snap.docs.map(d=>({id:d.id,...d.data()}));$('secondStockCount')&&($('secondStockCount').textContent=String(secondHand.length));renderSecondHand();},e=>console.warn('Second hand load:',e));onSnapshot(collection(db,ACCESSORY_COL),snap=>{accessories=snap.docs.map(d=>({id:d.id,...d.data()}));$('accessoryStockCount')&&($('accessoryStockCount').textContent=String(accessories.reduce((n,x)=>n+Number(x.quantity||0),0)));renderAccessories();},e=>console.warn('Accessories load:',e))}
 
 
 /* =========================================================
