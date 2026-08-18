@@ -769,23 +769,38 @@ function updateAdmin(){
    NAVIGATION
 ========================================================= */
 
-function show(id){
+let pageHistory=["homeView"];
+
+function currentPageId(){
+    return document.querySelector("[data-page]:not(.hidden)")?.id || "homeView";
+}
+
+function show(id,push=true){
+    const current=currentPageId();
+    if(push && current!==id){
+        if(pageHistory[pageHistory.length-1]!==current) pageHistory.push(current);
+        pageHistory.push(id);
+    }
     document.querySelectorAll("[data-page]").forEach(x=>x.classList.add("hidden"));
     const el=$(id);
     if(el){el.classList.remove("hidden");el.scrollIntoView({behavior:"smooth",block:"start"});}
 }
 
+function goBack(){
+    const current=currentPageId();
+    while(pageHistory.length>1 && pageHistory[pageHistory.length-1]!==current) pageHistory.pop();
+    if(pageHistory.length>1) pageHistory.pop();
+    show(pageHistory[pageHistory.length-1]||"homeView",false);
+}
 
 function nav(){
-    const open=id=>show(id);
+    const open=id=>show(id,true);
     $("financeModule")?.addEventListener("click",()=>open("financePage"));
     $("repairingModule")?.addEventListener("click",()=>open("repairingPage"));
     $("secondHandModule")?.addEventListener("click",()=>open("secondPage"));
     $("accessoriesModule")?.addEventListener("click",()=>open("accessoriesPage"));
     $("customerModule")?.addEventListener("click",()=>{open("customerPage");renderAllCustomers();});
-    document.querySelectorAll("[data-page-back]").forEach(b=>b.addEventListener("click",()=>open(b.dataset.pageBack)));
-    document.querySelectorAll("[data-close]").forEach(b=>b.addEventListener("click",()=>{
-        const target=b.dataset.close;
+    document.querySelectorAll("[data-page-back],[data-close]").forEach(b=>b.addEventListener("click",e=>{e.preventDefault();goBack();}));
         if(target==="homeView"){open("homeView");return;}
         const el=$(target);
         if(el)el.classList.add("hidden");
@@ -812,7 +827,6 @@ function nav(){
     $("allCustomerSearchInput")?.addEventListener("input",renderAllCustomers);
     $("secondHandForm")?.addEventListener("submit",saveSecondHand);
     $("accessoryForm")?.addEventListener("submit",saveAccessory);
-    document.querySelectorAll("[data-close]").forEach(b=>b.addEventListener("click",()=>$(b.dataset.close)?.classList.add("hidden")));
     $("homePdfButton")?.addEventListener("click",downloadFullPdf);
     setupSecondHandFields();
     setupAccessoryFields();
@@ -1362,6 +1376,8 @@ async function save(e){
 
         msg("formMessage","");
         showSuccessToast("Successfully Saved","Customer data saved successfully");
+        const returnTo=$("customerForm")?.dataset.returnTo || "";
+        delete $("customerForm").dataset.returnTo;
 
 
         /*
@@ -1369,16 +1385,14 @@ async function save(e){
          */
 
         setTimeout(()=>{
-
-            $("addSection")
-                ?.classList
-                .add("hidden");
-
-            msg(
-                "formMessage",
-                ""
-            );
-
+            $("addSection")?.classList.add("hidden");
+            msg("formMessage","");
+            if(returnTo){
+                renderAllCustomers();
+                show(returnTo,false);
+            }else{
+                show("homeView",false);
+            }
         },1200);
 
 
@@ -1474,8 +1488,11 @@ function renderSearch(){
 }
 function detailItem(a,b){return `<div class="detail-item"><small>${esc(a)}</small><b>${esc(b??"-")}</b></div>`}
 let activeCustomerId=null;
+let activeCustomerRecord=null;
 function showCustomerDetail(c){
     activeCustomerId=c.id;
+    activeCustomerRecord=c;
+    $("customerDetailModal")?.setAttribute("data-source-page",currentPageId());
     $("detailTitle").textContent=`${c.customerName||"Customer"} • ${c.customerCode||""}`;
     $("customerDetailBody").innerHTML=`<div class="detail-grid">
       ${detailItem("Customer Code",c.customerCode)}${detailItem("Date & Time",formatDateTime(c))}
@@ -1496,15 +1513,24 @@ function showCustomerDetail(c){
 function closeCustomerDetail(){activeCustomerId=null;$("customerDetailModal")?.classList.add("hidden")}
 async function deleteCustomer(){
     if(enforceWriteLock("pinMessage"))return;
-    const c=customers.find(x=>x.id===activeCustomerId);if(!c)return;
+    const c=activeCustomerRecord || customers.find(x=>x.id===activeCustomerId);
+    if(!c?.id){alert("इस customer का Mobile Customer record उपलब्ध नहीं है.");return;}
     if(!confirm(`Delete ${c.customerName||"this customer"} (${c.customerCode||""}) permanently?`))return;
-    try{await deleteDoc(doc(db,COL,c.id)); await audit("customer_delete",{section:"Kabir Mobile Data",customerId:c.id,customerCode:c.customerCode,customerName:c.customerName,description:`Customer ${c.customerName||c.customerCode||c.id} deleted`}); closeCustomerDetail()}
-    catch(e){console.error(e);alert("Customer delete नहीं हुआ. Firebase Rules check करें.")}
+    try{
+        await deleteDoc(doc(db,COL,c.id));
+        await audit("customer_delete",{section:"Kabir Mobile Data",customerId:c.id,customerCode:c.customerCode,customerName:c.customerName,description:`Customer ${c.customerName||c.customerCode||c.id} deleted`});
+        closeCustomerDetail();
+        renderAllCustomers();
+        show("customerPage",false);
+    }catch(e){console.error(e);alert("Customer delete नहीं हुआ. Firebase Rules check करें.");}
 }
 function editCustomer(){
     if(enforceWriteLock("formMessage"))return;
-    const c=customers.find(x=>x.id===activeCustomerId);if(!c)return;
-    closeCustomerDetail();show("addSection");
+    const c=activeCustomerRecord || customers.find(x=>x.id===activeCustomerId);
+    if(!c?.id){alert("इस customer का Mobile Customer record उपलब्ध नहीं है.");return;}
+    $("customerForm").dataset.returnTo="customerPage";
+    closeCustomerDetail();
+    show("addSection",true);
     const map={customerName:"customerName",address:"address",pincode:"pincode",city:"city",state:"state",phone:"phone",
       brand:"brand",model:"model",imei:"imei",colour:"colour",storage:"storage",financeCompany:"financeCompany",
       phoneAmount:"phoneAmount",downPayment:"downPayment",emiAmount:"emiAmount",emiMonths:"emiMonths",
@@ -1745,7 +1771,10 @@ function showUnifiedCustomerHistory(phone,name){
     const same=x=>(p&&String(x.phone||x.customerPhone||"").replace(/\D/g,"")===p)||(!p&&n&&String(x.customerName||"").trim().toLowerCase()===n);
     const finance=customers.filter(same),repair=repairing.filter(same),second=secondHand.filter(same),acc=accessories.filter(same);
     const title=name||finance[0]?.customerName||repair[0]?.customerName||second[0]?.customerName||acc[0]?.customerName||"Customer";
-    $("detailTitle").textContent=`${title} • Complete History`;activeCustomerId=finance[0]?.id||null;
+    $("detailTitle").textContent=`${title} • Complete History`;
+    activeCustomerId=finance[0]?.id||null;
+    activeCustomerRecord=finance[0]||null;
+    $("customerDetailModal")?.setAttribute("data-source-page",currentPageId());
     const rows=[];finance.forEach(x=>rows.push(`<article class="history-row"><b>💳 Finance / Phone</b><small>${esc(formatDateTime(x))}</small><span>${esc(`${x.brand||""} ${x.model||""}`)} • IMEI ${esc(x.imei||"—")} • ₹${Number(x.phoneAmount||0).toLocaleString("en-IN")}</span></article>`));repair.forEach(x=>rows.push(`<article class="history-row"><b>🛠 Repairing</b><small>${esc(formatDateTime(x))}</small><span>${esc(x.device||"")} • ${esc(x.problem||"")} • Total ₹${Number(x.total??x.payment??0).toLocaleString("en-IN")} • Parts ₹${Number(x.partsPrice||0).toLocaleString("en-IN")} • Profit ₹${Number(x.profit??(Number(x.total??x.payment??0)-Number(x.partsPrice||0))).toLocaleString("en-IN")}</span></article>`));second.forEach(x=>rows.push(`<article class="history-row"><b>📱 Second Hand</b><small>${esc(formatDateTime(x))}</small><span>${esc(`${x.brand||""} ${x.model||x.device||""}`)} • IMEI ${esc(x.imei||"—")} • Profit ₹${Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))).toLocaleString("en-IN")}</span></article>`));acc.forEach(x=>rows.push(`<article class="history-row"><b>🎧 Accessories</b><small>${esc(formatDateTime(x))}</small><span>${esc(x.name||"")} • SN ${esc(x.sn||"—")} • Profit ₹${Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))).toLocaleString("en-IN")}</span></article>`));
     $("customerDetailBody").innerHTML=`<div class="detail-grid">${detailItem("Customer",title)}${detailItem("Phone",p||finance[0]?.phone||repair[0]?.phone||second[0]?.phone||acc[0]?.customerPhone||"—")}${detailItem("Finance Records",finance.length)}${detailItem("Repairing Records",repair.length)}${detailItem("Second Hand Records",second.length)}${detailItem("Accessories Records",acc.length)}</div><div class="history-list">${rows.join("")||'<div class="empty">इस customer का कोई history record नहीं मिला.</div>'}</div>`;$("customerDetailModal")?.classList.remove("hidden");
 }
