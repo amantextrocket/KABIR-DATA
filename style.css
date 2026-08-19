@@ -338,3 +338,9 @@ html[data-theme="rose"] body{background:radial-gradient(circle at 15% 8%,rgba(25
 .pdf-date-row input{display:block;width:100%;min-width:0;max-width:100%;box-sizing:border-box;font-size:13px;padding-left:8px;padding-right:2px}
 @media(max-width:430px){.pdf-date-row{grid-template-columns:1fr 1fr;gap:7px}.pdf-date-row input{height:40px;font-size:12px}.pdf-date-filter{padding:11px}.pdf-date-title{font-size:12px}.pdf-date-format{font-size:8px}}
 @media(max-width:350px){.pdf-date-row{grid-template-columns:1fr}.pdf-date-row input{font-size:13px}}
+
+
+/* Firebase connection recovery */
+.firebase-retry{margin:10px auto 0;display:block;padding:9px 16px;border-radius:999px;border:1px solid rgba(255,255,255,.18);background:rgba(255,190,40,.14);color:inherit;font-weight:800;letter-spacing:.06em;cursor:pointer;backdrop-filter:blur(14px)}
+.firebase-retry.hidden{display:none}
+.firebase-status.error{color:#ffb4ab}
