@@ -522,7 +522,7 @@ function renderManagementData(type){
     const box=$("trafficManagementDetail");if(!box)return;
     let title="",rows=[];
     if(type==="finance"){title="Finance Management";rows=customers.map(x=>[x.customerName,x.phone,`${x.brand||""} ${x.model||""}`,x.imei,`₹${x.phoneAmount||0}`]);}
-    if(type==="repairing"){title="Repairing Management";rows=repairing.map(x=>[x.customerName,x.phone,x.device,x.problem,`₹${x.total??x.payment??0}`,`₹${x.partsPrice||0}`,`₹${x.profit??(Number(x.total??x.payment??0)-Number(x.partsPrice||0))}`]);}
+    if(type==="repairing"){title="Repairing Management";rows=repairing.map(x=>[x.customerName,x.phone,x.device,x.problem,`₹${x.total??x.payment??0}`,`₹${x.partsPrice||0}`,`₹${x.profit??(Number(x.total ?? x.payment ?? 0)-Number(x.partsPrice||0))}`]);}
     if(type==="secondHand"){title="Second Hand Management";rows=secondHand.map(x=>[x.customerName,`${x.brand||""} ${x.model||x.device||""}`,x.imei,x.condition,`₹${x.price||0}`,`₹${x.salePrice||0}`,`₹${x.profit??(Number(x.salePrice||0)-Number(x.price||0))}`]);}
     if(type==="accessories"){title="Accessories Management";rows=accessories.map(x=>[x.name,x.category,x.sn,x.quantity,`₹${x.price||0}`,`₹${x.salePrice||0}`,`₹${x.profit??(Number(x.salePrice||0)-Number(x.price||0))}`]);}
     box.innerHTML=`<div class="section-head"><div><div class="eyebrow">SELECTED MANAGEMENT</div><h3>${esc(title)}</h3></div><b>${rows.length} Records</b></div>`+(rows.length?`<div class="admin-data-table">${rows.slice(0,500).map(r=>`<div class="admin-data-row">${r.map(v=>`<span>${esc(v)}</span>`).join("")}</div>`).join("")}</div>`:'<div class="empty">No data found.</div>');
@@ -646,25 +646,66 @@ function setupPin(){
 ========================================================= */
 
 let authReadyResolve;
-const authReady=new Promise(resolve=>{authReadyResolve=resolve});
+let authReadyReject;
+let authStarted=false;
+const authReady=new Promise((resolve,reject)=>{
+    authReadyResolve=resolve;
+    authReadyReject=reject;
+});
 
 async function authInit(){
-    let resolved=false;
-    const finish=()=>{if(!resolved){resolved=true;authReadyResolve(user)}};
+    if(authStarted)return authReady;
+    authStarted=true;
+    let settled=false;
+
+    const setStatus=(text,isError=false)=>{
+        if($("connectionStatus")){
+            $("connectionStatus").textContent=text;
+            $("connectionStatus").classList.toggle("error",!!isError);
+        }
+        if($("adminFirebaseStatus")){
+            $("adminFirebaseStatus").textContent=text;
+            $("adminFirebaseStatus").classList.toggle("error",!!isError);
+        }
+    };
+
     onAuthStateChanged(auth,u=>{
+        // Firebase emits null while restoring auth state. Never treat null as ready.
+        if(!u){
+            user=null;
+            updateAdmin();
+            setStatus("Firebase connecting…");
+            return;
+        }
         user=u;
         updateAdmin();
-        finish();
+        setStatus("Firebase connected ✓");
+        if(!settled){
+            settled=true;
+            authReadyResolve(u);
+        }
     },e=>{
-        console.error("Auth state error:",e);
-        finish();
+        console.error("Firebase auth state error:",e);
+        user=null;
+        updateAdmin();
+        setStatus("Firebase authentication failed. Anonymous Sign-in ON करें.",true);
+        if(!settled){
+            settled=true;
+            authReadyReject(e);
+        }
     });
+
     try{
-        await signInAnonymously(auth);
+        if(!auth.currentUser){
+            await signInAnonymously(auth);
+        }
     }catch(e){
-        console.error(e);
-        if($("adminFirebaseStatus"))msg("adminFirebaseStatus","Firebase authentication error: "+(e?.message||""));
-        finish();
+        console.error("Firebase anonymous sign-in failed:",e);
+        setStatus("Firebase authentication failed. Anonymous Sign-in ON करें.",true);
+        if(!settled){
+            settled=true;
+            authReadyReject(e);
+        }
     }
     return authReady;
 }
@@ -1812,7 +1853,7 @@ function showUnifiedCustomerHistory(phone,name){
     const financeEditable=!!activeCustomerId;
     if(editBtn){editBtn.disabled=false;editBtn.title=financeEditable?"Edit Finance customer":"This customer has no Finance record";}
     if(deleteBtn){deleteBtn.disabled=false;deleteBtn.title=financeEditable?"Delete Finance customer":"Delete available customer record";}
-    const rows=[];finance.forEach(x=>rows.push(`<article class="history-row"><b>💳 Finance / Phone</b><small>${esc(formatDateTime(x))}</small><span>${esc(`${x.brand||""} ${x.model||""}`)} • IMEI ${esc(x.imei||"—")} • ₹${Number(x.phoneAmount||0).toLocaleString("en-IN")}</span></article>`));repair.forEach(x=>rows.push(`<article class="history-row"><b>🛠 Repairing</b><small>${esc(formatDateTime(x))}</small><span>${esc(x.device||"")} • ${esc(x.problem||"")} • Total ₹${Number(x.total??x.payment??0).toLocaleString("en-IN")} • Parts ₹${Number(x.partsPrice||0).toLocaleString("en-IN")} • Profit ₹${Number(x.profit??(Number(x.total??x.payment??0)-Number(x.partsPrice||0))).toLocaleString("en-IN")}</span></article>`));second.forEach(x=>rows.push(`<article class="history-row"><b>📱 Second Hand</b><small>${esc(formatDateTime(x))}</small><span>${esc(`${x.brand||""} ${x.model||x.device||""}`)} • IMEI ${esc(x.imei||"—")} • Profit ₹${Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))).toLocaleString("en-IN")}</span></article>`));acc.forEach(x=>rows.push(`<article class="history-row"><b>🎧 Accessories</b><small>${esc(formatDateTime(x))}</small><span>${esc(x.name||"")} • SN ${esc(x.sn||"—")} • Profit ₹${Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))).toLocaleString("en-IN")}</span></article>`));
+    const rows=[];finance.forEach(x=>rows.push(`<article class="history-row"><b>💳 Finance / Phone</b><small>${esc(formatDateTime(x))}</small><span>${esc(`${x.brand||""} ${x.model||""}`)} • IMEI ${esc(x.imei||"—")} • ₹${Number(x.phoneAmount||0).toLocaleString("en-IN")}</span></article>`));repair.forEach(x=>rows.push(`<article class="history-row"><b>🛠 Repairing</b><small>${esc(formatDateTime(x))}</small><span>${esc(x.device||"")} • ${esc(x.problem||"")} • Total ₹${Number(x.total ?? x.payment ?? 0).toLocaleString("en-IN")} • Parts ₹${Number(x.partsPrice||0).toLocaleString("en-IN")} • Profit ₹${Number(x.profit??(Number(x.total ?? x.payment ?? 0)-Number(x.partsPrice||0))).toLocaleString("en-IN")}</span></article>`));second.forEach(x=>rows.push(`<article class="history-row"><b>📱 Second Hand</b><small>${esc(formatDateTime(x))}</small><span>${esc(`${x.brand||""} ${x.model||x.device||""}`)} • IMEI ${esc(x.imei||"—")} • Profit ₹${Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))).toLocaleString("en-IN")}</span></article>`));acc.forEach(x=>rows.push(`<article class="history-row"><b>🎧 Accessories</b><small>${esc(formatDateTime(x))}</small><span>${esc(x.name||"")} • SN ${esc(x.sn||"—")} • Profit ₹${Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))).toLocaleString("en-IN")}</span></article>`));
     $("customerDetailBody").innerHTML=`<div class="detail-grid">${detailItem("Customer",title)}${detailItem("Phone",p||finance[0]?.phone||repair[0]?.phone||second[0]?.phone||acc[0]?.customerPhone||"—")}${detailItem("Finance Records",finance.length)}${detailItem("Repairing Records",repair.length)}${detailItem("Second Hand Records",second.length)}${detailItem("Accessories Records",acc.length)}</div><div class="history-list">${rows.join("")||'<div class="empty">इस customer का कोई history record नहीं मिला.</div>'}</div>`;$("customerDetailModal")?.classList.remove("hidden");
 }
 
@@ -2043,7 +2084,7 @@ async function buildSelectedPdf(section,fromDate="",toDate=""){
         }else if(section==="repairing"){
             title="KABIR MOBILE DATA — REPAIRING";
             headers=["Date & Time","Customer Name","Phone","Brand / Model","Problem","Repairing By","Total","Parts Price","Profit"];
-            rows=pdfRowsFromObject(repairingData,[["createdAt","",pdfDate],["customerName"],["phone"],["device"],["problem"],["repairBy"],["total","",x=>pdfMoney(x.total??x.payment)],["partsPrice","",x=>pdfMoney(x.partsPrice)],["profit","",x=>pdfMoney(x.profit??(Number(x.total??x.payment??0)-Number(x.partsPrice||0)))]]);
+            rows=pdfRowsFromObject(repairingData,[["createdAt","",pdfDate],["customerName"],["phone"],["device"],["problem"],["repairBy"],["total","",x=>pdfMoney(x.total??x.payment)],["partsPrice","",x=>pdfMoney(x.partsPrice)],["profit","",x=>pdfMoney(x.profit??(Number(x.total ?? x.payment ?? 0)-Number(x.partsPrice||0)))]]);
             file="Kabir_Repairing_Data.pdf";
         }else if(section==="secondHand"){
             title="KABIR MOBILE DATA — SECOND HAND";
@@ -2072,7 +2113,7 @@ async function buildSelectedPdf(section,fromDate="",toDate=""){
             title="KABIR MOBILE DATA — CUSTOMERS";
             headers=["Section","Date & Time","Customer Name","Phone","Code / Identifier","Device / Item","IMEI / SN","Amount / Price","Profit"];
             const financeRows=financeData.map(x=>["Finance",pdfDate(x.createdAt),x.customerName,x.phone,x.customerCode,`${x.brand||""} ${x.model||""}`.trim(),x.imei,pdfMoney(x.phoneAmount),"—"]);
-            const repairRows=repairingData.map(x=>["Repairing",pdfDate(x.createdAt),x.customerName,x.phone,"—",x.device,x.phone?x.phone:"—",pdfMoney(x.total??x.payment),pdfMoney(x.profit??(Number(x.total??x.payment??0)-Number(x.partsPrice||0)))]);
+            const repairRows=repairingData.map(x=>["Repairing",pdfDate(x.createdAt),x.customerName,x.phone,"—",x.device,x.phone?x.phone:"—",pdfMoney(x.total??x.payment),pdfMoney(x.profit??(Number(x.total ?? x.payment ?? 0)-Number(x.partsPrice||0)))]);
             const secondRows=secondHandData.map(x=>["Second Hand",pdfDate(x.createdAt),x.customerName,x.phone,"—",`${x.brand||""} ${x.model||x.device||""}`.trim(),x.imei,pdfMoney(x.salePrice||x.price),pdfMoney(x.profit??(Number(x.salePrice||0)-Number(x.price||0)))]);
             const accRows=accessoriesData.map(x=>["Accessories",pdfDate(x.createdAt),x.customerName||"—",x.customerPhone||"—","—",x.name,x.sn,pdfMoney(x.salePrice||x.price),pdfMoney(x.profit??(Number(x.salePrice||0)-Number(x.price||0)))]);
             rows=[...financeRows,...repairRows,...secondRows,...accRows];
@@ -2115,7 +2156,7 @@ function smartSearch(){
  else if(/(repair|repairing|रिपेयर)/i.test(q)&&/(total|kitne|count|कितने)/i.test(q)) answer=lang==="hi"?`Repairing में ${repairs} records हैं।`:lang==="hinglish"?`Repairing mein ${repairs} records hain.`:`There are ${repairs} repairing records.`;
  else if(/(second|second hand)/i.test(q)&&/(total|kitne|count|कितने)/i.test(q)) answer=`Second Hand mein ${second} records hain.`;
  else if(/(accessor|accessories)/i.test(q)&&/(total|kitne|count|कितने)/i.test(q)) answer=`Accessories mein ${acc} records hain.`;
- else if(/(profit|munafa|मुनाफा)/i.test(q)){const prof=repairing.reduce((s,x)=>s+Number(x.profit??(Number(x.total??x.payment||0)-Number(x.partsPrice||0))),0)+secondHand.reduce((s,x)=>s+Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))),0)+accessories.reduce((s,x)=>s+Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))),0);answer=lang==="hi"?`कुल ज्ञात profit ₹${prof.toLocaleString("en-IN")} है।`:`Total known profit is ₹${prof.toLocaleString("en-IN")}.`;}
+ else if(/(profit|munafa|मुनाफा)/i.test(q)){const prof=repairing.reduce((s,x)=>s+Number(x.profit??(Number(x.total ?? x.payment ?? 0)-Number(x.partsPrice||0))),0)+secondHand.reduce((s,x)=>s+Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))),0)+accessories.reduce((s,x)=>s+Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))),0);answer=lang==="hi"?`कुल ज्ञात profit ₹${prof.toLocaleString("en-IN")} है।`:`Total known profit is ₹${prof.toLocaleString("en-IN")}.`;}
  else {filtered=rows.filter(x=>normalizeText([x.customerName,x.customerCode,x.phone,x.customerPhone,x.imei,x.brand,x.model,x.device,x.problem,x.name,x.category,x.sn,x.financeCompany,x.__section,formatDateTime(x)].join(" ")).includes(n));answer=filtered.length?(lang==="hi"?`${filtered.length} matching records मिले।`:lang==="hinglish"?`${filtered.length} matching records mile.`:`Found ${filtered.length} matching records.`):(lang==="hi"?"कोई matching record नहीं मिला।":"No matching record found.");}
  a.innerHTML=`<div class="smart-answer-text">${esc(answer)}</div>`;r.innerHTML=filtered.slice(0,50).map(x=>`<article class="result"><div class="result-name">${esc(x.customerName||x.name||"Record")}</div><div class="result-meta">${esc(x.__section||"")} • ${esc(x.phone||x.customerPhone||"")} • ${esc(formatDateTime(x))}</div><div class="result-grid">${item("Device",x.device||`${x.brand||""} ${x.model||""}`)}${item("IMEI / SN",x.imei||x.sn||"—")}${item("Amount",x.phoneAmount!=null?`₹${Number(x.phoneAmount).toLocaleString("en-IN")}`:x.total!=null?`₹${Number(x.total).toLocaleString("en-IN")}`:x.salePrice!=null?`₹${Number(x.salePrice).toLocaleString("en-IN")}`:"—")}${item("Customer",x.customerName||x.name||"—")}</div></article>`).join("");
 }
@@ -2185,8 +2226,16 @@ document.addEventListener("click",e=>{
 
 async function init(){
     setupPin();
-    authInit();
-    authReady.then(()=>loadSharedPin().catch(e=>console.warn(e)));
+    authInit().catch(e=>{
+        console.error("Firebase authentication startup failed:",e);
+    });
+    authReady.then(()=>loadSharedPin()).catch(e=>{
+        console.error("Firebase/PIN initialization failed:",e);
+        if($("connectionStatus")){
+            $("connectionStatus").textContent="Firebase authentication failed. Anonymous Sign-in ON करें.";
+            $("connectionStatus").classList.add("error");
+        }
+    });
 
     nav();
 
@@ -2224,7 +2273,9 @@ async function init(){
         purgeExpiredDeleted();
         subscribe();
         subscribeRepairing();
-    subscribeInventory();
+        subscribeInventory();
+    }).catch(e=>{
+        console.error("Firebase data initialization blocked:",e);
     });
 
     $("customerForm")
