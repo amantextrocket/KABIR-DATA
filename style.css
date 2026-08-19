@@ -271,3 +271,21 @@ button:active{transform:scale(.975)}
 #editCustomerButton,#deleteCustomerButton{position:relative;z-index:30;pointer-events:auto}
 #editCustomerButton:not(:disabled),#deleteCustomerButton:not(:disabled){cursor:pointer}
 @media(max-width:430px){.pdf-date-row{grid-template-columns:1fr}}
+
+
+/* ===== FINAL PREMIUM YELLOW HEADER + STICKY HEADER ===== */
+.premium-brandbar{position:sticky!important;top:10px;z-index:50;min-height:84px!important;padding:15px 17px 15px 22px!important;border:1px solid rgba(255,214,70,.42)!important;background:linear-gradient(135deg,rgba(255,205,55,.25),rgba(255,184,0,.09) 48%,rgba(255,255,255,.07))!important;box-shadow:0 18px 55px rgba(0,0,0,.34),0 0 34px rgba(255,193,7,.13),inset 0 1px 0 rgba(255,239,170,.30)!important;backdrop-filter:blur(30px) saturate(170%)!important;-webkit-backdrop-filter:blur(30px) saturate(170%)!important}
+.premium-brandbar:before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:linear-gradient(115deg,transparent 15%,rgba(255,239,160,.16) 42%,transparent 65%);animation:headerShine 5s ease-in-out infinite}
+.premium-brandbar>div:first-child{position:relative;z-index:1}.premium-brandbar .eyebrow{color:rgba(255,224,105,.95)!important;font-size:10px!important}.premium-brandbar h2{font-size:24px!important;margin:5px 0 0!important;text-shadow:0 2px 18px rgba(255,190,0,.20)}
+.premium-brandbar .round{position:relative;z-index:1;border-color:rgba(255,218,90,.38)!important;background:rgba(255,214,70,.12)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 8px 24px rgba(0,0,0,.18)}
+@keyframes headerShine{0%,100%{transform:translateX(-35%);opacity:.25}50%{transform:translateX(35%);opacity:.75}}
+
+/* Repairing cards same normal size as other management cards */
+.repairing-stats .stat,.repairing-actions .action{min-height:118px!important;height:auto!important;aspect-ratio:auto!important;padding:16px!important}
+.repairing-stats .stat strong{font-size:27px!important}.repairing-stats .stat .icon,.repairing-actions .action .icon{width:44px!important;height:44px!important;font-size:21px!important;margin-bottom:0!important}.repairing-stats .stat span:not(.icon),.repairing-actions .action strong{font-size:13px!important}.repairing-stats .stat small,.repairing-actions .action small{font-size:10px!important}
+
+/* Small floating home search button */
+.home-search-fab{position:fixed;z-index:45;left:50%;bottom:18px;transform:translateX(-50%);height:46px;min-width:122px;padding:0 17px;border-radius:17px;border:1px solid rgba(255,218,90,.48);background:linear-gradient(135deg,rgba(255,210,55,.28),rgba(255,184,0,.10));color:#ffe98a;display:flex;align-items:center;justify-content:center;gap:7px;box-shadow:0 15px 35px rgba(0,0,0,.32),0 0 26px rgba(255,193,7,.16),inset 0 1px 0 rgba(255,245,190,.28);backdrop-filter:blur(24px) saturate(165%);-webkit-backdrop-filter:blur(24px) saturate(165%);font-size:11px;letter-spacing:.08em}
+.home-search-fab span{font-size:22px;line-height:1}.home-search-fab b{font-size:10px}.home-search-fab:active{transform:translateX(-50%) scale(.96)}
+@media(min-width:700px){.premium-brandbar{top:18px;min-height:92px!important}.premium-brandbar h2{font-size:27px!important}.home-search-fab{bottom:25px;height:50px;min-width:138px}}
+@media(max-width:430px){.premium-brandbar{top:8px;min-height:82px!important}.premium-brandbar h2{font-size:21px!important}.home-search-fab{bottom:16px;height:44px;min-width:116px}}
