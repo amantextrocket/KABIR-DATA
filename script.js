@@ -1,6 +1,6 @@
 import {initializeApp} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
 import {getAuth,signInAnonymously,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js";
-import {getFirestore,collection,addDoc,updateDoc,deleteDoc,setDoc,getDoc,doc,onSnapshot,query,orderBy,serverTimestamp} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
+import {getFirestore,collection,addDoc,updateDoc,deleteDoc,setDoc,getDoc,doc,onSnapshot,query,orderBy,serverTimestamp,getDocs} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
 
 const firebaseConfig={
     apiKey:"AIzaSyDWD2S7Zvcy-T_Ddr8Ytbqwv9tNEBNIJg4",
@@ -23,6 +23,7 @@ const COL="customers";
 const REPAIR_COL="repairing";
 const SECOND_COL="secondHand";
 const ACCESSORY_COL="accessories";
+const DELETED_COL="recentlyDeleted";
 const AUDIT_COL="auditLogs";
 const SETTINGS_COL="settings";
 const SETTINGS_DOC="security";
@@ -760,10 +761,20 @@ function updateAdmin(){
    NAVIGATION
 ========================================================= */
 
-function show(id){
+let pageHistory=["homeView"];
+function show(id,{back=false}={}){
+    const current=pageHistory[pageHistory.length-1];
+    if(!back && current!==id) pageHistory.push(id);
+    if(back && pageHistory.length>1){pageHistory.pop();id=pageHistory[pageHistory.length-1];}
     document.querySelectorAll("[data-page]").forEach(x=>x.classList.add("hidden"));
     const el=$(id);
-    if(el){el.classList.remove("hidden");el.scrollIntoView({behavior:"smooth",block:"start"});}
+    if(el){
+        el.classList.remove("hidden");
+        requestAnimationFrame(()=>{
+            const top=Math.max(0,el.getBoundingClientRect().top+window.scrollY-108);
+            window.scrollTo({top,behavior:"smooth"});
+        });
+    }
 }
 
 
@@ -774,7 +785,7 @@ function nav(){
     $("secondHandModule")?.addEventListener("click",()=>open("secondPage"));
     $("accessoriesModule")?.addEventListener("click",()=>open("accessoriesPage"));
     $("customerModule")?.addEventListener("click",()=>{open("customerPage");renderAllCustomers();});
-    document.querySelectorAll("[data-page-back]").forEach(b=>b.addEventListener("click",()=>open(b.dataset.pageBack)));
+    document.querySelectorAll("[data-page-back]").forEach(b=>b.addEventListener("click",()=>{if(b.dataset.pageBack==="homeView")show("homeView",{back:true});else open(b.dataset.pageBack);}));
     document.querySelectorAll("[data-close]").forEach(b=>b.addEventListener("click",()=>{
         const target=b.dataset.close;
         if(target==="homeView"){open("homeView");return;}
@@ -823,6 +834,16 @@ function closeTopLayer(){
         }
     }
 }
+let swipeStartX=0,swipeStartY=0;
+document.addEventListener("touchstart",e=>{const t=e.changedTouches[0];swipeStartX=t.clientX;swipeStartY=t.clientY;},{passive:true});
+document.addEventListener("touchend",e=>{
+    const t=e.changedTouches[0],dx=t.clientX-swipeStartX,dy=t.clientY-swipeStartY;
+    if(swipeStartX<55 && dx>90 && Math.abs(dx)>Math.abs(dy)*1.25){
+        const modalOpen=["customerDetailModal","themeModal","scannerModal"].some(id=>$(id)&&!$(id).classList.contains("hidden"));
+        if(!modalOpen && pageHistory.length>1) show(pageHistory[pageHistory.length-2],{back:true});
+    }
+},{passive:true});
+
 document.addEventListener("keydown",e=>{
     if(e.key==="Escape") closeTopLayer();
 });
@@ -1487,6 +1508,41 @@ function showCustomerDetail(c){
     $("deleteCustomerButton")?.removeAttribute("disabled");
 }
 function closeCustomerDetail(){activeCustomerId=null;$("customerDetailModal")?.classList.add("hidden")}
+async function moveToRecentlyDeleted(collectionName,id,data){
+    const deleted={originalCollection:collectionName,originalId:id,deletedAt:serverTimestamp(),deletedBy:user?.uid||null,data:{...data}};
+    await addDoc(collection(db,DELETED_COL),deleted);
+}
+async function deleteWithRecycle(collectionName,id,data){
+    await moveToRecentlyDeleted(collectionName,id,data);
+    await deleteDoc(doc(db,collectionName,id));
+}
+async function purgeExpiredDeleted(){
+    try{
+        const snap=await getDocs(collection(db,DELETED_COL));
+        const cutoff=Date.now()-30*24*60*60*1000;
+        for(const d of snap.docs){
+            const ts=d.data()?.deletedAt?.toDate?.();
+            if(ts && ts.getTime()<cutoff) await deleteDoc(doc(db,DELETED_COL,d.id));
+        }
+    }catch(e){console.warn("Recently deleted cleanup failed",e)}
+}
+function deletedDate(x){return x?.deletedAt?.toDate?.()||null}
+function renderRecentlyDeleted(){
+    const box=$("recentDeletedResults");if(!box)return;
+    getDocs(collection(db,DELETED_COL)).then(async snap=>{
+        const rows=snap.docs.map(d=>({id:d.id,...d.data()}));
+        const cutoff=Date.now()-30*24*60*60*1000;
+        const active=rows.filter(x=>{const d=deletedDate(x);return !d||d.getTime()>=cutoff}).sort((a,b)=>(deletedDate(b)?.getTime()||0)-(deletedDate(a)?.getTime()||0));
+        if(!active.length){box.innerHTML='<div class="empty">Recently Deleted खाली है.</div>';return;}
+        box.innerHTML=active.map(x=>{const d=deletedDate(x);const data=x.data||{};const name=data.customerName||data.name||data.customerPhone||"Deleted Record";const type=x.originalCollection||"Data";const days=d?Math.max(0,30-Math.floor((Date.now()-d.getTime())/86400000)):30;return `<article class="result deleted-result"><div class="result-top"><div><div class="result-name">${esc(name)}</div><div class="result-meta">${esc(type)} • Deleted ${d?d.toLocaleString("en-IN") : "recently"}</div></div><span class="work-log-tag">${days} days</span></div><div class="result-grid">${item("Phone",data.phone||data.customerPhone||"—")}${item("Code",data.customerCode||"—")}</div><div class="deleted-actions"><button class="save restore-deleted" data-id="${esc(x.id)}">RECOVER</button><button class="save danger-btn purge-deleted" data-id="${esc(x.id)}">DELETE NOW</button></div></article>`}).join("");
+        box.querySelectorAll(".restore-deleted").forEach(btn=>btn.onclick=()=>restoreDeleted(btn.dataset.id));
+        box.querySelectorAll(".purge-deleted").forEach(btn=>btn.onclick=async()=>{if(!confirm("इस deleted record को permanently delete करें?"))return;await deleteDoc(doc(db,DELETED_COL,btn.dataset.id));renderRecentlyDeleted();});
+    }).catch(e=>{console.error(e);box.innerHTML='<div class="empty">Recently Deleted load नहीं हुआ.</div>';});
+}
+async function restoreDeleted(id){
+    try{const snap=await getDoc(doc(db,DELETED_COL,id));if(!snap.exists())return;const x=snap.data();await setDoc(doc(db,x.originalCollection,x.originalId),x.data||{});await deleteDoc(doc(db,DELETED_COL,id));renderRecentlyDeleted();renderAllCustomers();showSuccessToast("Recovered","Data successfully recovered");}catch(e){console.error(e);alert("Recovery failed. Firebase Rules check करें.");}
+}
+
 async function deleteCustomer(){
     if(enforceWriteLock("pinMessage"))return;
     let c=customers.find(x=>x.id===activeCustomerId);
@@ -1497,15 +1553,15 @@ async function deleteCustomer(){
             const p=u.phone;
             const match=x=>p&&String(x.phone||x.customerPhone||"").replace(/\D/g,"")===p;
             const r=repairing.find(match), sh=secondHand.find(match), ac=accessories.find(match);
-            if(r){if(!confirm(`Delete ${r.customerName||"this customer"} repairing record permanently?`))return;return deleteDoc(doc(db,REPAIR_COL,r.id)).then(()=>{closeCustomerDetail();renderAllCustomers();showSuccessToast("Deleted","Repairing customer record deleted");}).catch(e=>{console.error(e);alert("Delete failed. Firebase Rules check करें.");});}
-            if(sh){if(!confirm(`Delete ${sh.customerName||"this customer"} second-hand record permanently?`))return;return deleteDoc(doc(db,SECOND_COL,sh.id)).then(()=>{closeCustomerDetail();renderAllCustomers();showSuccessToast("Deleted","Second-hand customer record deleted");}).catch(e=>{console.error(e);alert("Delete failed. Firebase Rules check करें.");});}
-            if(ac){if(!confirm(`Delete ${ac.customerName||"this customer"} accessory record permanently?`))return;return deleteDoc(doc(db,ACCESSORY_COL,ac.id)).then(()=>{closeCustomerDetail();renderAllCustomers();showSuccessToast("Deleted","Accessory customer record deleted");}).catch(e=>{console.error(e);alert("Delete failed. Firebase Rules check करें.");});}
+            if(r){if(!confirm(`Delete ${r.customerName||"this customer"} repairing record permanently?`))return;return deleteWithRecycle(REPAIR_COL,r.id,r).then(()=>{closeCustomerDetail();renderAllCustomers();showSuccessToast("Deleted","Repairing customer record deleted");}).catch(e=>{console.error(e);alert("Delete failed. Firebase Rules check करें.");});}
+            if(sh){if(!confirm(`Delete ${sh.customerName||"this customer"} second-hand record permanently?`))return;return deleteWithRecycle(SECOND_COL,sh.id,sh).then(()=>{closeCustomerDetail();renderAllCustomers();showSuccessToast("Deleted","Second-hand customer record deleted");}).catch(e=>{console.error(e);alert("Delete failed. Firebase Rules check करें.");});}
+            if(ac){if(!confirm(`Delete ${ac.customerName||"this customer"} accessory record permanently?`))return;return deleteWithRecycle(ACCESSORY_COL,ac.id,ac).then(()=>{closeCustomerDetail();renderAllCustomers();showSuccessToast("Deleted","Accessory customer record deleted");}).catch(e=>{console.error(e);alert("Delete failed. Firebase Rules check करें.");});}
         }
     }
     if(!c){alert("Customer record नहीं मिला.");return;}
     if(!confirm(`Delete ${c.customerName||"this customer"} (${c.customerCode||""}) permanently?`))return;
     try{
-        await deleteDoc(doc(db,COL,c.id));
+        await deleteWithRecycle(COL,c.id,c);
         await audit("customer_delete",{section:"Kabir Mobile Data",customerId:c.id,customerCode:c.customerCode,customerName:c.customerName,description:`Customer ${c.customerName||c.customerCode||c.id} deleted`});
         closeCustomerDetail();
         renderAllCustomers();
@@ -1798,6 +1854,7 @@ function renderRepairing(){
       <div class="result-name">${esc(r.customerName||"")}</div><div class="result-meta">${esc(r.phone||"")} • ${esc(formatDateTime(r))}</div>
       <div class="result-grid">${item("Brand / Model",r.device)}${item("Problem",r.problem)}${item("Repairing By",r.repairBy)}${item("Total",`₹${Number(r.total??r.payment??0).toLocaleString("en-IN")}`)}${item("Parts Price",`₹${Number(r.partsPrice||0).toLocaleString("en-IN")}`)}${item("Profit",`₹${Number(r.profit??(Number(r.total??r.payment??0)-Number(r.partsPrice||0))).toLocaleString("en-IN")}`)}</div>
     </article>`).join("");
+    box.querySelectorAll(".repair-delete-btn").forEach(btn=>btn.onclick=async e=>{e.stopPropagation();const r=repairing.find(x=>x.id===btn.dataset.repairId);if(!r||!confirm(`Delete ${r.customerName||"this customer"} repairing record?`))return;try{await deleteWithRecycle(REPAIR_COL,r.id,r);await audit("customer_delete",{section:"Kabir Repairing Data",customerId:r.id,customerName:r.customerName,description:`Repairing customer ${r.customerName||r.id} moved to Recently Deleted`});renderRepairing();renderAllCustomers();showSuccessToast("Deleted","Repairing record moved to Recently Deleted");}catch(err){console.error(err);alert("Delete failed. Firebase Rules check करें.");}});
 }
 async function saveRepair(e){
     e.preventDefault();
@@ -2042,8 +2099,29 @@ function runPdfWithSelectedDate(section){
     const from=$("pdfFromDate")?.value||"",to=$("pdfToDate")?.value||"";
     buildSelectedPdf(section,from,to);
 }
+function normalizeText(x){return String(x||"").toLowerCase().replace(/[^\p{L}\p{N}]+/gu," ").trim();}
+function allDataRows(){return [
+ ...customers.map(x=>({...x,__section:"Finance"})),
+ ...repairing.map(x=>({...x,__section:"Repairing"})),
+ ...secondHand.map(x=>({...x,__section:"Second Hand"})),
+ ...accessories.map(x=>({...x,__section:"Accessories"}))
+];}
+function smartAnswerLanguage(q){const n=normalizeText(q);if(/[\u0900-\u097f]/.test(q))return "hi";if(/\b(kya|kitne|kaun|dikhao|batao|hai|hain|aaj|kal|naam|customer|data)\b/i.test(n))return "hinglish";return "en";}
+function smartSearch(){
+ const q=val("universalSearchInput");const a=$("smartSearchAnswer"),r=$("smartSearchResults");if(!a||!r)return;const n=normalizeText(q);if(!n){a.innerHTML='<div class="empty">पूछें: “आज कितने customer हैं?”, “Aman ka phone dikhao”, “show repairing data”, “profit कितना है?”</div>';r.innerHTML="";return;}
+ const lang=smartAnswerLanguage(q), rows=allDataRows();let answer="", filtered=[];
+ const total=customers.length, repairs=repairing.length, second=secondHand.length, acc=accessories.length;
+ if(/(total|kitne|how many|count|कितने|कितनी|कितना).*(customer|customers|ग्राहक)/i.test(q)) answer=lang==="hi"?`कुल ${total} customer हैं।`:lang==="hinglish"?`Total ${total} customers hain.`:`There are ${total} customers in the database.`;
+ else if(/(repair|repairing|रिपेयर)/i.test(q)&&/(total|kitne|count|कितने)/i.test(q)) answer=lang==="hi"?`Repairing में ${repairs} records हैं।`:lang==="hinglish"?`Repairing mein ${repairs} records hain.`:`There are ${repairs} repairing records.`;
+ else if(/(second|second hand)/i.test(q)&&/(total|kitne|count|कितने)/i.test(q)) answer=`Second Hand mein ${second} records hain.`;
+ else if(/(accessor|accessories)/i.test(q)&&/(total|kitne|count|कितने)/i.test(q)) answer=`Accessories mein ${acc} records hain.`;
+ else if(/(profit|munafa|मुनाफा)/i.test(q)){const prof=repairing.reduce((s,x)=>s+Number(x.profit??(Number(x.total??x.payment||0)-Number(x.partsPrice||0))),0)+secondHand.reduce((s,x)=>s+Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))),0)+accessories.reduce((s,x)=>s+Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))),0);answer=lang==="hi"?`कुल ज्ञात profit ₹${prof.toLocaleString("en-IN")} है।`:`Total known profit is ₹${prof.toLocaleString("en-IN")}.`;}
+ else {filtered=rows.filter(x=>normalizeText([x.customerName,x.customerCode,x.phone,x.customerPhone,x.imei,x.brand,x.model,x.device,x.problem,x.name,x.category,x.sn,x.financeCompany,x.__section,formatDateTime(x)].join(" ")).includes(n));answer=filtered.length?(lang==="hi"?`${filtered.length} matching records मिले।`:lang==="hinglish"?`${filtered.length} matching records mile.`:`Found ${filtered.length} matching records.`):(lang==="hi"?"कोई matching record नहीं मिला।":"No matching record found.");}
+ a.innerHTML=`<div class="smart-answer-text">${esc(answer)}</div>`;r.innerHTML=filtered.slice(0,50).map(x=>`<article class="result"><div class="result-name">${esc(x.customerName||x.name||"Record")}</div><div class="result-meta">${esc(x.__section||"")} • ${esc(x.phone||x.customerPhone||"")} • ${esc(formatDateTime(x))}</div><div class="result-grid">${item("Device",x.device||`${x.brand||""} ${x.model||""}`)}${item("IMEI / SN",x.imei||x.sn||"—")}${item("Amount",x.phoneAmount!=null?`₹${Number(x.phoneAmount).toLocaleString("en-IN")}`:x.total!=null?`₹${Number(x.total).toLocaleString("en-IN")}`:x.salePrice!=null?`₹${Number(x.salePrice).toLocaleString("en-IN")}`:"—")}${item("Customer",x.customerName||x.name||"—")}</div></article>`).join("");
+}
+
 function applyTheme(theme){
-    const allowed=["dark","light","midnight","silver","glass"];
+    const allowed=["dark","light","midnight","silver","glass","sunset","emerald","rose"];
     if(!allowed.includes(theme)) theme="dark";
 
     document.documentElement.setAttribute("data-theme",theme);
@@ -2083,7 +2161,9 @@ function featureNav(){
     $("deleteCustomerButton")?.addEventListener("click",e=>{e.preventDefault();e.stopPropagation();deleteCustomer();});
     $("editCustomerButton")?.addEventListener("click",e=>{e.preventDefault();e.stopPropagation();editCustomer();});
     $("closeDetailButton")?.addEventListener("click",e=>{e.preventDefault();e.stopPropagation();closeCustomerDetail();});
-    $("homeSearchButton")?.addEventListener("click",()=>{show("searchSection");$("searchInput")?.focus();renderSearch();audit("customer_search",{section:"Kabir Mobile Data",description:"Home search opened"});});
+    $("homeSearchButton")?.addEventListener("click",()=>{show("smartSearchSection");$("universalSearchInput")?.focus();smartSearch();audit("customer_search",{section:"All Data",description:"Smart database search opened"});});
+    $("recentDeletedButton")?.addEventListener("click",()=>{show("recentDeletedSection");renderRecentlyDeleted();});
+    $("universalSearchInput")?.addEventListener("input",smartSearch);
     $("closePdfSelectButton")?.addEventListener("click",()=>$("pdfSelectModal")?.classList.add("hidden"));
     $("pdfChoices")?.addEventListener("click",e=>{const b=e.target.closest("[data-pdf-section]");if(b)runPdfWithSelectedDate(b.dataset.pdfSection)});
 }
@@ -2141,6 +2221,7 @@ async function init(){
     if($('appScreen')?.classList.contains('admin')) audit('page_open',{section:'Admin Panel',description:'Admin Panel opened'});
 
     authReady.then(()=>{
+        purgeExpiredDeleted();
         subscribe();
         subscribeRepairing();
     subscribeInventory();
