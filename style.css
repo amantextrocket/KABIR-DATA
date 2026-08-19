@@ -191,3 +191,72 @@ button:active{transform:scale(.975)}
 
 /* ===== REQUESTED PDF BUTTON TEXT SIZE FIX ===== */
 #homePdfButton{font-size:12px!important;font-weight:700!important;letter-spacing:.3px!important}
+
+
+/* ===== PREMIUM BRAND HEADER ===== */
+.premium-brandbar{
+  position:relative;
+  overflow:hidden;
+  isolation:isolate;
+  min-height:88px!important;
+  padding:14px 16px 14px 22px!important;
+  border-radius:30px!important;
+  background:
+    radial-gradient(circle at 8% 0%,rgba(120,130,255,.22),transparent 34%),
+    radial-gradient(circle at 92% 100%,rgba(255,255,255,.10),transparent 30%),
+    linear-gradient(135deg,rgba(255,255,255,.12),rgba(255,255,255,.045))!important;
+  box-shadow:0 22px 70px rgba(0,0,0,.34),inset 0 1px 0 rgba(255,255,255,.14)!important;
+}
+.premium-brandbar:before{
+  content:"";
+  position:absolute;inset:0;
+  background:linear-gradient(110deg,transparent 15%,rgba(255,255,255,.08) 48%,transparent 80%);
+  transform:translateX(-100%);
+  animation:brandShine 7s ease-in-out infinite;
+  pointer-events:none;
+}
+.premium-brandbar>div:first-child{position:relative;z-index:1}
+.premium-brandbar .eyebrow{font-size:9px;letter-spacing:3px;opacity:.72}
+.premium-brandbar h2{
+  font-size:24px!important;
+  font-weight:850!important;
+  letter-spacing:-1.2px!important;
+  margin-top:5px!important;
+  text-shadow:0 4px 24px rgba(255,255,255,.12);
+}
+.premium-brandbar .top-actions{position:relative;z-index:2}
+@keyframes brandShine{0%,65%{transform:translateX(-100%)}85%,100%{transform:translateX(100%)}}
+
+/* ===== PDF SELECTION ===== */
+.pdf-select-card{max-width:620px!important}
+.pdf-choice-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.pdf-choice-grid button{
+  min-height:118px;padding:17px;text-align:left;
+  border:1px solid var(--border);border-radius:22px;
+  background:linear-gradient(145deg,rgba(255,255,255,.10),rgba(255,255,255,.035));
+  color:var(--text);display:flex;flex-direction:column;
+  align-items:flex-start;gap:5px;
+  box-shadow:0 14px 35px rgba(0,0,0,.16),inset 0 1px 0 rgba(255,255,255,.06);
+}
+.pdf-choice-grid button span{font-size:25px}
+.pdf-choice-grid button b{font-size:15px}
+.pdf-choice-grid button small{color:var(--muted);font-size:10px;line-height:1.35}
+.pdf-choice-grid button:hover{transform:translateY(-2px);border-color:rgba(255,255,255,.28);box-shadow:0 18px 40px rgba(0,0,0,.22)}
+.pdf-choice-grid button:last-child{grid-column:1/-1}
+@media(max-width:520px){.pdf-choice-grid{grid-template-columns:1fr}.pdf-choice-grid button:last-child{grid-column:auto}.premium-brandbar h2{font-size:20px!important}.premium-brandbar{min-height:78px!important;padding-left:17px!important}}
+@media(min-width:700px){
+  .app{width:min(100% - 48px,1180px);padding-top:24px}
+  .home-modules{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+  .home-modules .module-card:last-child{grid-column:1/-1}
+  .panel{padding:26px}
+  .module-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .repairing-stats,.repairing-actions{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+}
+@media(min-width:1100px){
+  .home-modules{grid-template-columns:repeat(5,minmax(0,1fr))}
+  .home-modules .module-card:last-child{grid-column:auto}
+  .module-card{min-height:150px;flex-direction:column;align-items:flex-start;justify-content:flex-end;padding:20px}
+  .module-card .module-icon{width:54px;height:54px}
+  .module-card em{margin-left:auto}
+}
+@media(min-width:1500px){.app{max-width:1320px}.premium-brandbar h2{font-size:27px!important}}
