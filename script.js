@@ -1489,8 +1489,20 @@ function showCustomerDetail(c){
 function closeCustomerDetail(){activeCustomerId=null;$("customerDetailModal")?.classList.add("hidden")}
 async function deleteCustomer(){
     if(enforceWriteLock("pinMessage"))return;
-    const c=customers.find(x=>x.id===activeCustomerId);
-    if(!c){alert("यह customer Finance/Customer database में नहीं है, इसलिए Customer Edit/Delete उपलब्ध नहीं है।");return;}
+    let c=customers.find(x=>x.id===activeCustomerId);
+    if(!c && window.activeUnifiedCustomer){
+        const u=window.activeUnifiedCustomer;
+        c=customers.find(x=>u.financeId&&x.id===u.financeId);
+        if(!c){
+            const p=u.phone;
+            const match=x=>p&&String(x.phone||x.customerPhone||"").replace(/\D/g,"")===p;
+            const r=repairing.find(match), sh=secondHand.find(match), ac=accessories.find(match);
+            if(r){if(!confirm(`Delete ${r.customerName||"this customer"} repairing record permanently?`))return;return deleteDoc(doc(db,REPAIR_COL,r.id)).then(()=>{closeCustomerDetail();renderAllCustomers();showSuccessToast("Deleted","Repairing customer record deleted");}).catch(e=>{console.error(e);alert("Delete failed. Firebase Rules check करें.");});}
+            if(sh){if(!confirm(`Delete ${sh.customerName||"this customer"} second-hand record permanently?`))return;return deleteDoc(doc(db,SECOND_COL,sh.id)).then(()=>{closeCustomerDetail();renderAllCustomers();showSuccessToast("Deleted","Second-hand customer record deleted");}).catch(e=>{console.error(e);alert("Delete failed. Firebase Rules check करें.");});}
+            if(ac){if(!confirm(`Delete ${ac.customerName||"this customer"} accessory record permanently?`))return;return deleteDoc(doc(db,ACCESSORY_COL,ac.id)).then(()=>{closeCustomerDetail();renderAllCustomers();showSuccessToast("Deleted","Accessory customer record deleted");}).catch(e=>{console.error(e);alert("Delete failed. Firebase Rules check करें.");});}
+        }
+    }
+    if(!c){alert("Customer record नहीं मिला.");return;}
     if(!confirm(`Delete ${c.customerName||"this customer"} (${c.customerCode||""}) permanently?`))return;
     try{
         await deleteDoc(doc(db,COL,c.id));
@@ -1742,8 +1754,8 @@ function showUnifiedCustomerHistory(phone,name){
     window.activeUnifiedCustomer={phone:p,name:title,financeId:finance[0]?.id||null,repairId:repair[0]?.id||null,secondId:second[0]?.id||null,accessoryId:acc[0]?.id||null};
     const editBtn=$("editCustomerButton"),deleteBtn=$("deleteCustomerButton");
     const financeEditable=!!activeCustomerId;
-    if(editBtn){editBtn.disabled=!financeEditable;editBtn.title=financeEditable?"Edit Finance customer":"No Finance customer record to edit";}
-    if(deleteBtn){deleteBtn.disabled=!financeEditable;deleteBtn.title=financeEditable?"Delete Finance customer":"No Finance customer record to delete";}
+    if(editBtn){editBtn.disabled=false;editBtn.title=financeEditable?"Edit Finance customer":"This customer has no Finance record";}
+    if(deleteBtn){deleteBtn.disabled=false;deleteBtn.title=financeEditable?"Delete Finance customer":"Delete available customer record";}
     const rows=[];finance.forEach(x=>rows.push(`<article class="history-row"><b>💳 Finance / Phone</b><small>${esc(formatDateTime(x))}</small><span>${esc(`${x.brand||""} ${x.model||""}`)} • IMEI ${esc(x.imei||"—")} • ₹${Number(x.phoneAmount||0).toLocaleString("en-IN")}</span></article>`));repair.forEach(x=>rows.push(`<article class="history-row"><b>🛠 Repairing</b><small>${esc(formatDateTime(x))}</small><span>${esc(x.device||"")} • ${esc(x.problem||"")} • Total ₹${Number(x.total??x.payment??0).toLocaleString("en-IN")} • Parts ₹${Number(x.partsPrice||0).toLocaleString("en-IN")} • Profit ₹${Number(x.profit??(Number(x.total??x.payment??0)-Number(x.partsPrice||0))).toLocaleString("en-IN")}</span></article>`));second.forEach(x=>rows.push(`<article class="history-row"><b>📱 Second Hand</b><small>${esc(formatDateTime(x))}</small><span>${esc(`${x.brand||""} ${x.model||x.device||""}`)} • IMEI ${esc(x.imei||"—")} • Profit ₹${Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))).toLocaleString("en-IN")}</span></article>`));acc.forEach(x=>rows.push(`<article class="history-row"><b>🎧 Accessories</b><small>${esc(formatDateTime(x))}</small><span>${esc(x.name||"")} • SN ${esc(x.sn||"—")} • Profit ₹${Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))).toLocaleString("en-IN")}</span></article>`));
     $("customerDetailBody").innerHTML=`<div class="detail-grid">${detailItem("Customer",title)}${detailItem("Phone",p||finance[0]?.phone||repair[0]?.phone||second[0]?.phone||acc[0]?.customerPhone||"—")}${detailItem("Finance Records",finance.length)}${detailItem("Repairing Records",repair.length)}${detailItem("Second Hand Records",second.length)}${detailItem("Accessories Records",acc.length)}</div><div class="history-list">${rows.join("")||'<div class="empty">इस customer का कोई history record नहीं मिला.</div>'}</div>`;$("customerDetailModal")?.classList.remove("hidden");
 }
@@ -2071,9 +2083,21 @@ function featureNav(){
     $("deleteCustomerButton")?.addEventListener("click",e=>{e.preventDefault();e.stopPropagation();deleteCustomer();});
     $("editCustomerButton")?.addEventListener("click",e=>{e.preventDefault();e.stopPropagation();editCustomer();});
     $("closeDetailButton")?.addEventListener("click",e=>{e.preventDefault();e.stopPropagation();closeCustomerDetail();});
+    $("homeSearchButton")?.addEventListener("click",()=>{show("searchSection");$("searchInput")?.focus();renderSearch();audit("customer_search",{section:"Kabir Mobile Data",description:"Home search opened"});});
     $("closePdfSelectButton")?.addEventListener("click",()=>$("pdfSelectModal")?.classList.add("hidden"));
     $("pdfChoices")?.addEventListener("click",e=>{const b=e.target.closest("[data-pdf-section]");if(b)runPdfWithSelectedDate(b.dataset.pdfSection)});
 }
+
+// FINAL ROBUST CUSTOMER ACTION HANDLERS
+// Delegation ensures the buttons keep working even when the modal is rebuilt or re-rendered.
+document.addEventListener("click",e=>{
+    const edit=e.target.closest("#editCustomerButton");
+    if(edit){e.preventDefault();e.stopImmediatePropagation();editCustomer();return;}
+    const del=e.target.closest("#deleteCustomerButton");
+    if(del){e.preventDefault();e.stopImmediatePropagation();deleteCustomer();return;}
+    const close=e.target.closest("#closeDetailButton");
+    if(close){e.preventDefault();e.stopImmediatePropagation();closeCustomerDetail();return;}
+});
 
 /* =========================================================
    INITIALIZE
