@@ -31,7 +31,6 @@ const REMOTE_DEVICES_URL="https://cdn.jsdelivr.net/gh/bsthen/device-models/devic
 const isAdminPage=!!document.querySelector(".admin");
 
 let user=null;
-let firebaseState="connecting";
 let customers=[];
 let repairing=[];
 let secondHand=[];
@@ -523,7 +522,7 @@ function renderManagementData(type){
     const box=$("trafficManagementDetail");if(!box)return;
     let title="",rows=[];
     if(type==="finance"){title="Finance Management";rows=customers.map(x=>[x.customerName,x.phone,`${x.brand||""} ${x.model||""}`,x.imei,`₹${x.phoneAmount||0}`]);}
-    if(type==="repairing"){title="Repairing Management";rows=repairing.map(x=>[x.customerName,x.phone,x.device,x.problem,`₹${x.total??x.payment??0}`,`₹${x.partsPrice||0}`,`₹${x.profit??(Number(x.total??x.payment??0)-Number(x.partsPrice||0))}`]);}
+    if(type==="repairing"){title="Repairing Management";rows=repairing.map(x=>[x.customerName,x.phone,x.device,x.problem,`₹${x.total??x.payment??0}`,`₹${x.partsPrice||0}`,`₹${x.profit??(Number(x.total ?? x.payment ?? 0)-Number(x.partsPrice||0))}`]);}
     if(type==="secondHand"){title="Second Hand Management";rows=secondHand.map(x=>[x.customerName,`${x.brand||""} ${x.model||x.device||""}`,x.imei,x.condition,`₹${x.price||0}`,`₹${x.salePrice||0}`,`₹${x.profit??(Number(x.salePrice||0)-Number(x.price||0))}`]);}
     if(type==="accessories"){title="Accessories Management";rows=accessories.map(x=>[x.name,x.category,x.sn,x.quantity,`₹${x.price||0}`,`₹${x.salePrice||0}`,`₹${x.profit??(Number(x.salePrice||0)-Number(x.price||0))}`]);}
     box.innerHTML=`<div class="section-head"><div><div class="eyebrow">SELECTED MANAGEMENT</div><h3>${esc(title)}</h3></div><b>${rows.length} Records</b></div>`+(rows.length?`<div class="admin-data-table">${rows.slice(0,500).map(r=>`<div class="admin-data-row">${r.map(v=>`<span>${esc(v)}</span>`).join("")}</div>`).join("")}</div>`:'<div class="empty">No data found.</div>');
@@ -646,43 +645,67 @@ function setupPin(){
    FIREBASE AUTH
 ========================================================= */
 
-let authReadyResolve,authReadyReject;
-const authReady=new Promise((resolve,reject)=>{authReadyResolve=resolve;authReadyReject=reject});
+let authReadyResolve;
+let authReadyReject;
+let authStarted=false;
+const authReady=new Promise((resolve,reject)=>{
+    authReadyResolve=resolve;
+    authReadyReject=reject;
+});
+
 async function authInit(){
+    if(authStarted)return authReady;
+    authStarted=true;
     let settled=false;
-    const failTimer=setTimeout(()=>{
-        if(!settled){
-            const e=new Error("Firebase authentication timed out. Enable Anonymous Sign-in and check Firebase configuration.");
-            console.error(e);
-            firebaseState="timeout";
+
+    const setStatus=(text,isError=false)=>{
+        if($("connectionStatus")){
+            $("connectionStatus").textContent=text;
+            $("connectionStatus").classList.toggle("error",!!isError);
+        }
+        if($("adminFirebaseStatus")){
+            $("adminFirebaseStatus").textContent=text;
+            $("adminFirebaseStatus").classList.toggle("error",!!isError);
+        }
+    };
+
+    onAuthStateChanged(auth,u=>{
+        // Firebase emits null while restoring auth state. Never treat null as ready.
+        if(!u){
+            user=null;
             updateAdmin();
-            if($("pinMessage"))msg("pinMessage","Firebase connection timed out. Firebase Console में Anonymous Sign-in ON करें.");
-            fail(e);
+            setStatus("Firebase connecting…");
+            return;
         }
-    },12000);
-    const succeed=u=>{
-        if(!settled&&u){
-            settled=true; clearTimeout(failTimer); user=u; firebaseState="connected"; updateAdmin(); authReadyResolve(u);
-        }
-    };
-    const fail=e=>{
-        if(!settled){
-            settled=true; clearTimeout(failTimer); user=null; firebaseState="failed"; updateAdmin();
-            const err=e instanceof Error?e:Error(String(e||"Firebase authentication failed"));
-            authReadyReject(err);
-        }
-    };
-    onAuthStateChanged(auth,u=>{user=u||null;updateAdmin();if(u)succeed(u);},e=>{console.error("Auth state error:",e);fail(e);});
-    try{
-        if(!auth.currentUser) await signInAnonymously(auth);
-        if(auth.currentUser) succeed(auth.currentUser);
-    }catch(e){
-        console.error("Anonymous sign-in failed:",e);
-        firebaseState="failed";
-        if($("adminFirebaseStatus"))msg("adminFirebaseStatus","Firebase authentication error: "+(e?.message||""));
-        if($("pinMessage"))msg("pinMessage","Firebase login failed. Anonymous Sign-in ON करें.");
+        user=u;
         updateAdmin();
-        fail(e);
+        setStatus("Firebase connected ✓");
+        if(!settled){
+            settled=true;
+            authReadyResolve(u);
+        }
+    },e=>{
+        console.error("Firebase auth state error:",e);
+        user=null;
+        updateAdmin();
+        setStatus("Firebase authentication failed. Anonymous Sign-in ON करें.",true);
+        if(!settled){
+            settled=true;
+            authReadyReject(e);
+        }
+    });
+
+    try{
+        if(!auth.currentUser){
+            await signInAnonymously(auth);
+        }
+    }catch(e){
+        console.error("Firebase anonymous sign-in failed:",e);
+        setStatus("Firebase authentication failed. Anonymous Sign-in ON करें.",true);
+        if(!settled){
+            settled=true;
+            authReadyReject(e);
+        }
     }
     return authReady;
 }
@@ -768,19 +791,10 @@ function updateAdmin(){
                 0
             );
 
-    const labels={
-        connecting:"Firebase connecting…",
-        connected:"Firebase connected ✓",
-        failed:"Firebase authentication failed — Anonymous Sign-in enable करें.",
-        timeout:"Firebase authentication timed out — Anonymous Sign-in enable करें."
-    };
     if($("adminFirebaseStatus"))
-        $("adminFirebaseStatus").textContent=labels[firebaseState]||labels.connecting;
-    if($("connectionStatus")){
-        $("connectionStatus").textContent=labels[firebaseState]||labels.connecting;
-        $("connectionStatus").classList.toggle("error",firebaseState==="failed"||firebaseState==="timeout");
-    }
-    $("firebaseRetryButton")?.classList.toggle("hidden",!(firebaseState==="failed"||firebaseState==="timeout"));
+        $("adminFirebaseStatus").textContent=user?"Firebase connected":"Connecting to Firebase…";
+    if($("connectionStatus"))
+        $("connectionStatus").textContent=user?"Firebase connected ✓":"Firebase connecting…";
 }
 
 
@@ -1839,7 +1853,7 @@ function showUnifiedCustomerHistory(phone,name){
     const financeEditable=!!activeCustomerId;
     if(editBtn){editBtn.disabled=false;editBtn.title=financeEditable?"Edit Finance customer":"This customer has no Finance record";}
     if(deleteBtn){deleteBtn.disabled=false;deleteBtn.title=financeEditable?"Delete Finance customer":"Delete available customer record";}
-    const rows=[];finance.forEach(x=>rows.push(`<article class="history-row"><b>💳 Finance / Phone</b><small>${esc(formatDateTime(x))}</small><span>${esc(`${x.brand||""} ${x.model||""}`)} • IMEI ${esc(x.imei||"—")} • ₹${Number(x.phoneAmount||0).toLocaleString("en-IN")}</span></article>`));repair.forEach(x=>rows.push(`<article class="history-row"><b>🛠 Repairing</b><small>${esc(formatDateTime(x))}</small><span>${esc(x.device||"")} • ${esc(x.problem||"")} • Total ₹${Number(x.total??x.payment??0).toLocaleString("en-IN")} • Parts ₹${Number(x.partsPrice||0).toLocaleString("en-IN")} • Profit ₹${Number(x.profit??(Number(x.total??x.payment??0)-Number(x.partsPrice||0))).toLocaleString("en-IN")}</span></article>`));second.forEach(x=>rows.push(`<article class="history-row"><b>📱 Second Hand</b><small>${esc(formatDateTime(x))}</small><span>${esc(`${x.brand||""} ${x.model||x.device||""}`)} • IMEI ${esc(x.imei||"—")} • Profit ₹${Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))).toLocaleString("en-IN")}</span></article>`));acc.forEach(x=>rows.push(`<article class="history-row"><b>🎧 Accessories</b><small>${esc(formatDateTime(x))}</small><span>${esc(x.name||"")} • SN ${esc(x.sn||"—")} • Profit ₹${Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))).toLocaleString("en-IN")}</span></article>`));
+    const rows=[];finance.forEach(x=>rows.push(`<article class="history-row"><b>💳 Finance / Phone</b><small>${esc(formatDateTime(x))}</small><span>${esc(`${x.brand||""} ${x.model||""}`)} • IMEI ${esc(x.imei||"—")} • ₹${Number(x.phoneAmount||0).toLocaleString("en-IN")}</span></article>`));repair.forEach(x=>rows.push(`<article class="history-row"><b>🛠 Repairing</b><small>${esc(formatDateTime(x))}</small><span>${esc(x.device||"")} • ${esc(x.problem||"")} • Total ₹${Number(x.total ?? x.payment ?? 0).toLocaleString("en-IN")} • Parts ₹${Number(x.partsPrice||0).toLocaleString("en-IN")} • Profit ₹${Number(x.profit??(Number(x.total ?? x.payment ?? 0)-Number(x.partsPrice||0))).toLocaleString("en-IN")}</span></article>`));second.forEach(x=>rows.push(`<article class="history-row"><b>📱 Second Hand</b><small>${esc(formatDateTime(x))}</small><span>${esc(`${x.brand||""} ${x.model||x.device||""}`)} • IMEI ${esc(x.imei||"—")} • Profit ₹${Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))).toLocaleString("en-IN")}</span></article>`));acc.forEach(x=>rows.push(`<article class="history-row"><b>🎧 Accessories</b><small>${esc(formatDateTime(x))}</small><span>${esc(x.name||"")} • SN ${esc(x.sn||"—")} • Profit ₹${Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))).toLocaleString("en-IN")}</span></article>`));
     $("customerDetailBody").innerHTML=`<div class="detail-grid">${detailItem("Customer",title)}${detailItem("Phone",p||finance[0]?.phone||repair[0]?.phone||second[0]?.phone||acc[0]?.customerPhone||"—")}${detailItem("Finance Records",finance.length)}${detailItem("Repairing Records",repair.length)}${detailItem("Second Hand Records",second.length)}${detailItem("Accessories Records",acc.length)}</div><div class="history-list">${rows.join("")||'<div class="empty">इस customer का कोई history record नहीं मिला.</div>'}</div>`;$("customerDetailModal")?.classList.remove("hidden");
 }
 
@@ -2070,7 +2084,7 @@ async function buildSelectedPdf(section,fromDate="",toDate=""){
         }else if(section==="repairing"){
             title="KABIR MOBILE DATA — REPAIRING";
             headers=["Date & Time","Customer Name","Phone","Brand / Model","Problem","Repairing By","Total","Parts Price","Profit"];
-            rows=pdfRowsFromObject(repairingData,[["createdAt","",pdfDate],["customerName"],["phone"],["device"],["problem"],["repairBy"],["total","",x=>pdfMoney(x.total??x.payment)],["partsPrice","",x=>pdfMoney(x.partsPrice)],["profit","",x=>pdfMoney(x.profit??(Number(x.total??x.payment??0)-Number(x.partsPrice||0)))]]);
+            rows=pdfRowsFromObject(repairingData,[["createdAt","",pdfDate],["customerName"],["phone"],["device"],["problem"],["repairBy"],["total","",x=>pdfMoney(x.total??x.payment)],["partsPrice","",x=>pdfMoney(x.partsPrice)],["profit","",x=>pdfMoney(x.profit??(Number(x.total ?? x.payment ?? 0)-Number(x.partsPrice||0)))]]);
             file="Kabir_Repairing_Data.pdf";
         }else if(section==="secondHand"){
             title="KABIR MOBILE DATA — SECOND HAND";
@@ -2099,7 +2113,7 @@ async function buildSelectedPdf(section,fromDate="",toDate=""){
             title="KABIR MOBILE DATA — CUSTOMERS";
             headers=["Section","Date & Time","Customer Name","Phone","Code / Identifier","Device / Item","IMEI / SN","Amount / Price","Profit"];
             const financeRows=financeData.map(x=>["Finance",pdfDate(x.createdAt),x.customerName,x.phone,x.customerCode,`${x.brand||""} ${x.model||""}`.trim(),x.imei,pdfMoney(x.phoneAmount),"—"]);
-            const repairRows=repairingData.map(x=>["Repairing",pdfDate(x.createdAt),x.customerName,x.phone,"—",x.device,x.phone?x.phone:"—",pdfMoney(x.total??x.payment),pdfMoney(x.profit??(Number(x.total??x.payment??0)-Number(x.partsPrice||0)))]);
+            const repairRows=repairingData.map(x=>["Repairing",pdfDate(x.createdAt),x.customerName,x.phone,"—",x.device,x.phone?x.phone:"—",pdfMoney(x.total??x.payment),pdfMoney(x.profit??(Number(x.total ?? x.payment ?? 0)-Number(x.partsPrice||0)))]);
             const secondRows=secondHandData.map(x=>["Second Hand",pdfDate(x.createdAt),x.customerName,x.phone,"—",`${x.brand||""} ${x.model||x.device||""}`.trim(),x.imei,pdfMoney(x.salePrice||x.price),pdfMoney(x.profit??(Number(x.salePrice||0)-Number(x.price||0)))]);
             const accRows=accessoriesData.map(x=>["Accessories",pdfDate(x.createdAt),x.customerName||"—",x.customerPhone||"—","—",x.name,x.sn,pdfMoney(x.salePrice||x.price),pdfMoney(x.profit??(Number(x.salePrice||0)-Number(x.price||0)))]);
             rows=[...financeRows,...repairRows,...secondRows,...accRows];
@@ -2135,65 +2149,16 @@ function allDataRows(){return [
 ];}
 function smartAnswerLanguage(q){const n=normalizeText(q);if(/[\u0900-\u097f]/.test(q))return "hi";if(/\b(kya|kitne|kaun|dikhao|batao|hai|hain|aaj|kal|naam|customer|data)\b/i.test(n))return "hinglish";return "en";}
 function smartSearch(){
- const q=val("universalSearchInput"),a=$("smartSearchAnswer"),r=$("smartSearchResults");if(!a||!r)return;
- const n=normalizeText(q),lang=smartAnswerLanguage(q),rows=allDataRows();
- if(!n){a.innerHTML='<div class="empty">आप data पूछ सकते हैं या website command दे सकते हैं — “आज कितने customer हैं?”, “Aman ka data dikhao”, “repairing open karo”, “PDF kholo”, “dark theme karo”.</div>';r.innerHTML="";return;}
- let answer="",filtered=[];
- const total=customers.length,repairs=repairing.length,second=secondHand.length,acc=accessories.length;
- const say=(hi,hinglish,en)=>lang==="hi"?hi:lang==="hinglish"?hinglish:en;
- const nav=[[/finance|फाइनेंस|finance kholo|finance open/i,"financePage","Finance"],[/repairing|repair|रिपेयरिंग|रिपेयर|repairing kholo/i,"repairingPage","Repairing"],[/second hand|secondhand|दूसरा फोन/i,"secondPage","Second Hand"],[/accessor|accessories|एक्सेसरी/i,"accessoriesPage","Accessories"],[/all customer|customer list|सभी customer|ग्राहक list/i,"customerPage","Customers"],[/recently deleted|deleted data|डिलीटेड|हाल में delete/i,"recentDeletedSection","Recently Deleted"],[/add customer|customer add|customer बनाओ|नया customer/i,"customerFormSection","Add Customer"],[/add repairing|repair add|repairing add|नया repairing/i,"repairAddSection","Add Repairing"],[/search customer|customer search|customer खोजो|customer ढूंढो/i,"searchSection","Customer Search"],[/home|होम पर|home kholo/i,"homeView","Home"]];
- const navHit=nav.find(x=>x[0].test(q));
- if(navHit&&/(open|kholo|show|dikhao|जाओ|खोलो|दिखाओ|page)/i.test(q)){
-   show(navHit[1]);if(navHit[1]==="customerPage")renderAllCustomers();if(navHit[1]==="recentDeletedSection")renderRecentlyDeleted();
-   answer=say(`${navHit[2]} खोल दिया गया है।`,`${navHit[2]} open kar diya hai.`,`Opened ${navHit[2]}.`);
- }else if(/theme kholo|open theme|theme open|थीम खोलो/i.test(q)){ $("themeModal")?.classList.remove("hidden");answer=say("Theme selector खोल दिया है।","Theme selector open kar diya hai.","Theme selector opened.");
- }else if(/dark theme|dark mode|डार्क|dark karo/i.test(q)){applyTheme("dark");answer=say("Dark theme लगा दिया है।","Dark theme laga diya hai.","Dark theme applied.");}
- else if(/light theme|light mode|लाइट|light karo/i.test(q)){applyTheme("light");answer=say("Light theme लगा दिया है।","Light theme laga diya hai.","Light theme applied.");}
- else if(/midnight/i.test(q)){applyTheme("midnight");answer="Midnight premium theme applied.";}
- else if(/silver/i.test(q)){applyTheme("silver");answer="Silver premium theme applied.";}
- else if(/sunset/i.test(q)){applyTheme("sunset");answer="Sunset premium theme applied.";}
- else if(/emerald/i.test(q)){applyTheme("emerald");answer="Emerald premium theme applied.";}
- else if(/rose|rose quartz/i.test(q)){applyTheme("rose");answer="Rose Quartz premium theme applied.";}
- else if(/pdf|पीडीएफ/i.test(q)&&/open|kholo|download|डाउनलोड|बनाओ/i.test(q)){downloadFullPdf();answer=say("PDF export खोल दिया है। Section और date range चुनें।","PDF export open kar diya hai. Section aur date range select karo.","PDF export opened. Select the section and date range.");}
- else if(/lock|logout|लॉक|बंद/i.test(q)){lock();answer=say("Website lock कर दी है।","Website lock kar di hai.","Website locked.");}
- else if(/(total|kitne|how many|count|कितने|कितनी|कितना).*(customer|customers|ग्राहक)/i.test(q))answer=say(`कुल ${total} customer हैं।`,`Total ${total} customers hain.`,`There are ${total} customers.`);
- else if(/repair|repairing|रिपेयर/i.test(q)&&/(total|kitne|count|कितने|records|data)/i.test(q))answer=say(`Repairing में ${repairs} records हैं।`,`Repairing mein ${repairs} records hain.`,`There are ${repairs} repairing records.`);
- else if(/second|second hand/i.test(q)&&/(total|kitne|count|कितने|records|data)/i.test(q))answer=say(`Second Hand में ${second} records हैं।`,`Second Hand mein ${second} records hain.`,`Second Hand has ${second} records.`);
- else if(/accessor|accessories/i.test(q)&&/(total|kitne|count|कितने|records|data)/i.test(q))answer=say(`Accessories में ${acc} records हैं।`,`Accessories mein ${acc} records hain.`,`Accessories has ${acc} records.`);
- else if(/device|devices|फोन|mobile/i.test(q)&&/(total|kitne|count|कितने)/i.test(q)){const d=customers.reduce((s,x)=>s+(Number(x.deviceCount)>0?Number(x.deviceCount):1),0);answer=say(`कुल ${d} devices हैं।`,`Total ${d} devices hain.`,`There are ${d} devices.`);}
- else if(/profit|munafa|मुनाफा|कमाई/i.test(q)){const prof=repairing.reduce((s,x)=>s+Number(x.profit??(Number(x.total??x.payment??0)-Number(x.partsPrice||0))),0)+secondHand.reduce((s,x)=>s+Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))),0)+accessories.reduce((s,x)=>s+Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))),0);answer=say(`कुल ज्ञात profit ₹${prof.toLocaleString("en-IN")} है।`,`Total known profit ₹${prof.toLocaleString("en-IN")} hai.`,`Total known profit is ₹${prof.toLocaleString("en-IN")}.`);}
- else if(/delete|remove|हटा|डिलीट/i.test(q)){
-   const needle=n.replace(/delete|remove|हटा|डिलीट/gi," ").trim();
-   filtered=rows.filter(x=>normalizeText([x.customerName,x.name,x.phone,x.customerPhone,x.customerCode,x.imei,x.sn,x.__section].join(" ")).includes(needle));
-   if(filtered.length===1){const x=filtered[0];window.__aiDeleteCandidate=x;answer=say(`${x.customerName||x.name||"Record"} को delete करने के लिए नीचे confirmation दबाएँ.`,`${x.customerName||x.name||"Record"} delete karne ke liye neeche confirm dabao.`,`I found ${x.customerName||x.name||"this record"}. Confirm below to delete it.`);r.innerHTML=`<article class="result ai-action-result"><div class="result-name">${esc(x.customerName||x.name||"Record")}</div><div class="result-meta">${esc(x.__section||"")} • ${esc(x.phone||x.customerPhone||"")}</div><button id="aiConfirmDelete" class="repair-delete-btn" type="button">CONFIRM DELETE</button></article>`;a.innerHTML=`<div class="smart-answer-text">${esc(answer)}</div>`;return;}
-   answer=say("Delete के लिए customer का नाम, phone या code बताइए।","Delete ke liye customer ka naam, phone ya code batao.","Tell me the customer name, phone or code to identify what to delete.");
- }else{
-   filtered=rows.filter(x=>normalizeText([x.customerName,x.customerCode,x.phone,x.customerPhone,x.imei,x.brand,x.model,x.device,x.problem,x.name,x.category,x.sn,x.financeCompany,x.__section,formatDateTime(x)].join(" ")).includes(n));
-   answer=filtered.length?say(`${filtered.length} matching records मिले।`,`${filtered.length} matching records mile.`,`Found ${filtered.length} matching records.`):say("कोई matching record नहीं मिला।","Koi matching record nahi mila.","No matching record found.");
- }
- a.innerHTML=`<div class="smart-answer-text">${esc(answer)}</div>`;
- if(!r.querySelector("#aiConfirmDelete"))r.innerHTML=filtered.slice(0,50).map(x=>`<article class="result"><div class="result-name">${esc(x.customerName||x.name||"Record")}</div><div class="result-meta">${esc(x.__section||"")} • ${esc(x.phone||x.customerPhone||"")} • ${esc(formatDateTime(x))}</div><div class="result-grid">${item("Device",x.device||`${x.brand||""} ${x.model||""}`)}${item("IMEI / SN",x.imei||x.sn||"—")}${item("Amount",x.phoneAmount!=null?`₹${Number(x.phoneAmount).toLocaleString("en-IN")}`:x.total!=null?`₹${Number(x.total).toLocaleString("en-IN")}`:x.salePrice!=null?`₹${Number(x.salePrice).toLocaleString("en-IN")}`:"—")}${item("Customer",x.customerName||x.name||"—")}</div></article>`).join("");
-}
-function initSmartVoice(){
- const b=$("smartVoiceButton"),input=$("universalSearchInput"),st=$("smartVoiceStatus");if(!b||!input)return;
- const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
- if(!SR){b.disabled=true;if(st)st.textContent="Voice recognition इस browser में available नहीं है.";return;}
- const rec=new SR();rec.continuous=false;rec.interimResults=true;rec.maxAlternatives=1;let listening=false;
- b.addEventListener("click",()=>{if(listening){try{rec.stop()}catch(_){ }return;}rec.lang=/[ऀ-ॿ]/.test(input.value)||/\b(kya|kitne|kaise|dikhao|batao|hai|hain|kholo|karo)\b/i.test(input.value)?"hi-IN":"en-IN";try{rec.start();listening=true;b.classList.add("listening");if(st)st.textContent="🎙️ सुन रहा हूँ…";}catch(_){if(st)st.textContent="Voice start नहीं हो पाया.";}}});
- rec.onresult=e=>{
-   let t="",final=false;
-   for(let i=e.resultIndex;i<e.results.length;i++){t+=e.results[i][0].transcript;final=e.results[i].isFinal||final;}
-   input.value=t.trim();smartSearch();
-   if(final&&"speechSynthesis" in window){
-      const ans=$("smartSearchAnswer")?.innerText?.trim();
-      if(ans){speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(ans);u.lang=/[\u0900-\u097f]/.test(t)?"hi-IN":"en-IN";u.rate=.98;speechSynthesis.speak(u);}
-   }
- };
- rec.onerror=e=>{listening=false;b.classList.remove("listening");if(st)st.textContent=e.error==="not-allowed"?"Microphone permission allow करें.":"Voice recognition error. फिर कोशिश करें.";};
- rec.onend=()=>{listening=false;b.classList.remove("listening");if(st&&!st.textContent.includes("permission")&&!st.textContent.includes("error"))st.textContent="Voice Assistant ready";};
-}
-function aiDeleteCandidateAction(){
- document.addEventListener("click",async e=>{const b=e.target.closest("#aiConfirmDelete");if(!b)return;const x=window.__aiDeleteCandidate;if(!x)return;if(!confirm(`Delete ${x.customerName||x.name||"this record"}?`))return;try{if(x.__section==="Finance")await deleteDoc(doc(db,COL,x.id));else if(x.__section==="Repairing")await deleteDoc(doc(db,REPAIR_COL,x.id));else if(x.__section==="Second Hand")await deleteDoc(doc(db,SECOND_COL,x.id));else if(x.__section==="Accessories")await deleteDoc(doc(db,ACCESSORY_COL,x.id));window.__aiDeleteCandidate=null;smartSearch();}catch(err){console.error(err);alert("Delete नहीं हुआ. Firebase connection/rules check करें.");}});
+ const q=val("universalSearchInput");const a=$("smartSearchAnswer"),r=$("smartSearchResults");if(!a||!r)return;const n=normalizeText(q);if(!n){a.innerHTML='<div class="empty">पूछें: “आज कितने customer हैं?”, “Aman ka phone dikhao”, “show repairing data”, “profit कितना है?”</div>';r.innerHTML="";return;}
+ const lang=smartAnswerLanguage(q), rows=allDataRows();let answer="", filtered=[];
+ const total=customers.length, repairs=repairing.length, second=secondHand.length, acc=accessories.length;
+ if(/(total|kitne|how many|count|कितने|कितनी|कितना).*(customer|customers|ग्राहक)/i.test(q)) answer=lang==="hi"?`कुल ${total} customer हैं।`:lang==="hinglish"?`Total ${total} customers hain.`:`There are ${total} customers in the database.`;
+ else if(/(repair|repairing|रिपेयर)/i.test(q)&&/(total|kitne|count|कितने)/i.test(q)) answer=lang==="hi"?`Repairing में ${repairs} records हैं।`:lang==="hinglish"?`Repairing mein ${repairs} records hain.`:`There are ${repairs} repairing records.`;
+ else if(/(second|second hand)/i.test(q)&&/(total|kitne|count|कितने)/i.test(q)) answer=`Second Hand mein ${second} records hain.`;
+ else if(/(accessor|accessories)/i.test(q)&&/(total|kitne|count|कितने)/i.test(q)) answer=`Accessories mein ${acc} records hain.`;
+ else if(/(profit|munafa|मुनाफा)/i.test(q)){const prof=repairing.reduce((s,x)=>s+Number(x.profit??(Number(x.total ?? x.payment ?? 0)-Number(x.partsPrice||0))),0)+secondHand.reduce((s,x)=>s+Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))),0)+accessories.reduce((s,x)=>s+Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))),0);answer=lang==="hi"?`कुल ज्ञात profit ₹${prof.toLocaleString("en-IN")} है।`:`Total known profit is ₹${prof.toLocaleString("en-IN")}.`;}
+ else {filtered=rows.filter(x=>normalizeText([x.customerName,x.customerCode,x.phone,x.customerPhone,x.imei,x.brand,x.model,x.device,x.problem,x.name,x.category,x.sn,x.financeCompany,x.__section,formatDateTime(x)].join(" ")).includes(n));answer=filtered.length?(lang==="hi"?`${filtered.length} matching records मिले।`:lang==="hinglish"?`${filtered.length} matching records mile.`:`Found ${filtered.length} matching records.`):(lang==="hi"?"कोई matching record नहीं मिला।":"No matching record found.");}
+ a.innerHTML=`<div class="smart-answer-text">${esc(answer)}</div>`;r.innerHTML=filtered.slice(0,50).map(x=>`<article class="result"><div class="result-name">${esc(x.customerName||x.name||"Record")}</div><div class="result-meta">${esc(x.__section||"")} • ${esc(x.phone||x.customerPhone||"")} • ${esc(formatDateTime(x))}</div><div class="result-grid">${item("Device",x.device||`${x.brand||""} ${x.model||""}`)}${item("IMEI / SN",x.imei||x.sn||"—")}${item("Amount",x.phoneAmount!=null?`₹${Number(x.phoneAmount).toLocaleString("en-IN")}`:x.total!=null?`₹${Number(x.total).toLocaleString("en-IN")}`:x.salePrice!=null?`₹${Number(x.salePrice).toLocaleString("en-IN")}`:"—")}${item("Customer",x.customerName||x.name||"—")}</div></article>`).join("");
 }
 
 function applyTheme(theme){
@@ -2240,8 +2205,6 @@ function featureNav(){
     $("homeSearchButton")?.addEventListener("click",()=>{show("smartSearchSection");$("universalSearchInput")?.focus();smartSearch();audit("customer_search",{section:"All Data",description:"Smart database search opened"});});
     $("recentDeletedButton")?.addEventListener("click",()=>{show("recentDeletedSection");renderRecentlyDeleted();});
     $("universalSearchInput")?.addEventListener("input",smartSearch);
-    initSmartVoice();
-    aiDeleteCandidateAction();
     $("closePdfSelectButton")?.addEventListener("click",()=>$("pdfSelectModal")?.classList.add("hidden"));
     $("pdfChoices")?.addEventListener("click",e=>{const b=e.target.closest("[data-pdf-section]");if(b)runPdfWithSelectedDate(b.dataset.pdfSection)});
 }
@@ -2263,17 +2226,15 @@ document.addEventListener("click",e=>{
 
 async function init(){
     setupPin();
-    $("firebaseRetryButton")?.addEventListener("click",()=>{
-        location.reload();
+    authInit().catch(e=>{
+        console.error("Firebase authentication startup failed:",e);
     });
-    firebaseState="connecting";
-    updateAdmin();
-    authInit().catch(e=>console.error("Firebase authentication startup failed:",e));
-    authReady.then(()=>loadSharedPin()).then(()=>{
-        if($("connectionStatus")){$("connectionStatus").textContent="Firebase connected ✓";$("connectionStatus").classList.remove("error");}
-    }).catch(e=>{
+    authReady.then(()=>loadSharedPin()).catch(e=>{
         console.error("Firebase/PIN initialization failed:",e);
-        if($("connectionStatus")){$("connectionStatus").textContent="Firebase authentication failed — Anonymous Sign-in enable करें.";$("connectionStatus").classList.add("error");}
+        if($("connectionStatus")){
+            $("connectionStatus").textContent="Firebase authentication failed. Anonymous Sign-in ON करें.";
+            $("connectionStatus").classList.add("error");
+        }
     });
 
     nav();
@@ -2312,7 +2273,9 @@ async function init(){
         purgeExpiredDeleted();
         subscribe();
         subscribeRepairing();
-    subscribeInventory();
+        subscribeInventory();
+    }).catch(e=>{
+        console.error("Firebase data initialization blocked:",e);
     });
 
     $("customerForm")
