@@ -141,6 +141,14 @@
       <div><div class="eyebrow">PDF EXPORT</div><h2>Select Data</h2><small class="section-subtitle">जिस section को चुनेंगे उसी का पूरा premium PDF बनेगा</small></div>
       <button id="closePdfSelectButton" class="close" type="button">×</button>
     </div>
+    <div class="pdf-date-filter">
+      <div class="pdf-date-title">📅 Date Filter <small>Optional — खाली छोड़ने पर पूरा data PDF में आएगा</small></div>
+      <div class="pdf-date-row">
+        <label>From Date<input id="pdfFromDate" type="date"></label>
+        <label>To Date<input id="pdfToDate" type="date"></label>
+      </div>
+      <div class="pdf-date-format">उदाहरण: <b>01/08/2026</b> से <b>19/08/2026</b></div>
+    </div>
     <div id="pdfChoices" class="pdf-choice-grid">
       <button type="button" data-pdf-section="finance"><span>💳</span><b>Finance</b><small>Customer + finance records</small></button>
       <button type="button" data-pdf-section="repairing"><span>🛠️</span><b>Repairing</b><small>Complete repairing records</small></button>
