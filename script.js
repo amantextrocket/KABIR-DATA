@@ -1489,15 +1489,23 @@ function showCustomerDetail(c){
 function closeCustomerDetail(){activeCustomerId=null;$("customerDetailModal")?.classList.add("hidden")}
 async function deleteCustomer(){
     if(enforceWriteLock("pinMessage"))return;
-    const c=customers.find(x=>x.id===activeCustomerId);if(!c)return;
+    const c=customers.find(x=>x.id===activeCustomerId);
+    if(!c){alert("यह customer Finance/Customer database में नहीं है, इसलिए Customer Edit/Delete उपलब्ध नहीं है।");return;}
     if(!confirm(`Delete ${c.customerName||"this customer"} (${c.customerCode||""}) permanently?`))return;
-    try{await deleteDoc(doc(db,COL,c.id)); await audit("customer_delete",{section:"Kabir Mobile Data",customerId:c.id,customerCode:c.customerCode,customerName:c.customerName,description:`Customer ${c.customerName||c.customerCode||c.id} deleted`}); closeCustomerDetail()}
-    catch(e){console.error(e);alert("Customer delete नहीं हुआ. Firebase Rules check करें.")}
+    try{
+        await deleteDoc(doc(db,COL,c.id));
+        await audit("customer_delete",{section:"Kabir Mobile Data",customerId:c.id,customerCode:c.customerCode,customerName:c.customerName,description:`Customer ${c.customerName||c.customerCode||c.id} deleted`});
+        closeCustomerDetail();
+        renderAllCustomers();
+        showSuccessToast("Customer Deleted","Customer record deleted successfully");
+    }catch(e){console.error(e);alert("Customer delete नहीं हुआ. Firebase Rules check करें.")}
 }
 function editCustomer(){
     if(enforceWriteLock("formMessage"))return;
-    const c=customers.find(x=>x.id===activeCustomerId);if(!c)return;
-    closeCustomerDetail();show("addSection");
+    const c=customers.find(x=>x.id===activeCustomerId);
+    if(!c){alert("यह customer Finance/Customer database में नहीं है, इसलिए Customer Edit उपलब्ध नहीं है।");return;}
+    closeCustomerDetail();
+    show("addSection");
     const map={customerName:"customerName",address:"address",pincode:"pincode",city:"city",state:"state",phone:"phone",
       brand:"brand",model:"model",imei:"imei",colour:"colour",storage:"storage",financeCompany:"financeCompany",
       phoneAmount:"phoneAmount",downPayment:"downPayment",emiAmount:"emiAmount",emiMonths:"emiMonths",
@@ -1509,7 +1517,7 @@ function editCustomer(){
     $("brand").dispatchEvent(new Event("change"));
     setTimeout(()=>{
         $("model").value=c.model||"";$("model").dispatchEvent(new Event("change"));
-        setTimeout(()=>{$("colour").value=c.colour||"";$("storage").value=c.storage||""},0);
+        setTimeout(()=>{$("colour").value=c.colour||"";$('storage').value=c.storage||""},0);
     },100);
 }
 
@@ -1731,6 +1739,7 @@ function showUnifiedCustomerHistory(phone,name){
     const title=name||finance[0]?.customerName||repair[0]?.customerName||second[0]?.customerName||acc[0]?.customerName||"Customer";
     $("detailTitle").textContent=`${title} • Complete History`;
     activeCustomerId=finance[0]?.id||null;
+    window.activeUnifiedCustomer={phone:p,name:title,financeId:finance[0]?.id||null,repairId:repair[0]?.id||null,secondId:second[0]?.id||null,accessoryId:acc[0]?.id||null};
     const editBtn=$("editCustomerButton"),deleteBtn=$("deleteCustomerButton");
     const financeEditable=!!activeCustomerId;
     if(editBtn){editBtn.disabled=!financeEditable;editBtn.title=financeEditable?"Edit Finance customer":"No Finance customer record to edit";}
@@ -1924,18 +1933,40 @@ function pdfDrawTable(pdf,title,headers,rows){
     return pdf;
 }
 
-async function buildSelectedPdf(section){
+function pdfRecordDate(row){
+    const v=row?.createdAt;
+    const d=v?.toDate?.() || (v instanceof Date?v:(v?new Date(v):null));
+    return d&&!Number.isNaN(d.getTime())?d:null;
+}
+function pdfDateInputValue(row){
+    const d=pdfRecordDate(row);
+    if(!d)return "";
+    const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,"0"),day=String(d.getDate()).padStart(2,"0");
+    return `${y}-${m}-${day}`;
+}
+function filterPdfRowsByDate(rows,from,to){
+    if(!from&&!to)return rows;
+    const fromD=from?new Date(`${from}T00:00:00`):null;
+    const toD=to?new Date(`${to}T23:59:59.999`):null;
+    return rows.filter(r=>{const d=pdfRecordDate(r);if(!d)return false;return (!fromD||d>=fromD)&&(!toD||d<=toD);});
+}
+async function buildSelectedPdf(section,fromDate="",toDate=""){
     try{
+        if(fromDate&&toDate&&fromDate>toDate){alert("From date, To date से पहले नहीं हो सकती।");return;}
         if(!window.jspdf)await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
         const {jsPDF}=window.jspdf;
         const pdf=new jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
         await ensurePdfFont(pdf);
 
         let title="",headers=[],rows=[],file="";
+        const financeData=filterPdfRowsByDate(customers,fromDate,toDate);
+        const repairingData=filterPdfRowsByDate(repairing,fromDate,toDate);
+        const secondHandData=filterPdfRowsByDate(secondHand,fromDate,toDate);
+        const accessoriesData=filterPdfRowsByDate(accessories,fromDate,toDate);
         if(section==="finance"){
             title="KABIR MOBILE DATA — FINANCE";
             headers=["Customer Code","Date & Time","Customer Name","Phone","Address","PIN","City","State","Brand","Model","IMEI","Colour","Storage","Finance Company","Phone Amount","Down Payment","EMI Amount","EMI Months","Lock","Stock","Counter","Financer","Bill"];
-            rows=pdfRowsFromObject(customers,[
+            rows=pdfRowsFromObject(financeData,[
                 ["customerCode"],["createdAt","",pdfDate],["customerName"],["phone"],["address"],["pincode"],["city"],["state"],["brand"],["model"],["imei"],["colour"],["storage"],["financeCompany"],
                 ["phoneAmount","",x=>pdfMoney(x.phoneAmount)],["downPayment","",x=>pdfMoney(x.downPayment)],["emiAmount","",x=>pdfMoney(x.emiAmount)],["emiMonths"],["lockName"],["stock"],["counter"],["financerName"],["billYes","",x=>x.billYes?"YES":"NO"]
             ]);
@@ -1943,17 +1974,17 @@ async function buildSelectedPdf(section){
         }else if(section==="repairing"){
             title="KABIR MOBILE DATA — REPAIRING";
             headers=["Date & Time","Customer Name","Phone","Brand / Model","Problem","Repairing By","Total","Parts Price","Profit"];
-            rows=pdfRowsFromObject(repairing,[["createdAt","",pdfDate],["customerName"],["phone"],["device"],["problem"],["repairBy"],["total","",x=>pdfMoney(x.total??x.payment)],["partsPrice","",x=>pdfMoney(x.partsPrice)],["profit","",x=>pdfMoney(x.profit??(Number(x.total??x.payment??0)-Number(x.partsPrice||0)))]]);
+            rows=pdfRowsFromObject(repairingData,[["createdAt","",pdfDate],["customerName"],["phone"],["device"],["problem"],["repairBy"],["total","",x=>pdfMoney(x.total??x.payment)],["partsPrice","",x=>pdfMoney(x.partsPrice)],["profit","",x=>pdfMoney(x.profit??(Number(x.total??x.payment??0)-Number(x.partsPrice||0)))]]);
             file="Kabir_Repairing_Data.pdf";
         }else if(section==="secondHand"){
             title="KABIR MOBILE DATA — SECOND HAND";
             headers=["Date & Time","Condition","Customer Name","Phone","Brand","Model","IMEI","Purchase Price","Sell Price","Profit"];
-            rows=pdfRowsFromObject(secondHand,[["createdAt","",pdfDate],["condition"],["customerName"],["phone"],["brand"],["model","",x=>x.model||x.device],["imei"],["price","",x=>pdfMoney(x.price)],["salePrice","",x=>pdfMoney(x.salePrice)],["profit","",x=>pdfMoney(x.profit??(Number(x.salePrice||0)-Number(x.price||0)))]]);
+            rows=pdfRowsFromObject(secondHandData,[["createdAt","",pdfDate],["condition"],["customerName"],["phone"],["brand"],["model","",x=>x.model||x.device],["imei"],["price","",x=>pdfMoney(x.price)],["salePrice","",x=>pdfMoney(x.salePrice)],["profit","",x=>pdfMoney(x.profit??(Number(x.salePrice||0)-Number(x.price||0)))]]);
             file="Kabir_Second_Hand_Data.pdf";
         }else if(section==="accessories"){
             title="KABIR MOBILE DATA — ACCESSORIES";
             headers=["Date & Time","Name","Category","SN","Qty","Customer Name","Customer Phone","Purchase","Sell","Profit"];
-            rows=pdfRowsFromObject(accessories,[["createdAt","",pdfDate],["name"],["category"],["sn"],["quantity"],["customerName"],["customerPhone"],["price","",x=>pdfMoney(x.price)],["salePrice","",x=>pdfMoney(x.salePrice)],["profit","",x=>pdfMoney(x.profit??(Number(x.salePrice||0)-Number(x.price||0)))]]);
+            rows=pdfRowsFromObject(accessoriesData,[["createdAt","",pdfDate],["name"],["category"],["sn"],["quantity"],["customerName"],["customerPhone"],["price","",x=>pdfMoney(x.price)],["salePrice","",x=>pdfMoney(x.salePrice)],["profit","",x=>pdfMoney(x.profit??(Number(x.salePrice||0)-Number(x.price||0)))]]);
             file="Kabir_Accessories_Data.pdf";
         }else if(section==="customers"){
             title="KABIR MOBILE DATA — CUSTOMERS";
@@ -1964,22 +1995,22 @@ async function buildSelectedPdf(section){
                 if(!map.has(key))map.set(key,{name:n||"Customer",phone:p,types:new Set()});
                 map.get(key).types.add(type);
             };
-            customers.forEach(x=>add(x.customerName,x.phone,"Finance"));
-            repairing.forEach(x=>add(x.customerName,x.phone,"Repairing"));
-            secondHand.forEach(x=>add(x.customerName,x.phone,"Second Hand"));
-            accessories.forEach(x=>add(x.customerName,x.customerPhone,"Accessories"));
+            financeData.forEach(x=>add(x.customerName,x.phone,"Finance"));
+            repairingData.forEach(x=>add(x.customerName,x.phone,"Repairing"));
+            secondHandData.forEach(x=>add(x.customerName,x.phone,"Second Hand"));
+            accessoriesData.forEach(x=>add(x.customerName,x.customerPhone,"Accessories"));
             const list=[...map.values()];
             title="KABIR MOBILE DATA — CUSTOMERS";
             headers=["Section","Date & Time","Customer Name","Phone","Code / Identifier","Device / Item","IMEI / SN","Amount / Price","Profit"];
-            const financeRows=customers.map(x=>["Finance",pdfDate(x.createdAt),x.customerName,x.phone,x.customerCode,`${x.brand||""} ${x.model||""}`.trim(),x.imei,pdfMoney(x.phoneAmount),"—"]);
-            const repairRows=repairing.map(x=>["Repairing",pdfDate(x.createdAt),x.customerName,x.phone,"—",x.device,x.phone?x.phone:"—",pdfMoney(x.total??x.payment),pdfMoney(x.profit??(Number(x.total??x.payment??0)-Number(x.partsPrice||0)))]);
-            const secondRows=secondHand.map(x=>["Second Hand",pdfDate(x.createdAt),x.customerName,x.phone,"—",`${x.brand||""} ${x.model||x.device||""}`.trim(),x.imei,pdfMoney(x.salePrice||x.price),pdfMoney(x.profit??(Number(x.salePrice||0)-Number(x.price||0)))]);
-            const accRows=accessories.map(x=>["Accessories",pdfDate(x.createdAt),x.customerName||"—",x.customerPhone||"—","—",x.name,x.sn,pdfMoney(x.salePrice||x.price),pdfMoney(x.profit??(Number(x.salePrice||0)-Number(x.price||0)))]);
+            const financeRows=financeData.map(x=>["Finance",pdfDate(x.createdAt),x.customerName,x.phone,x.customerCode,`${x.brand||""} ${x.model||""}`.trim(),x.imei,pdfMoney(x.phoneAmount),"—"]);
+            const repairRows=repairingData.map(x=>["Repairing",pdfDate(x.createdAt),x.customerName,x.phone,"—",x.device,x.phone?x.phone:"—",pdfMoney(x.total??x.payment),pdfMoney(x.profit??(Number(x.total??x.payment??0)-Number(x.partsPrice||0)))]);
+            const secondRows=secondHandData.map(x=>["Second Hand",pdfDate(x.createdAt),x.customerName,x.phone,"—",`${x.brand||""} ${x.model||x.device||""}`.trim(),x.imei,pdfMoney(x.salePrice||x.price),pdfMoney(x.profit??(Number(x.salePrice||0)-Number(x.price||0)))]);
+            const accRows=accessoriesData.map(x=>["Accessories",pdfDate(x.createdAt),x.customerName||"—",x.customerPhone||"—","—",x.name,x.sn,pdfMoney(x.salePrice||x.price),pdfMoney(x.profit??(Number(x.salePrice||0)-Number(x.price||0)))]);
             rows=[...financeRows,...repairRows,...secondRows,...accRows];
             file="Kabir_Customers_Data.pdf";
         }else return;
 
-        await audit("pdf_download",{section:`PDF ${section}`,description:`Premium ${section} PDF downloaded`,extra:{records:rows.length}});
+        await audit("pdf_download",{section:`PDF ${section}`,description:`Premium ${section} PDF downloaded`,extra:{records:rows.length,fromDate:fromDate||null,toDate:toDate||null}});
         pdfDrawTable(pdf,title,headers,rows);
         pdf.save(file);
         $("pdfSelectModal")?.classList.add("hidden");
@@ -1991,6 +2022,13 @@ async function buildSelectedPdf(section){
 }
 function downloadFullPdf(){
     $("pdfSelectModal")?.classList.remove("hidden");
+    const from=$("pdfFromDate"),to=$("pdfToDate");
+    if(from&&!from.value)from.value="";
+    if(to&&!to.value)to.value="";
+}
+function runPdfWithSelectedDate(section){
+    const from=$("pdfFromDate")?.value||"",to=$("pdfToDate")?.value||"";
+    buildSelectedPdf(section,from,to);
 }
 function applyTheme(theme){
     const allowed=["dark","light","midnight","silver","glass"];
@@ -2030,11 +2068,11 @@ function featureNav(){
     $("repairForm")?.addEventListener("submit",saveRepair);
     $("exportCustomersButton")?.addEventListener("click",exportCustomers);
     $("exportRepairingButton")?.addEventListener("click",exportRepairing);
-    $("deleteCustomerButton")?.addEventListener("click",deleteCustomer);
-    $("editCustomerButton")?.addEventListener("click",editCustomer);
-    $("closeDetailButton")?.addEventListener("click",closeCustomerDetail);
+    $("deleteCustomerButton")?.addEventListener("click",e=>{e.preventDefault();e.stopPropagation();deleteCustomer();});
+    $("editCustomerButton")?.addEventListener("click",e=>{e.preventDefault();e.stopPropagation();editCustomer();});
+    $("closeDetailButton")?.addEventListener("click",e=>{e.preventDefault();e.stopPropagation();closeCustomerDetail();});
     $("closePdfSelectButton")?.addEventListener("click",()=>$("pdfSelectModal")?.classList.add("hidden"));
-    $("pdfChoices")?.addEventListener("click",e=>{const b=e.target.closest("[data-pdf-section]");if(b)buildSelectedPdf(b.dataset.pdfSection)});
+    $("pdfChoices")?.addEventListener("click",e=>{const b=e.target.closest("[data-pdf-section]");if(b)runPdfWithSelectedDate(b.dataset.pdfSection)});
 }
 
 /* =========================================================
