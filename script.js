@@ -31,6 +31,7 @@ const REMOTE_DEVICES_URL="https://cdn.jsdelivr.net/gh/bsthen/device-models/devic
 const isAdminPage=!!document.querySelector(".admin");
 
 let user=null;
+let firebaseState="connecting";
 let customers=[];
 let repairing=[];
 let secondHand=[];
@@ -653,22 +654,20 @@ async function authInit(){
         if(!settled){
             const e=new Error("Firebase authentication timed out. Enable Anonymous Sign-in and check Firebase configuration.");
             console.error(e);
-            if($("connectionStatus")){
-                $("connectionStatus").textContent="Firebase authentication timed out — Anonymous Sign-in enable करें.";
-                $("connectionStatus").classList.add("error");
-            }
+            firebaseState="timeout";
+            updateAdmin();
+            if($("pinMessage"))msg("pinMessage","Firebase connection timed out. Firebase Console में Anonymous Sign-in ON करें.");
             fail(e);
         }
     },12000);
     const succeed=u=>{
         if(!settled&&u){
-            settled=true; clearTimeout(failTimer); user=u; updateAdmin(); authReadyResolve(u);
-            if($("connectionStatus")){ $("connectionStatus").textContent="Firebase connected ✓"; $("connectionStatus").classList.remove("error"); }
+            settled=true; clearTimeout(failTimer); user=u; firebaseState="connected"; updateAdmin(); authReadyResolve(u);
         }
     };
     const fail=e=>{
         if(!settled){
-            settled=true; clearTimeout(failTimer); user=null; updateAdmin();
+            settled=true; clearTimeout(failTimer); user=null; firebaseState="failed"; updateAdmin();
             const err=e instanceof Error?e:Error(String(e||"Firebase authentication failed"));
             authReadyReject(err);
         }
@@ -679,8 +678,10 @@ async function authInit(){
         if(auth.currentUser) succeed(auth.currentUser);
     }catch(e){
         console.error("Anonymous sign-in failed:",e);
+        firebaseState="failed";
         if($("adminFirebaseStatus"))msg("adminFirebaseStatus","Firebase authentication error: "+(e?.message||""));
-        if($("connectionStatus")){ $("connectionStatus").textContent="Firebase authentication failed — Anonymous Sign-in enable करें."; $("connectionStatus").classList.add("error"); }
+        if($("pinMessage"))msg("pinMessage","Firebase login failed. Anonymous Sign-in ON करें.");
+        updateAdmin();
         fail(e);
     }
     return authReady;
@@ -767,10 +768,19 @@ function updateAdmin(){
                 0
             );
 
+    const labels={
+        connecting:"Firebase connecting…",
+        connected:"Firebase connected ✓",
+        failed:"Firebase authentication failed — Anonymous Sign-in enable करें.",
+        timeout:"Firebase authentication timed out — Anonymous Sign-in enable करें."
+    };
     if($("adminFirebaseStatus"))
-        $("adminFirebaseStatus").textContent=user?"Firebase connected":"Connecting to Firebase…";
-    if($("connectionStatus"))
-        $("connectionStatus").textContent=user?"Firebase connected ✓":"Firebase connecting…";
+        $("adminFirebaseStatus").textContent=labels[firebaseState]||labels.connecting;
+    if($("connectionStatus")){
+        $("connectionStatus").textContent=labels[firebaseState]||labels.connecting;
+        $("connectionStatus").classList.toggle("error",firebaseState==="failed"||firebaseState==="timeout");
+    }
+    $("firebaseRetryButton")?.classList.toggle("hidden",!(firebaseState==="failed"||firebaseState==="timeout"));
 }
 
 
@@ -2253,6 +2263,11 @@ document.addEventListener("click",e=>{
 
 async function init(){
     setupPin();
+    $("firebaseRetryButton")?.addEventListener("click",()=>{
+        location.reload();
+    });
+    firebaseState="connecting";
+    updateAdmin();
     authInit().catch(e=>console.error("Firebase authentication startup failed:",e));
     authReady.then(()=>loadSharedPin()).then(()=>{
         if($("connectionStatus")){$("connectionStatus").textContent="Firebase connected ✓";$("connectionStatus").classList.remove("error");}
