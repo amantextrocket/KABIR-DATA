@@ -305,52 +305,37 @@ async function loadSharedPin(){
     pinLoadPromise=(async()=>{
         const securityRef=doc(db,SETTINGS_COL,SETTINGS_DOC);
         try{
-            // Primary location used by both Main Website and Admin Panel.
+            // SECURITY: PIN verification must use the live Firebase value.
+            // localStorage is never accepted as the source of truth.
             const securitySnap=await getDoc(securityRef);
             if(securitySnap.exists()){
                 const p=String(securitySnap.data()?.pin||"");
                 if(/^\d{4}$/.test(p)){
                     sharedPin=p;
-                    localStorage.setItem(PIN_KEY,p);
                     pinLoaded=true;
                     return p;
                 }
             }
-
-            // Backward compatibility with the earlier settings/app document.
             const legacyRef=doc(db,SETTINGS_COL,"app");
             const legacySnap=await getDoc(legacyRef);
             if(legacySnap.exists()){
                 const p=String(legacySnap.data()?.pin||"");
                 if(/^\d{4}$/.test(p)){
                     sharedPin=p;
-                    localStorage.setItem(PIN_KEY,p);
-                    await setDoc(securityRef,{pin:p,updatedAt:serverTimestamp()},{merge:true});
                     pinLoaded=true;
+                    await setDoc(securityRef,{pin:p,updatedAt:serverTimestamp()},{merge:true});
                     return p;
                 }
             }
-
-            const cached=localStorage.getItem(PIN_KEY);
-            if(/^\d{4}$/.test(cached||"")){
-                sharedPin=cached;
-                await setDoc(securityRef,{pin:sharedPin,updatedAt:serverTimestamp()},{merge:true});
-            }else{
-                sharedPin=DEFAULT_PIN;
-                await setDoc(securityRef,{pin:sharedPin,updatedAt:serverTimestamp()},{merge:true});
-                localStorage.setItem(PIN_KEY,sharedPin);
-            }
+            // Only create the default on a genuinely new Firebase setup.
+            sharedPin=DEFAULT_PIN;
+            await setDoc(securityRef,{pin:DEFAULT_PIN,updatedAt:serverTimestamp()},{merge:true});
+            pinLoaded=true;
             return sharedPin;
         }catch(e){
             console.error("Shared PIN load failed:",e);
-            const cached=localStorage.getItem(PIN_KEY);
-            if(/^\d{4}$/.test(cached||"")){
-                sharedPin=cached;
-                return sharedPin;
-            }
+            pinLoaded=false;
             throw Error("PIN load नहीं हुआ. Firebase connection check करें.");
-        }finally{
-            pinLoaded=true;
         }
     })();
     return pinLoadPromise;
@@ -364,7 +349,6 @@ async function changeSharedPin(newPin){
     // Keep the legacy document synchronized so older deployments cannot disagree.
     await setDoc(doc(db,SETTINGS_COL,"app"),{pin:newPin,updatedAt:serverTimestamp()},{merge:true});
     sharedPin=newPin;
-    localStorage.setItem(PIN_KEY,newPin);
     pinLoaded=true;
     await audit("pin_change",{section:"Admin Panel",description:"Shared PIN changed from Admin Panel"});
 }
@@ -626,27 +610,34 @@ function setupPin(){
         const entered=e.value;
         const finish=async()=>{
             if(e.value!==entered)return;
-            if(entered===pin()){
-                audit("login_success",{section:$('appScreen')?.classList.contains('admin')?'Admin Panel':'Kabir Mobile Data',description:'PIN login successful',deviceBrand:deviceInfo().brand,deviceModel:deviceInfo().model});
-                unlock();
-                msg("pinMessage","");
-            }else{
-                audit("login_failed",{section:$('appScreen')?.classList.contains('admin')?'Admin Panel':'Kabir Mobile Data',description:'Incorrect PIN entered'});
-                msg("pinMessage","Incorrect PIN");
+            // Never unlock from a cached/local PIN. Wait for live Firebase PIN.
+            try{
+                await authReady;
+                const livePin=await loadSharedPin();
+                if(e.value!==entered)return;
+                if(entered===livePin){
+                    audit("login_success",{section:$('appScreen')?.classList.contains('admin')?'Admin Panel':'Kabir Mobile Data',description:'PIN login successful',deviceBrand:deviceInfo().brand,deviceModel:deviceInfo().model});
+                    unlock();
+                    msg("pinMessage","");
+                }else{
+                    audit("login_failed",{section:$('appScreen')?.classList.contains('admin')?'Admin Panel':'Kabir Mobile Data',description:'Incorrect PIN entered'});
+                    msg("pinMessage","Incorrect PIN");
+                    pinError();
+                    setTimeout(()=>{e.value="";dots("");msg("pinMessage","");e.focus()},240);
+                }
+            }catch(err){
+                msg("pinMessage","Firebase से PIN verify नहीं हो पाया.");
                 pinError();
-                setTimeout(()=>{e.value="";dots("");msg("pinMessage","");e.focus()},240);
+                setTimeout(()=>{e.value="";dots("");e.focus()},240);
             }
         };
-        // Fast path: cached PIN is checked immediately. Firebase refresh never blocks the keypad.
         finish();
-        if(!pinLoaded){
-            loadSharedPin().then(()=>{if(e.value===entered)finish()}).catch(()=>{});
-        }
     };
     e.addEventListener("input",attempt);
     $("lockButton")?.addEventListener("click",lock);
-    if(sessionStorage.getItem("kabir_unlocked")==="1")unlock();
-    else setTimeout(()=>e.focus(),100);
+    // Do not restore an unlocked session after a reload/device change.
+    sessionStorage.removeItem("kabir_unlocked");
+    setTimeout(()=>e.focus(),100);
 }
 
 /* =========================================================
@@ -821,7 +812,7 @@ function nav(){
 
 function closeTopLayer(){
     const ids=[
-        "customerDetailModal","themeModal","scannerModal",
+        "customerDetailModal","pdfSelectModal","themeModal","scannerModal",
         "repairSearchSection","repairAddSection","addSection","searchSection"
     ];
     for(const id of ids){
@@ -1492,6 +1483,8 @@ function showCustomerDetail(c){
       ${detailItem("Bill",c.billYes?"YES":"NO")}
     </div>`;
     $("customerDetailModal")?.classList.remove("hidden");
+    $("editCustomerButton")?.removeAttribute("disabled");
+    $("deleteCustomerButton")?.removeAttribute("disabled");
 }
 function closeCustomerDetail(){activeCustomerId=null;$("customerDetailModal")?.classList.add("hidden")}
 async function deleteCustomer(){
@@ -1736,7 +1729,12 @@ function showUnifiedCustomerHistory(phone,name){
     const same=x=>(p&&String(x.phone||x.customerPhone||"").replace(/\D/g,"")===p)||(!p&&n&&String(x.customerName||"").trim().toLowerCase()===n);
     const finance=customers.filter(same),repair=repairing.filter(same),second=secondHand.filter(same),acc=accessories.filter(same);
     const title=name||finance[0]?.customerName||repair[0]?.customerName||second[0]?.customerName||acc[0]?.customerName||"Customer";
-    $("detailTitle").textContent=`${title} • Complete History`;activeCustomerId=finance[0]?.id||null;
+    $("detailTitle").textContent=`${title} • Complete History`;
+    activeCustomerId=finance[0]?.id||null;
+    const editBtn=$("editCustomerButton"),deleteBtn=$("deleteCustomerButton");
+    const financeEditable=!!activeCustomerId;
+    if(editBtn){editBtn.disabled=!financeEditable;editBtn.title=financeEditable?"Edit Finance customer":"No Finance customer record to edit";}
+    if(deleteBtn){deleteBtn.disabled=!financeEditable;deleteBtn.title=financeEditable?"Delete Finance customer":"No Finance customer record to delete";}
     const rows=[];finance.forEach(x=>rows.push(`<article class="history-row"><b>💳 Finance / Phone</b><small>${esc(formatDateTime(x))}</small><span>${esc(`${x.brand||""} ${x.model||""}`)} • IMEI ${esc(x.imei||"—")} • ₹${Number(x.phoneAmount||0).toLocaleString("en-IN")}</span></article>`));repair.forEach(x=>rows.push(`<article class="history-row"><b>🛠 Repairing</b><small>${esc(formatDateTime(x))}</small><span>${esc(x.device||"")} • ${esc(x.problem||"")} • Total ₹${Number(x.total??x.payment??0).toLocaleString("en-IN")} • Parts ₹${Number(x.partsPrice||0).toLocaleString("en-IN")} • Profit ₹${Number(x.profit??(Number(x.total??x.payment??0)-Number(x.partsPrice||0))).toLocaleString("en-IN")}</span></article>`));second.forEach(x=>rows.push(`<article class="history-row"><b>📱 Second Hand</b><small>${esc(formatDateTime(x))}</small><span>${esc(`${x.brand||""} ${x.model||x.device||""}`)} • IMEI ${esc(x.imei||"—")} • Profit ₹${Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))).toLocaleString("en-IN")}</span></article>`));acc.forEach(x=>rows.push(`<article class="history-row"><b>🎧 Accessories</b><small>${esc(formatDateTime(x))}</small><span>${esc(x.name||"")} • SN ${esc(x.sn||"—")} • Profit ₹${Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))).toLocaleString("en-IN")}</span></article>`));
     $("customerDetailBody").innerHTML=`<div class="detail-grid">${detailItem("Customer",title)}${detailItem("Phone",p||finance[0]?.phone||repair[0]?.phone||second[0]?.phone||acc[0]?.customerPhone||"—")}${detailItem("Finance Records",finance.length)}${detailItem("Repairing Records",repair.length)}${detailItem("Second Hand Records",second.length)}${detailItem("Accessories Records",acc.length)}</div><div class="history-list">${rows.join("")||'<div class="empty">इस customer का कोई history record नहीं मिला.</div>'}</div>`;$("customerDetailModal")?.classList.remove("hidden");
 }
@@ -1846,39 +1844,154 @@ function exportRepairing(){
       "Brand / Model":r.device||"","Problem":r.problem||"","Repairing By":r.repairBy||"","Total":r.total??r.payment??0,"Parts Price":r.partsPrice||0,"Profit":r.profit??(Number(r.total??r.payment??0)-Number(r.partsPrice||0))})),
       "Kabir_Repairing_Data.xlsx","Repairing");
 }
-async function downloadCustomerPdf(){
-    const c=customers.find(x=>x.id===activeCustomerId);if(!c)return;
+/* =========================================================
+   PREMIUM PDF EXPORT — SECTION SELECTOR + FULL TABLES
+========================================================= */
+
+let pdfFontReady=false;
+async function ensurePdfFont(pdf){
+    if(pdfFontReady){pdf.setFont("NotoSans","normal");return true;}
     try{
-        await audit("customer_pdf",{section:"Kabir Mobile Data",customerId:c.id,customerCode:c.customerCode,customerName:c.customerName,description:`PDF downloaded for ${c.customerName||c.customerCode||c.id}`});
-        if(!window.jspdf)await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
-        const pdf=new window.jspdf.jsPDF();let y=18;
-        pdf.setFontSize(18);pdf.text("KABIR MOBILE DATA",14,y);y+=10;pdf.setFontSize(10);
-        [["Customer Code",c.customerCode],["Date & Time",formatDateTime(c)],["Customer Name",c.customerName],["Phone",c.phone],
-        ["Address",c.address],["PIN Code",c.pincode],["City / State",`${c.city||""}, ${c.state||""}`],["Brand",c.brand],["Model",c.model],
-        ["IMEI",c.imei],["Colour",c.colour],["RAM + Storage",c.storage],["Finance Company",c.financeCompany],
-        ["Phone Amount",`₹${c.phoneAmount||0}`],["Down Payment",`₹${c.downPayment||0}`],["EMI",`₹${c.emiAmount||0} × ${c.emiMonths||0} months`],
-        ["Lock",c.lockName],["Stock",c.stock],["Counter",c.counter],["Financer",c.financerName],["Bill",c.billYes?"YES":"NO"]].forEach(([a,b])=>{
-            if(y>280){pdf.addPage();y=18}pdf.setFont(undefined,"bold");pdf.text(String(a||""),14,y);
-            pdf.setFont(undefined,"normal");pdf.text(String(b||"-"),65,y,{maxWidth:130});y+=8;
-        });
-        pdf.save(`${c.customerCode||"customer"}_${(c.customerName||"customer").replace(/\s+/g,"_")}.pdf`);
-    }catch(e){console.error(e);alert("PDF बन नहीं पाया.")}
+        const url="https://cdn.jsdelivr.net/npm/@fontsource/noto-sans@5.2.5/files/noto-sans-latin-400-normal.ttf";
+        const res=await fetch(url,{mode:"cors",cache:"force-cache"});
+        if(!res.ok)throw Error("PDF font unavailable");
+        const buf=await res.arrayBuffer();
+        let binary="",bytes=new Uint8Array(buf);
+        const chunk=0x8000;
+        for(let i=0;i<bytes.length;i+=chunk)binary+=String.fromCharCode(...bytes.subarray(i,i+chunk));
+        pdf.addFileToVFS("NotoSans-Regular.ttf",btoa(binary));
+        pdf.addFont("NotoSans-Regular.ttf","NotoSans","normal");
+        pdf.setFont("NotoSans","normal");
+        pdfFontReady=true;
+        return true;
+    }catch(e){
+        console.warn("Unicode PDF font unavailable:",e);
+        return false;
+    }
 }
-async function downloadFullPdf(){
-    try{
-        if(!window.jspdf)await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
-        await audit("pdf_download",{section:"Kabir Mobile Data",description:"Complete database PDF downloaded",extra:{customers:customers.length,repairing:repairing.length,secondHand:secondHand.length,accessories:accessories.length}});
-        const {jsPDF}=window.jspdf;const pdf=new jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
-        const title=(t)=>{pdf.setFontSize(20);pdf.setFont(undefined,"bold");pdf.text(t,14,16);pdf.setFontSize(9);pdf.setFont(undefined,"normal");pdf.text(`Generated: ${new Date().toLocaleString("en-IN")}`,14,22);};
-        const table=(headers,rows)=>{let y=29;const widths=headers.map((_,i)=>180/headers.length);pdf.setFontSize(8);pdf.setFont(undefined,"bold");headers.forEach((h,i)=>pdf.text(String(h),14+widths.slice(0,i).reduce((a,b)=>a+b,0),y));y+=5;pdf.setFont(undefined,"normal");rows.forEach(r=>{if(y>190){pdf.addPage();y=16;}r.forEach((v,i)=>pdf.text(String(v??"—").slice(0,32),14+widths.slice(0,i).reduce((a,b)=>a+b,0),y));y+=5;});};
-        title("KABIR MOBILE DATA — COMPLETE DATABASE");table(["Customer","Phone","Brand / Model","IMEI","Amount"],customers.map(x=>[x.customerName,x.phone,`${x.brand||""} ${x.model||""}`,x.imei,`₹${x.phoneAmount||0}`]));
-        pdf.addPage();title("KABIR REPAIRING DATA");table(["Customer","Phone","Device","Problem","Total","Parts","Profit"],repairing.map(x=>[x.customerName,x.phone,x.device,x.problem,`₹${x.total??x.payment??0}`,`₹${x.partsPrice||0}`,`₹${x.profit??(Number(x.total??x.payment??0)-Number(x.partsPrice||0))}`]));
-        pdf.addPage();title("SECOND HAND DATA");table(["Customer","Brand / Model","IMEI","Purchase","Sell","Profit"],secondHand.map(x=>[x.customerName,`${x.brand||""} ${x.model||x.device||""}`,x.imei,`₹${x.price||0}`,`₹${x.salePrice||0}`,`₹${x.profit??(Number(x.salePrice||0)-Number(x.price||0))}`]));
-        pdf.addPage();title("ACCESSORIES DATA");table(["Name","Category","SN","Qty","Purchase","Sell","Profit"],accessories.map(x=>[x.name,x.category,x.sn,x.quantity,`₹${x.price||0}`,`₹${x.salePrice||0}`,`₹${x.profit??(Number(x.salePrice||0)-Number(x.price||0))}`]));
-        pdf.save(`Kabir_Data_Complete_${new Date().toISOString().slice(0,10)}.pdf`);
-    }catch(e){console.error(e);alert("Complete PDF बन नहीं पाया.");}
+function pdfSafe(v){
+    if(v===null||v===undefined||v==="")return "—";
+    return String(v);
+}
+function pdfMoney(v){
+    const n=Number(v||0);
+    return `₹${Number.isFinite(n)?n.toLocaleString("en-IN"):0}`;
+}
+function pdfDate(v){return formatDateTime(v)||"—";}
+function pdfRowsFromObject(rows,fields){
+    return rows.map(row=>fields.map(([key,label,fn])=>fn?fn(row):pdfSafe(row[key])));
+}
+function pdfDrawTable(pdf,title,headers,rows){
+    const pageW=297,pageH=210,margin=10;
+    const usableW=pageW-margin*2;
+    const colW=usableW/headers.length;
+    let y=29;
+    const lineH=3.8, padX=2.2, padY=2.4, headH=10;
+    const drawHeader=()=>{
+        pdf.setFillColor(28,31,40);
+        pdf.rect(margin,y,usableW,headH,"F");
+        pdf.setTextColor(255,255,255);
+        pdf.setFont("NotoSans","normal");pdf.setFontSize(7.2);
+        headers.forEach((h,i)=>pdf.text(pdfSafe(h),margin+i*colW+padX,y+6.5,{maxWidth:colW-padX*2}));
+        pdf.setTextColor(20,20,24);
+        y+=headH;
+    };
+    const newPage=()=>{
+        pdf.addPage("a4","landscape");
+        y=12;
+        pdf.setFontSize(17);pdf.setFont("NotoSans","normal");pdf.text(title,margin,y);y+=7;
+        pdf.setFontSize(7);pdf.text(`Generated: ${new Date().toLocaleString("en-IN")}`,margin,y);y+=6;
+        drawHeader();
+    };
+    pdf.setFontSize(17);pdf.setFont("NotoSans","normal");pdf.text(title,margin,14);
+    pdf.setFontSize(7);pdf.text(`Generated: ${new Date().toLocaleString("en-IN")}`,margin,20);
+    drawHeader();
+    rows.forEach((row,ri)=>{
+        pdf.setFontSize(6.6);pdf.setFont("NotoSans","normal");
+        const lines=row.map(v=>pdf.splitTextToSize(pdfSafe(v),Math.max(10,colW-padX*2)));
+        const maxLines=Math.max(1,...lines.map(a=>a.length));
+        const rowH=Math.max(8,maxLines*lineH+padY*2);
+        if(y+rowH>pageH-10)newPage();
+        pdf.setDrawColor(205,208,215);pdf.setFillColor(248,249,251);
+        if(ri%2===1)pdf.setFillColor(240,242,246);
+        pdf.rect(margin,y,usableW,rowH,"FD");
+        lines.forEach((arr,i)=>{
+            pdf.text(arr,margin+i*colW+padX,y+padY+3,{maxWidth:colW-padX*2});
+        });
+        for(let i=0;i<=headers.length;i++)pdf.line(margin+i*colW,y,margin+i*colW,y+rowH);
+        y+=rowH;
+    });
+    return pdf;
 }
 
+async function buildSelectedPdf(section){
+    try{
+        if(!window.jspdf)await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
+        const {jsPDF}=window.jspdf;
+        const pdf=new jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
+        await ensurePdfFont(pdf);
+
+        let title="",headers=[],rows=[],file="";
+        if(section==="finance"){
+            title="KABIR MOBILE DATA — FINANCE";
+            headers=["Customer Code","Date & Time","Customer Name","Phone","Address","PIN","City","State","Brand","Model","IMEI","Colour","Storage","Finance Company","Phone Amount","Down Payment","EMI Amount","EMI Months","Lock","Stock","Counter","Financer","Bill"];
+            rows=pdfRowsFromObject(customers,[
+                ["customerCode"],["createdAt","",pdfDate],["customerName"],["phone"],["address"],["pincode"],["city"],["state"],["brand"],["model"],["imei"],["colour"],["storage"],["financeCompany"],
+                ["phoneAmount","",x=>pdfMoney(x.phoneAmount)],["downPayment","",x=>pdfMoney(x.downPayment)],["emiAmount","",x=>pdfMoney(x.emiAmount)],["emiMonths"],["lockName"],["stock"],["counter"],["financerName"],["billYes","",x=>x.billYes?"YES":"NO"]
+            ]);
+            file="Kabir_Finance_Data.pdf";
+        }else if(section==="repairing"){
+            title="KABIR MOBILE DATA — REPAIRING";
+            headers=["Date & Time","Customer Name","Phone","Brand / Model","Problem","Repairing By","Total","Parts Price","Profit"];
+            rows=pdfRowsFromObject(repairing,[["createdAt","",pdfDate],["customerName"],["phone"],["device"],["problem"],["repairBy"],["total","",x=>pdfMoney(x.total??x.payment)],["partsPrice","",x=>pdfMoney(x.partsPrice)],["profit","",x=>pdfMoney(x.profit??(Number(x.total??x.payment??0)-Number(x.partsPrice||0)))]]);
+            file="Kabir_Repairing_Data.pdf";
+        }else if(section==="secondHand"){
+            title="KABIR MOBILE DATA — SECOND HAND";
+            headers=["Date & Time","Condition","Customer Name","Phone","Brand","Model","IMEI","Purchase Price","Sell Price","Profit"];
+            rows=pdfRowsFromObject(secondHand,[["createdAt","",pdfDate],["condition"],["customerName"],["phone"],["brand"],["model","",x=>x.model||x.device],["imei"],["price","",x=>pdfMoney(x.price)],["salePrice","",x=>pdfMoney(x.salePrice)],["profit","",x=>pdfMoney(x.profit??(Number(x.salePrice||0)-Number(x.price||0)))]]);
+            file="Kabir_Second_Hand_Data.pdf";
+        }else if(section==="accessories"){
+            title="KABIR MOBILE DATA — ACCESSORIES";
+            headers=["Date & Time","Name","Category","SN","Qty","Customer Name","Customer Phone","Purchase","Sell","Profit"];
+            rows=pdfRowsFromObject(accessories,[["createdAt","",pdfDate],["name"],["category"],["sn"],["quantity"],["customerName"],["customerPhone"],["price","",x=>pdfMoney(x.price)],["salePrice","",x=>pdfMoney(x.salePrice)],["profit","",x=>pdfMoney(x.profit??(Number(x.salePrice||0)-Number(x.price||0)))]]);
+            file="Kabir_Accessories_Data.pdf";
+        }else if(section==="customers"){
+            title="KABIR MOBILE DATA — CUSTOMERS";
+            const map=new Map();
+            const add=(name,phone,type)=>{
+                const n=String(name||"").trim(),p=String(phone||"").replace(/\D/g,"");if(!n&&!p)return;
+                const key=p||n.toLowerCase();
+                if(!map.has(key))map.set(key,{name:n||"Customer",phone:p,types:new Set()});
+                map.get(key).types.add(type);
+            };
+            customers.forEach(x=>add(x.customerName,x.phone,"Finance"));
+            repairing.forEach(x=>add(x.customerName,x.phone,"Repairing"));
+            secondHand.forEach(x=>add(x.customerName,x.phone,"Second Hand"));
+            accessories.forEach(x=>add(x.customerName,x.customerPhone,"Accessories"));
+            const list=[...map.values()];
+            title="KABIR MOBILE DATA — CUSTOMERS";
+            headers=["Section","Date & Time","Customer Name","Phone","Code / Identifier","Device / Item","IMEI / SN","Amount / Price","Profit"];
+            const financeRows=customers.map(x=>["Finance",pdfDate(x.createdAt),x.customerName,x.phone,x.customerCode,`${x.brand||""} ${x.model||""}`.trim(),x.imei,pdfMoney(x.phoneAmount),"—"]);
+            const repairRows=repairing.map(x=>["Repairing",pdfDate(x.createdAt),x.customerName,x.phone,"—",x.device,x.phone?x.phone:"—",pdfMoney(x.total??x.payment),pdfMoney(x.profit??(Number(x.total??x.payment??0)-Number(x.partsPrice||0)))]);
+            const secondRows=secondHand.map(x=>["Second Hand",pdfDate(x.createdAt),x.customerName,x.phone,"—",`${x.brand||""} ${x.model||x.device||""}`.trim(),x.imei,pdfMoney(x.salePrice||x.price),pdfMoney(x.profit??(Number(x.salePrice||0)-Number(x.price||0)))]);
+            const accRows=accessories.map(x=>["Accessories",pdfDate(x.createdAt),x.customerName||"—",x.customerPhone||"—","—",x.name,x.sn,pdfMoney(x.salePrice||x.price),pdfMoney(x.profit??(Number(x.salePrice||0)-Number(x.price||0)))]);
+            rows=[...financeRows,...repairRows,...secondRows,...accRows];
+            file="Kabir_Customers_Data.pdf";
+        }else return;
+
+        await audit("pdf_download",{section:`PDF ${section}`,description:`Premium ${section} PDF downloaded`,extra:{records:rows.length}});
+        pdfDrawTable(pdf,title,headers,rows);
+        pdf.save(file);
+        $("pdfSelectModal")?.classList.add("hidden");
+        showSuccessToast("PDF Ready",`${title.replace("KABIR MOBILE DATA — ","")} PDF downloaded`);
+    }catch(e){
+        console.error(e);
+        alert("PDF नहीं बन पाया. कृपया internet/Firebase connection check करें.");
+    }
+}
+function downloadFullPdf(){
+    $("pdfSelectModal")?.classList.remove("hidden");
+}
 function applyTheme(theme){
     const allowed=["dark","light","midnight","silver","glass"];
     if(!allowed.includes(theme)) theme="dark";
@@ -1917,10 +2030,11 @@ function featureNav(){
     $("repairForm")?.addEventListener("submit",saveRepair);
     $("exportCustomersButton")?.addEventListener("click",exportCustomers);
     $("exportRepairingButton")?.addEventListener("click",exportRepairing);
-    $("downloadCustomerPdf")?.addEventListener("click",downloadCustomerPdf);
     $("deleteCustomerButton")?.addEventListener("click",deleteCustomer);
     $("editCustomerButton")?.addEventListener("click",editCustomer);
     $("closeDetailButton")?.addEventListener("click",closeCustomerDetail);
+    $("closePdfSelectButton")?.addEventListener("click",()=>$("pdfSelectModal")?.classList.add("hidden"));
+    $("pdfChoices")?.addEventListener("click",e=>{const b=e.target.closest("[data-pdf-section]");if(b)buildSelectedPdf(b.dataset.pdfSection)});
 }
 
 /* =========================================================
@@ -1930,7 +2044,7 @@ function featureNav(){
 async function init(){
     setupPin();
     authInit();
-    loadSharedPin().catch(e=>console.warn(e));
+    authReady.then(()=>loadSharedPin().catch(e=>console.warn(e)));
 
     nav();
 
