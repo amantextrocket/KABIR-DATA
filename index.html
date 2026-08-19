@@ -17,7 +17,7 @@
     <label class="pin-label" for="pinInput">Enter PIN</label>
     <input id="pinInput" class="pin-input" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" placeholder="••••">
     <div id="pinDots" class="pin-dots"><i></i><i></i><i></i><i></i></div>
-    <p id="pinMessage" class="message"></p><p id="connectionStatus" class="firebase-status">Firebase connecting…</p><button id="firebaseRetryButton" class="firebase-retry hidden" type="button">RETRY FIREBASE</button>
+    <p id="pinMessage" class="message"></p><p id="connectionStatus" class="firebase-status">Firebase connecting…</p>
   </div>
 </section>
 <main id="appScreen" class="app hidden">
@@ -42,7 +42,7 @@
 </section>
 
 
-<section id="smartSearchSection" data-page class="glass panel hidden app-page smart-search-page"><div class="section-head"><div><div class="eyebrow">SMART DATABASE SEARCH</div><h2>Search Everything</h2><small class="section-subtitle">Hindi • English • Hinglish — data se direct answer</small></div><button class="close" data-page-back="homeView">×</button></div><div class="smart-search-box"><span class="smart-search-icon">⌕</span><input id="universalSearchInput" type="search" placeholder="कुछ भी पूछें या command दें… / Aman ka data dikhao" autocomplete="off"><button id="smartVoiceButton" class="smart-voice-button" type="button" title="Voice Assistant" aria-label="Voice Assistant">🎙️</button></div><div id="smartVoiceStatus" class="smart-voice-status" aria-live="polite">Voice Assistant ready</div><div id="smartSearchAnswer" class="smart-answer"><div class="empty">Apna question ya search yahan type करें.</div></div><div id="smartSearchResults" class="results"></div></section>
+<section id="smartSearchSection" data-page class="glass panel hidden app-page smart-search-page"><div class="section-head"><div><div class="eyebrow">SMART DATABASE SEARCH</div><h2>Search Everything</h2><small class="section-subtitle">Hindi • English • Hinglish — data se direct answer</small></div><button class="close" data-page-back="homeView">×</button></div><div class="smart-search-box"><span>⌕</span><input id="universalSearchInput" type="search" placeholder="पूछें: आज कितने customer हैं? / show finance data / Aman ka phone…" autocomplete="off"></div><div id="smartSearchAnswer" class="smart-answer"><div class="empty">Apna question ya search yahan type करें.</div></div><div id="smartSearchResults" class="results"></div></section>
 
 <section id="recentDeletedSection" data-page class="glass panel hidden app-page"><div class="section-head"><div><div class="eyebrow">RECENTLY DELETED</div><h2>Recently Deleted</h2><small class="section-subtitle">Deleted data 30 days तक recover किया जा सकता है</small></div><button class="close" data-page-back="homeView">×</button></div><div id="recentDeletedResults" class="results"></div></section>
 <section id="financePage" data-page class="glass panel hidden app-page"><div class="section-head"><div><div class="eyebrow">FINANCE</div><h2>Finance Management</h2></div><button class="close" data-page-back="homeView">×</button></div>
@@ -149,8 +149,8 @@
     <div class="pdf-date-filter">
       <div class="pdf-date-title">📅 Date Filter <small>Optional — खाली छोड़ने पर पूरा data PDF में आएगा</small></div>
       <div class="pdf-date-row">
-        <label>From Date<input id="pdfFromDate" type="date" inputmode="numeric"></label>
-        <label>To Date<input id="pdfToDate" type="date" inputmode="numeric"></label>
+        <label>From Date<input id="pdfFromDate" type="date"></label>
+        <label>To Date<input id="pdfToDate" type="date"></label>
       </div>
       <div class="pdf-date-format">उदाहरण: <b>01/08/2026</b> से <b>19/08/2026</b></div>
     </div>
