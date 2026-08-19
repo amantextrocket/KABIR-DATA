@@ -649,16 +649,38 @@ let authReadyResolve,authReadyReject;
 const authReady=new Promise((resolve,reject)=>{authReadyResolve=resolve;authReadyReject=reject});
 async function authInit(){
     let settled=false;
-    const succeed=u=>{if(!settled&&u){settled=true;user=u;updateAdmin();authReadyResolve(u);}};
-    const fail=e=>{if(!settled){settled=true;user=null;updateAdmin();authReadyReject(e instanceof Error?e:Error(String(e||"Firebase authentication failed")));}};
+    const failTimer=setTimeout(()=>{
+        if(!settled){
+            const e=new Error("Firebase authentication timed out. Enable Anonymous Sign-in and check Firebase configuration.");
+            console.error(e);
+            if($("connectionStatus")){
+                $("connectionStatus").textContent="Firebase authentication timed out — Anonymous Sign-in enable करें.";
+                $("connectionStatus").classList.add("error");
+            }
+            fail(e);
+        }
+    },12000);
+    const succeed=u=>{
+        if(!settled&&u){
+            settled=true; clearTimeout(failTimer); user=u; updateAdmin(); authReadyResolve(u);
+            if($("connectionStatus")){ $("connectionStatus").textContent="Firebase connected ✓"; $("connectionStatus").classList.remove("error"); }
+        }
+    };
+    const fail=e=>{
+        if(!settled){
+            settled=true; clearTimeout(failTimer); user=null; updateAdmin();
+            const err=e instanceof Error?e:Error(String(e||"Firebase authentication failed"));
+            authReadyReject(err);
+        }
+    };
     onAuthStateChanged(auth,u=>{user=u||null;updateAdmin();if(u)succeed(u);},e=>{console.error("Auth state error:",e);fail(e);});
     try{
         if(!auth.currentUser) await signInAnonymously(auth);
-        if(auth.currentUser)succeed(auth.currentUser);
+        if(auth.currentUser) succeed(auth.currentUser);
     }catch(e){
         console.error("Anonymous sign-in failed:",e);
         if($("adminFirebaseStatus"))msg("adminFirebaseStatus","Firebase authentication error: "+(e?.message||""));
-        if($("connectionStatus")){$("connectionStatus").textContent="Firebase authentication failed — Anonymous Sign-in enable करें.";$("connectionStatus").classList.add("error");}
+        if($("connectionStatus")){ $("connectionStatus").textContent="Firebase authentication failed — Anonymous Sign-in enable करें."; $("connectionStatus").classList.add("error"); }
         fail(e);
     }
     return authReady;
