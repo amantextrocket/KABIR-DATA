@@ -321,3 +321,20 @@ html[data-theme="rose"]{--bg:#160a12;--text:#fff2f8;--muted:rgba(255,242,248,.62
 html[data-theme="rose"] body{background:radial-gradient(circle at 15% 8%,rgba(255,70,150,.20),transparent 30%),radial-gradient(circle at 90% 90%,rgba(160,70,255,.16),transparent 30%),var(--bg)}
 @media(max-width:600px){.topbar{top:6px;min-height:82px!important}.home-view{padding-top:10px}.home-modules .module-card{min-height:138px!important}.home-bottom-actions{bottom:12px;width:calc(100vw - 24px)}}
 @media(min-width:800px){.home-bottom-actions{bottom:24px}.home-modules .module-card{min-height:165px!important}}
+
+.smart-search-box{min-width:0;overflow:hidden}
+.smart-search-box input{min-width:0!important}
+.smart-search-icon{flex:0 0 auto}
+.smart-voice-button{flex:0 0 44px;width:44px;height:44px;margin:0;border:1px solid rgba(255,220,100,.42);border-radius:15px;background:rgba(255,207,60,.16);color:#ffe27a;display:grid;place-items:center;font-size:19px;box-shadow:inset 0 1px 0 rgba(255,255,255,.2),0 7px 20px rgba(0,0,0,.18)}
+.smart-voice-button:active{transform:scale(.94)}
+.smart-voice-button.listening{animation:voicePulse 1s ease-in-out infinite;background:rgba(255,75,75,.22);border-color:rgba(255,120,120,.5)}
+.smart-voice-status{min-height:16px;margin:7px 4px 0;color:var(--muted);font-size:10px}
+.ai-action-result{border-color:rgba(255,205,70,.34)!important;background:rgba(255,195,40,.07)!important}
+@keyframes voicePulse{50%{box-shadow:0 0 0 8px rgba(255,100,100,.08),0 0 28px rgba(255,90,90,.25)}}
+.pdf-select-card{width:min(100%,520px);max-width:calc(100vw - 20px);overflow-x:hidden}
+.pdf-date-filter{width:100%;min-width:0;overflow:hidden}
+.pdf-date-row{width:100%;min-width:0;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.pdf-date-row label{min-width:0;overflow:hidden}
+.pdf-date-row input{display:block;width:100%;min-width:0;max-width:100%;box-sizing:border-box;font-size:13px;padding-left:8px;padding-right:2px}
+@media(max-width:430px){.pdf-date-row{grid-template-columns:1fr 1fr;gap:7px}.pdf-date-row input{height:40px;font-size:12px}.pdf-date-filter{padding:11px}.pdf-date-title{font-size:12px}.pdf-date-format{font-size:8px}}
+@media(max-width:350px){.pdf-date-row{grid-template-columns:1fr}.pdf-date-row input{font-size:13px}}
