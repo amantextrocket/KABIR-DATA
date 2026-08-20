@@ -635,10 +635,7 @@ function setupPin(){
         finish();
     };
     e.addEventListener("input",attempt);
-    $("homeButton")?.addEventListener("click",()=>{
-        try{show("homeView",{back:true});}catch(e){open("homeView");}
-        window.scrollTo({top:0,behavior:"smooth"});
-    });
+    $("lockButton")?.addEventListener("click",lock);
     // Do not restore an unlocked session after a reload/device change.
     sessionStorage.removeItem("kabir_unlocked");
     setTimeout(()=>e.focus(),100);
@@ -1897,7 +1894,6 @@ function renderRepairing(){
     box.innerHTML=arr.map(r=>`<article class="result">
       <div class="result-name">${esc(r.customerName||"")}</div><div class="result-meta">${esc(r.phone||"")} • ${esc(formatDateTime(r))}</div>
       <div class="result-grid">${item("Brand / Model",r.device)}${item("Problem",r.problem)}${item("Repairing By",r.repairBy)}${item("Total",`₹${Number(r.total??r.payment??0).toLocaleString("en-IN")}`)}${item("Parts Price",`₹${Number(r.partsPrice||0).toLocaleString("en-IN")}`)}${item("Profit",`₹${Number(r.profit??(Number(r.total??r.payment??0)-Number(r.partsPrice||0))).toLocaleString("en-IN")}`)}</div>
-      <button type="button" class="save danger-btn repair-delete-btn" data-repair-id="${esc(r.id)}">DELETE CUSTOMER</button>
     </article>`).join("");
     box.querySelectorAll(".repair-delete-btn").forEach(btn=>btn.onclick=async e=>{e.stopPropagation();const r=repairing.find(x=>x.id===btn.dataset.repairId);if(!r||!confirm(`Delete ${r.customerName||"this customer"} repairing record?`))return;try{await deleteWithRecycle(REPAIR_COL,r.id,r);await audit("customer_delete",{section:"Kabir Repairing Data",customerId:r.id,customerName:r.customerName,description:`Repairing customer ${r.customerName||r.id} moved to Recently Deleted`});renderRepairing();renderAllCustomers();showSuccessToast("Deleted","Repairing record moved to Recently Deleted");}catch(err){console.error(err);alert("Delete failed. Firebase Rules check करें.");}});
 }
