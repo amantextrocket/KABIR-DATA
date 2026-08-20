@@ -388,78 +388,41 @@ function recordTitle(x,type){
     if(type==="finance") return `${x.customerName||"Customer"} • ${[x.brand,x.model].filter(Boolean).join(" ")||"Finance"}`;
     return `${x.customerName||"Customer"} • ${x.device||[x.brand,x.model].filter(Boolean).join(" ")||"Repairing"}`;
 }
-function smartAdminAnswer(q, rows){
-    const raw=String(q||'').trim();
-    const n=normalizeText(raw);
-    const today=new Date().toLocaleDateString('en-CA');
-    const isToday=/(today|aaj|आज)/i.test(raw);
-    const isYesterday=/(yesterday|kal|कल)/i.test(raw);
-    let scope=rows;
-    if(isToday) scope=rows.filter(x=>recordDaySafe(x)===today);
-    else if(isYesterday){ const d=new Date(); d.setDate(d.getDate()-1); const k=d.toLocaleDateString('en-CA'); scope=rows.filter(x=>recordDaySafe(x)===k); }
-
-    const finance=scope.filter(x=>x.__type==='finance');
-    const repair=scope.filter(x=>x.__type==='repairing');
-    const profit=scope.reduce((sum,x)=>{
-        if(x.__type==='repairing') return sum+Number(x.profit ?? (Number(x.total??x.payment??0)-Number(x.partsPrice||0)));
-        return sum+Number(x.profit||0);
-    },0);
-    const money=v=>`₹${Number(v||0).toLocaleString('en-IN')}`;
-    const hi=/[\u0900-\u097f]/.test(raw), hing=/\b(aaj|kal|kitne|kitna|kya|kaun|dikhao|batao|hai|hain|ka|ki|ke|me|mein|pura|puri|history|profit|customer|finance|repairing)\b/i.test(n);
-    const phrase=(h,hh,e)=>hi?h:(hing?hh:e);
-
-    if(/(what.*work|kya.*kam|kya.*kaam|kya.*hua|kya.*h.*today|aaj.*(kam|kaam|work|hua)|today.*(work|activity))/i.test(raw)){
-        return {answer:phrase(`आज ${scope.length} काम हुए हैं — Finance ${finance.length}, Repairing ${repair.length}।`,`Aaj ${scope.length} kaam hue hain — Finance ${finance.length}, Repairing ${repair.length}.`,`Today there were ${scope.length} works — Finance ${finance.length}, Repairing ${repair.length}.`),filtered:scope};
-    }
-    if(/(profit|munafa|मुनाफा|कमाई|earning)/i.test(raw)){
-        return {answer:phrase(`${isToday?'आज':isYesterday?'कल':'कुल'} ${money(profit)} का profit है।`,`${isToday?'Aaj':isYesterday?'Kal':'Total'} ${money(profit)} ka profit hai.`,`${isToday?'Today':isYesterday?'Yesterday':'Total'} profit is ${money(profit)}.`),filtered:scope};
-    }
-    if(/(finance).*(kitne|how many|count|कितने|कितनी)|((kitne|how many|count|कितने|कितनी).*(finance))/i.test(raw)){
-        return {answer:phrase(`${isToday?'आज ':''}${finance.length} Finance records हैं।`,`${isToday?'Aaj ':''}${finance.length} Finance records hain.`,`${isToday?'Today there are ':'There are '}${finance.length} Finance records.`),filtered:finance};
-    }
-    if(/(repair|repairing|रिपेयर).*(kitne|how many|count|कितने|कितनी)|((kitne|how many|count|कितने|कितनी).*(repair|repairing))/i.test(raw)){
-        return {answer:phrase(`${isToday?'आज ':''}${repair.length} Repairing records हैं।`,`${isToday?'Aaj ':''}${repair.length} Repairing records hain.`,`${isToday?'Today there are ':'There are '}${repair.length} Repairing records.`),filtered:repair};
-    }
-    if(/(total|कुल|how many|kitne|count)/i.test(raw) && /(work|kaam|काम|record|records|data)/i.test(raw)){
-        return {answer:phrase(`कुल ${scope.length} records मिले।`,`Total ${scope.length} records mile.`,`Found ${scope.length} records.`),filtered:scope};
-    }
-    if(/(show|dikhao|batao|data|record|history|customer|phone|mobile|imei|model|naam|name|खोज|ढूंढ)/i.test(raw)){
-        const tokens=n.split(/\s+/).filter(x=>x.length>=3 && !/^(show|dikhao|batao|data|record|records|history|customer|customers|phone|mobile|number|ka|ki|ke|me|mein|aaj|today|kal|yesterday|finance|repairing|repair|profit|kitna|kitne|how|many|what|kya|please|the|for)$/i.test(x));
-        let filtered=scope;
-        if(tokens.length) filtered=scope.filter(x=>tokens.some(t=>normalizeText([x.customerName,recordPhone(x),x.customerCode,x.imei,x.brand,x.model,x.device,x.problem,x.financeCompany,x.__type].join(' ')).includes(t)));
-        return {answer:filtered.length?phrase(`${filtered.length} matching records मिले।`,` ${filtered.length} matching records mile.`,`Found ${filtered.length} matching records.`):phrase('कोई matching record नहीं मिला।','Koi matching record nahi mila.','No matching record found.'),filtered};
-    }
-    // Fallback: treat the entire question as a semantic-ish search over every useful field.
-    const words=n.split(/\s+/).filter(x=>x.length>=3);
-    const filtered=rows.filter(x=>words.some(w=>normalizeText([x.customerName,recordPhone(x),x.customerCode,x.imei,x.brand,x.model,x.device,x.problem,x.financeCompany,x.__type,recordTimeSafe(x)].join(' ')).includes(w)));
-    return {answer:filtered.length?phrase(`${filtered.length} matching records मिले।`,` ${filtered.length} matching records mile.`,`Found ${filtered.length} matching records.`):phrase('मैंने इस सवाल का matching data नहीं पाया।','Is sawal ka matching data nahi mila.','I could not find matching data for that question.'),filtered};
-}
-
 function renderWorkHistory(){
-    const box=$('workHistoryResults'); if(!box)return;
-    const q=val('workSearchInput').trim();
-    const rows=[...customers.map(x=>({...x,__type:'finance'})),...repairing.map(x=>({...x,__type:'repairing'}))].sort((a,b)=>recordMillis(b)-recordMillis(a));
-    const result=smartAdminAnswer(q,rows);
-    const filtered=result.filtered||rows;
-    const a=$('adminSmartAnswer');
-    if(a) a.innerHTML=q?`<div class="smart-answer-text">${esc(result.answer)}</div>`:'';
-    if(!filtered.length){box.innerHTML='<div class="empty">Finance या Repairing का matching record नहीं मिला.</div>';return;}
-    box.innerHTML=filtered.slice(0,300).map(x=>{
-        const finance=x.__type==='finance';
+    const box=$("workHistoryResults"); if(!box)return;
+    const q=val("workSearchInput").toLowerCase();
+    const rows=[
+        ...customers.map(x=>({...x,__type:"finance"})),
+        ...repairing.map(x=>({...x,__type:"repairing"}))
+    ].sort((a,b)=>recordMillis(b)-recordMillis(a));
+    const filtered=rows.filter(x=>{
+        if(!q)return true;
+        const hay=[x.customerName,recordPhone(x),x.customerCode,x.imei,x.brand,x.model,x.device,x.problem,x.financeCompany,x.lockName,x.__type].join(" ").toLowerCase();
+        return hay.includes(q);
+    });
+    if(!filtered.length){box.innerHTML='<div class="empty">अभी Finance या Repairing का कोई record नहीं मिला.</div>';return;}
+    box.innerHTML=filtered.slice(0,300).map((x,i)=>{
+        const finance=x.__type==="finance";
         const amount=finance?Number(x.phoneAmount||0):Number(x.total??x.payment??0);
-        const extra=finance?`IMEI ${x.imei||'—'} • ${x.financeCompany||'Finance'}`:`${x.problem||'Repairing'} • Profit ${moneyAdmin(x.profit??(amount-Number(x.partsPrice||0)))}`;
-        return `<article class="admin-work-card ${finance?'finance-work':'repair-work'}"><div class="admin-work-icon">${finance?'💳':'🛠️'}</div><div class="admin-work-main"><div class="admin-work-top"><div><b>${esc(recordTitle(x,x.__type))}</b><small>${finance?'Finance':'Repairing'} • ${esc(recordTimeSafe(x))}</small></div><span class="admin-work-amount">${moneyAdmin(amount)}</span></div><div class="admin-work-meta"><span>📞 ${esc(recordPhone(x))}</span><span>${esc(extra)}</span></div></div><button class="admin-work-delete" data-admin-delete-type="${x.__type}" data-admin-delete-id="${esc(x.id)}" aria-label="Delete record">🗑</button></article>`;
-    }).join('');
-    box.querySelectorAll('.admin-work-delete').forEach(btn=>btn.onclick=async e=>{
+        const extra=finance?`IMEI ${x.imei||"—"} • ${x.financeCompany||"Finance"}`:`${x.problem||"Repairing"} • Profit ₹${Number(x.profit??(amount-Number(x.partsPrice||0))).toLocaleString("en-IN")}`;
+        return `<article class="admin-work-card ${finance?'finance-work':'repair-work'}"><div class="admin-work-icon">${finance?'💳':'🛠️'}</div><div class="admin-work-main"><div class="admin-work-top"><div><b>${esc(recordTitle(x,x.__type))}</b><small>${finance?'Finance':'Repairing'} • ${esc(recordTimeSafe(x))}</small></div><span class="admin-work-amount">₹${amount.toLocaleString("en-IN")}</span></div><div class="admin-work-meta"><span>📞 ${esc(recordPhone(x))}</span><span>${esc(extra)}</span></div></div><button class="admin-work-delete" data-admin-delete-type="${x.__type}" data-admin-delete-id="${esc(x.id)}" aria-label="Delete record">🗑</button></article>`;
+    }).join("");
+    box.querySelectorAll(".admin-work-delete").forEach(btn=>btn.onclick=async e=>{
         e.stopPropagation();
-        const type=btn.dataset.adminDeleteType,id=btn.dataset.adminDeleteId,source=type==='finance'?customers:repairing,row=source.find(x=>x.id===id);
+        const type=btn.dataset.adminDeleteType,id=btn.dataset.adminDeleteId;
+        const source=type==="finance"?customers:repairing;
+        const row=source.find(x=>x.id===id);
         if(!row)return;
-        const label=type==='finance'?'Finance':'Repairing';
-        if(!confirm(`${row.customerName||'This record'} का ${label} record Recently Deleted में भेजें?`))return;
-        try{await deleteWithRecycle(type==='finance'?COL:REPAIR_COL,id,row);await audit('customer_delete',{section:type==='finance'?'Kabir Finance Data':'Kabir Repairing Data',customerId:id,customerName:row.customerName||'',description:`${label} record deleted from Admin Work History and moved to Recently Deleted`});renderWorkHistory();showSuccessToast('Deleted','Record Recently Deleted में भेज दिया गया');}catch(err){console.error(err);alert('Delete failed. Firebase Rules check करें.');}
+        const label=type==="finance"?"Finance":"Repairing";
+        if(!confirm(`${row.customerName||"This record"} का ${label} record Recently Deleted में भेजें?`))return;
+        try{
+            await deleteWithRecycle(type==="finance"?COL:REPAIR_COL,id,row);
+            await audit("customer_delete",{section:type==="finance"?"Kabir Finance Data":"Kabir Repairing Data",customerId:id,customerName:row.customerName||"",description:`${label} record deleted from Admin Work History and moved to Recently Deleted`});
+            renderWorkHistory();
+            showSuccessToast("Deleted","Record Recently Deleted में भेज दिया गया");
+        }catch(err){console.error(err);alert("Delete failed. Firebase Rules check करें.");}
     });
 }
-function moneyAdmin(v){return `₹${Number(v||0).toLocaleString('en-IN')}`;}
 function renderTraffic(){
     const all=[...auditLogs].sort((a,b)=>auditMillis(b)-auditMillis(a));
     const today=new Date().toLocaleDateString("en-CA");
@@ -581,36 +544,13 @@ function setupPin(){
         const entered=e.value;
         const finish=async()=>{
             if(e.value!==entered)return;
+            // Never unlock from a cached/local PIN. Wait for live Firebase PIN.
             try{
                 await authReady;
-                let livePin="";
-                let firebasePinError=null;
-                try{
-                    livePin=await loadSharedPin();
-                }catch(err){
-                    firebasePinError=err;
-                    console.warn("Live Firebase PIN unavailable; legacy PIN fallback enabled:",err);
-                }
+                const livePin=await loadSharedPin();
                 if(e.value!==entered)return;
-
-                // The user's established Kabir PIN is 2968. If the live security
-                // document is unavailable because of a temporary Firestore/rules
-                // read issue, 2968 must still unlock the site instead of showing a
-                // misleading PIN verification error. A successful Firebase read
-                // remains the source of truth whenever it is available.
-                const legacyPin=entered==="2968";
-                const validLivePin=!!livePin && entered===livePin;
-                const shouldUnlock=validLivePin || legacyPin;
-
-                if(shouldUnlock){
-                    if(legacyPin && livePin!=="2968"){
-                        try{
-                            await changeSharedPin("2968");
-                        }catch(syncErr){
-                            console.warn("Could not sync legacy PIN to Firebase; continuing login:",syncErr);
-                        }
-                    }
-                    audit("login_success",{section:$('appScreen')?.classList.contains('admin')?'Admin Panel':'Kabir Mobile Data',description:firebasePinError?'Login with legacy PIN 2968 while Firebase PIN was unavailable':(legacyPin?'Legacy PIN 2968 accepted and synchronized':'PIN login successful'),deviceBrand:deviceInfo().brand,deviceModel:deviceInfo().model});
+                if(entered===livePin){
+                    audit("login_success",{section:$('appScreen')?.classList.contains('admin')?'Admin Panel':'Kabir Mobile Data',description:'PIN login successful',deviceBrand:deviceInfo().brand,deviceModel:deviceInfo().model});
                     unlock();
                     msg("pinMessage","");
                 }else{
@@ -620,15 +560,6 @@ function setupPin(){
                     setTimeout(()=>{e.value="";dots("");msg("pinMessage","");e.focus()},240);
                 }
             }catch(err){
-                // Even if Firebase has a transient initialization/read problem,
-                // keep the user's established 2968 PIN usable.
-                if(e.value===entered && entered==="2968"){
-                    sharedPin="2968";
-                    pinLoaded=false;
-                    unlock();
-                    msg("pinMessage","");
-                    return;
-                }
                 msg("pinMessage","Firebase से PIN verify नहीं हो पाया.");
                 pinError();
                 setTimeout(()=>{e.value="";dots("");e.focus()},240);
