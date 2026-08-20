@@ -635,7 +635,7 @@ function setupPin(){
         finish();
     };
     e.addEventListener("input",attempt);
-    $("lockButton")?.addEventListener("click",lock);
+    $("homeButton")?.addEventListener("click",()=>{pageHistory=["homeView"];show("homeView");window.scrollTo({top:0,behavior:"smooth"});});
     // Do not restore an unlocked session after a reload/device change.
     sessionStorage.removeItem("kabir_unlocked");
     setTimeout(()=>e.focus(),100);
@@ -823,8 +823,8 @@ function nav(){
     const open=id=>show(id);
     $("financeModule")?.addEventListener("click",()=>open("financePage"));
     $("repairingModule")?.addEventListener("click",()=>open("repairingPage"));
-    $("secondHandModule")?.addEventListener("click",()=>open("secondPage"));
-    $("accessoriesModule")?.addEventListener("click",()=>open("accessoriesPage"));
+
+
     $("customerModule")?.addEventListener("click",()=>{open("customerPage");renderAllCustomers();});
     document.querySelectorAll("[data-page-back]").forEach(b=>b.addEventListener("click",()=>{if(b.dataset.pageBack==="homeView")show("homeView",{back:true});else open(b.dataset.pageBack);}));
     document.querySelectorAll("[data-close]").forEach(b=>b.addEventListener("click",()=>{
