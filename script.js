@@ -1,3 +1,4 @@
+/* KABIR DATA FIREBASE FIX V2 - 2026-08-20 */
 import {initializeApp} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
 import {getAuth,signInAnonymously,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js";
 import {getFirestore,collection,addDoc,updateDoc,deleteDoc,setDoc,getDoc,doc,onSnapshot,query,orderBy,serverTimestamp,getDocs} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
@@ -659,6 +660,9 @@ async function authInit(){
     let settled=false;
     let timeoutId=null;
 
+    // Always show a live startup state immediately.
+    const bootStartedAt=Date.now();
+
     const setStatus=(text,isError=false)=>{
         if($("connectionStatus")){
             $("connectionStatus").textContent=text;
@@ -670,6 +674,16 @@ async function authInit(){
         }
     };
 
+    const resolveAuth=(u)=>{
+        if(!u || settled)return;
+        settled=true;
+        if(timeoutId)clearTimeout(timeoutId);
+        user=u;
+        updateAdmin();
+        setStatus("Firebase connected ✓");
+        authReadyResolve(u);
+    };
+
     const finishError=(e)=>{
         if(settled)return;
         settled=true;
@@ -678,32 +692,28 @@ async function authInit(){
         updateAdmin();
         const code=e?.code||"";
         let text="Firebase connection failed.";
-        if(code==="auth/operation-not-allowed") text="Firebase Auth में Anonymous Sign-in OFF है. इसे Enable करें.";
-        else if(code==="auth/unauthorized-domain") text="Firebase में यह website domain Authorized नहीं है.";
+        if(code==="auth/operation-not-allowed") text="Anonymous Sign-in OFF है. Firebase Authentication में Anonymous Enable करें.";
+        else if(code==="auth/unauthorized-domain") text="यह website domain Firebase Authorized Domains में नहीं है.";
         else if(code==="auth/network-request-failed") text="Firebase network connection failed. Internet check करें.";
-        else if(code==="auth/invalid-api-key") text="Firebase API key invalid है. Firebase config check करें.";
+        else if(code==="auth/invalid-api-key") text="Firebase API key invalid है. Config check करें.";
+        else if(code==="auth/api-key-not-valid.-please-pass-a-valid-api-key.") text="Firebase API key valid नहीं है.";
         else if(e?.message) text=`Firebase error: ${e.message}`;
+        console.error("Firebase startup failed:",e);
         setStatus(text,true);
         authReadyReject(e||new Error(text));
     };
 
-    // Never leave the PIN screen permanently stuck on “Firebase connecting…”.
+    // Safety timeout: never leave the PIN screen stuck forever.
     timeoutId=setTimeout(()=>finishError(new Error("Firebase authentication timed out after 15 seconds.")),15000);
 
+    // Register the observer FIRST so Firebase's initial state cannot be missed.
     onAuthStateChanged(auth,u=>{
-        if(!u){
+        if(u){
+            resolveAuth(u);
+        }else if(!settled){
             user=null;
             updateAdmin();
             setStatus("Firebase connecting…");
-            return;
-        }
-        user=u;
-        updateAdmin();
-        setStatus("Firebase connected ✓");
-        if(!settled){
-            settled=true;
-            if(timeoutId)clearTimeout(timeoutId);
-            authReadyResolve(u);
         }
     },e=>{
         console.error("Firebase auth state error:",e);
@@ -711,22 +721,25 @@ async function authInit(){
     });
 
     try{
+        // Existing authenticated session.
         if(auth.currentUser){
-            user=auth.currentUser;
-            updateAdmin();
-            setStatus("Firebase connected ✓");
-            if(!settled){
-                settled=true;
-                if(timeoutId)clearTimeout(timeoutId);
-                authReadyResolve(auth.currentUser);
-            }
+            resolveAuth(auth.currentUser);
+            return authReady;
+        }
+
+        // signInAnonymously() itself returns the authenticated User.
+        const credential=await signInAnonymously(auth);
+        const signedInUser=credential?.user||auth.currentUser;
+        if(signedInUser){
+            resolveAuth(signedInUser);
         }else{
-            await signInAnonymously(auth);
+            finishError(new Error("Firebase anonymous sign-in returned no user."));
         }
     }catch(e){
-        console.error("Firebase anonymous sign-in failed:",e);
         finishError(e);
     }
+
+    console.log("Firebase auth startup finished in",Date.now()-bootStartedAt,"ms");
     return authReady;
 }
 
@@ -2337,8 +2350,11 @@ async function init(){
     authReady.then(()=>loadSharedPin()).catch(e=>{
         console.error("Firebase/PIN initialization failed:",e);
         if($("connectionStatus")){
-            $("connectionStatus").textContent="Firebase authentication failed. Anonymous Sign-in ON करें.";
-            $("connectionStatus").classList.add("error");
+            const current=$("connectionStatus").textContent||"";
+            if(!current || current.includes("connecting")) {
+                $("connectionStatus").textContent="Firebase/PIN initialization failed. Check Firebase settings.";
+                $("connectionStatus").classList.add("error");
+            }
         }
     });
 
