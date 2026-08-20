@@ -1262,8 +1262,30 @@ async function save(e){
          * optional हैं और अभी save process को रोकेंगे नहीं.
          */
 
-        const editId=$("customerForm").dataset.editId;
+        // Same mobile number = same customer.
+        // अगर यह number पहले से Finance/Customer master में है, तो
+        // नया duplicate customer document बनाने के बजाय उसी customer को
+        // automatically update किया जाएगा. User को manually EDIT दबाने की जरूरत नहीं होगी.
+        let editId=$("customerForm").dataset.editId;
+        const phoneMaster=customers.find(c=>String(c.phone||"").replace(/\D/g,"")===phone);
+        const autoPhoneMatch=!editId && !!phoneMaster?.id;
+        if(autoPhoneMatch){
+            editId=phoneMaster.id;
+            $("customerForm").dataset.editId=editId;
+        }
         const existing=editId?customers.find(c=>c.id===editId):null;
+        const previousDevice=existing?{
+            brand:existing.brand||"",model:existing.model||"",imei:existing.imei||"",
+            colour:existing.colour||"",storage:existing.storage||"",
+            phoneAmount:Number(existing.phoneAmount||0),
+            financeCompany:existing.financeCompany||"",
+            addedAt:existing.createdAt||null
+        }:null;
+        const deviceHistory=Array.isArray(existing?.deviceHistory)?[...existing.deviceHistory]:[];
+        if(previousDevice && (previousDevice.brand||previousDevice.model||previousDevice.imei)){
+            const oldKey=[previousDevice.imei,previousDevice.brand,previousDevice.model].join("|");
+            if(!deviceHistory.some(d=>[d.imei,d.brand,d.model].join("|")===oldKey)) deviceHistory.push(previousDevice);
+        }
         let customerData={
 
             customerCode:existing?.customerCode || await uniqueCustomerCode(),
@@ -1339,7 +1361,8 @@ async function save(e){
 
             billYes:existing?.billYes===true,
 
-            deviceCount:1,
+            deviceCount:autoPhoneMatch && existing ? Math.max(1,Number(existing.deviceCount||1)+1) : (existing?.deviceCount||1),
+            deviceHistory,
 
             /*
              * Documents अभी खाली रखे जा रहे हैं.
@@ -1854,24 +1877,51 @@ async function saveAccessory(e){
     try{await addDoc(collection(db,ACCESSORY_COL),data);await audit("accessory_add",{section:"Accessories",customerName:data.customerName,description:`Accessory added: ${data.name}`,extra:{category:data.category,quantity:data.quantity,sn:data.sn,profit:data.profit,customerPhone:data.customerPhone}});e.target.reset();updateAccessoryProfit();showSuccessToast("Successfully Saved","Accessory stock में add हो गया.");}catch(err){console.error(err);msg("accessoryMessage",err?.message||"Save failed.");}
 }
 
+function getUnifiedCustomerByPhone(raw){
+    const p=String(raw||"").replace(/\D/g,"");
+    if(p.length<10)return null;
+    const all=[...customers,...repairing,...secondHand,...accessories];
+    const matches=all.filter(x=>String(x.phone||x.customerPhone||"").replace(/\D/g,"")===p);
+    if(!matches.length)return null;
+    // Finance/Customer master को सबसे पहले रखें, क्योंकि इसमें पूरा profile data होता है.
+    return matches.find(x=>x.address||x.pincode||x.city||x.state||x.brand||x.model)||matches[0];
+}
 function setupExistingCustomerSuggestions(){
     const names=$("existingCustomerNames"), phones=$("existingCustomerPhones");
-    if(!names||!phones)return;
     const records=[]; const seen=new Set();
     const add=(name,phone,data)=>{
         const n=String(name||"").trim(),p=String(phone||"").replace(/\D/g,"");
         if(!n&&!p)return; const key=(p||n.toLowerCase()); if(seen.has(key))return; seen.add(key); records.push({name:n,phone:p,data});
     };
     customers.forEach(x=>add(x.customerName,x.phone,x)); repairing.forEach(x=>add(x.customerName,x.phone,x)); secondHand.forEach(x=>add(x.customerName,x.phone,x)); accessories.forEach(x=>add(x.customerName,x.customerPhone,x));
-    names.innerHTML=records.filter(x=>x.name).slice(0,300).map(x=>`<option value="${esc(x.name)}">${esc(x.phone||"")}</option>`).join("");
-    phones.innerHTML=records.filter(x=>x.phone).slice(0,300).map(x=>`<option value="${esc(x.phone)}">${esc(x.name||"")}</option>`).join("");
+    if(names) names.innerHTML=records.filter(x=>x.name).slice(0,300).map(x=>`<option value="${esc(x.name)}">${esc(x.phone||"")}</option>`).join("");
+    if(phones) phones.innerHTML=records.filter(x=>x.phone).slice(0,300).map(x=>`<option value="${esc(x.phone)}">${esc(x.name||"")}</option>`).join("");
 }
 function attachExistingCustomerAutofill(){
     const nameIds=["customerName","repairCustomerName","secondCustomerName","accessoryCustomerName"];
     const phoneIds=["phone","repairPhone","secondPhone","accessoryCustomerPhone"];
-    const find=raw=>{const q=String(raw||"").trim().toLowerCase(),p=q.replace(/\D/g,""); if(!q)return null; const all=[...customers,...repairing,...secondHand,...accessories]; return all.find(x=>{const n=String(x.customerName||"").trim().toLowerCase(),xp=String(x.phone||x.customerPhone||"").replace(/\D/g,"");return (p&&xp===p)||(!p&&n===q);})||null;};
-    const fill=(x)=>{if(!x)return; const name=x.customerName||"",phone=x.phone||x.customerPhone||""; nameIds.forEach(id=>{const el=$(id);if(el&&document.activeElement!==el&&(!el.value||el.value.trim().toLowerCase()===name.toLowerCase()))el.value=name;}); phoneIds.forEach(id=>{const el=$(id);if(el&&document.activeElement!==el&&(!el.value||el.value.replace(/\D/g,"")===String(phone).replace(/\D/g,"")))el.value=phone;});};
-    [...nameIds,...phoneIds].forEach(id=>$(id)?.addEventListener("input",e=>{const x=find(e.target.value); if(x) fill(x);}));
+    const fill=(x)=>{
+        if(!x)return;
+        const name=x.customerName||"",phone=x.phone||x.customerPhone||"";
+        const profileFields={address:x.address,pincode:x.pincode,city:x.city,state:x.state};
+        nameIds.forEach(id=>{const el=$(id);if(el && name)el.value=name;});
+        phoneIds.forEach(id=>{const el=$(id);if(el && phone)el.value=phone;});
+        Object.entries(profileFields).forEach(([key,value])=>{const el=$(key);if(el&&value)el.value=value;});
+        // Finance customer already exists: next save will automatically update the same master record.
+        const master=customers.find(c=>String(c.phone||"").replace(/\D/g,"")===String(phone).replace(/\D/g,""));
+        if(master?.id && $("customerForm") && String(phone).replace(/\D/g,"").length===10){
+            $("customerForm").dataset.editId=master.id;
+            if($("customerCode"))$("customerCode").value=master.customerCode||"";
+        }
+    };
+    const find=raw=>{
+        const q=String(raw||"").trim().toLowerCase(),p=q.replace(/\D/g,"");
+        if(!q)return null;
+        if(p.length>=10)return getUnifiedCustomerByPhone(p);
+        const all=[...customers,...repairing,...secondHand,...accessories];
+        return all.find(x=>String(x.customerName||"").trim().toLowerCase()===q)||null;
+    };
+    [...nameIds,...phoneIds].forEach(id=>$(id)?.addEventListener("input",e=>{const x=find(e.target.value);if(x)fill(x);}));
 }
 
 function renderAllCustomers(){
@@ -2301,6 +2351,8 @@ async function init(){
 
     setupFinanceCompany();
     setupRepairFields();
+    setupExistingCustomerSuggestions();
+    attachExistingCustomerAutofill();
 
     pincode();
 
