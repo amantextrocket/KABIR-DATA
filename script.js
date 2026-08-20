@@ -1838,8 +1838,16 @@ function renderAllCustomers(){
     const add=(r,type,name,phone)=>{const n=String(name||"").trim(),p=String(phone||"").replace(/\D/g,"");if(!n&&!p)return;const key=p||n.toLowerCase();if(!map.has(key))map.set(key,{name:n||"Customer",phone:p,types:new Set()});map.get(key).types.add(type);};
     customers.forEach(x=>add(x,"Finance",x.customerName,x.phone));repairing.forEach(x=>add(x,"Repairing",x.customerName,x.phone));secondHand.forEach(x=>add(x,"Second Hand",x.customerName,x.phone));accessories.forEach(x=>add(x,"Accessories",x.customerName,x.customerPhone));
     const rows=[...map.values()].filter(x=>!q||[x.name,x.phone,[...x.types].join(" ")].join(" ").toLowerCase().includes(q));
-    box.innerHTML=rows.length?rows.map((x,i)=>`<article class="result all-customer-result" data-phone="${esc(x.phone)}" data-name="${esc(x.name)}"><div class="result-top"><div><div class="result-name">${esc(x.name)}</div><div class="result-meta">${esc(x.phone||"Phone not available")}</div></div><div class="work-log-tag">${esc([...x.types].join(" • "))}</div></div><div class="result-open-hint">Tap करके आज तक का पूरा data देखें</div></article>`).join(""):"<div class=\"empty\">No customer found.</div>";
-    box.querySelectorAll(".all-customer-result").forEach(card=>card.addEventListener("click",()=>showUnifiedCustomerHistory(card.dataset.phone,card.dataset.name)));
+    box.innerHTML=rows.length?rows.map((x,i)=>`<article class="result all-customer-result" data-phone="${esc(x.phone)}" data-name="${esc(x.name)}"><div class="result-top"><div><div class="result-name">${esc(x.name)}</div><div class="result-meta">${esc(x.phone||"Phone not available")}</div></div><div class="customer-card-actions"><div class="work-log-tag">${esc([...x.types].join(" • "))}</div><button class="mini-delete-customer" type="button" data-delete-phone="${esc(x.phone)}" data-delete-name="${esc(x.name)}">DELETE</button></div></div><div class="result-open-hint">Tap करके आज तक का पूरा data देखें</div></article>`).join(""):"<div class=\"empty\">No customer found.</div>";
+    box.querySelectorAll(".all-customer-result").forEach(card=>card.addEventListener("click",e=>{
+        if(e.target.closest(".mini-delete-customer"))return;
+        showUnifiedCustomerHistory(card.dataset.phone,card.dataset.name);
+    }));
+    box.querySelectorAll(".mini-delete-customer").forEach(btn=>btn.addEventListener("click",async e=>{
+        e.preventDefault();e.stopPropagation();
+        showUnifiedCustomerHistory(btn.dataset.deletePhone,btn.dataset.deleteName);
+        setTimeout(()=>deleteCustomer(),80);
+    }));
 }
 function showUnifiedCustomerHistory(phone,name){
     const p=String(phone||"").replace(/\D/g,"");const n=String(name||"").trim().toLowerCase();
@@ -2147,18 +2155,93 @@ function allDataRows(){return [
  ...secondHand.map(x=>({...x,__section:"Second Hand"})),
  ...accessories.map(x=>({...x,__section:"Accessories"}))
 ];}
-function smartAnswerLanguage(q){const n=normalizeText(q);if(/[\u0900-\u097f]/.test(q))return "hi";if(/\b(kya|kitne|kaun|dikhao|batao|hai|hain|aaj|kal|naam|customer|data)\b/i.test(n))return "hinglish";return "en";}
+function smartAnswerLanguage(q){
+    const n=normalizeText(q);
+    if(/[\u0900-\u097f]/.test(q))return "hi";
+    if(/\b(kya|kitne|kitni|kitna|kaun|dikhao|batao|hai|hain|aaj|kal|naam|customer|data|mera|meri|ka|ke|ki)\b/i.test(n))return "hinglish";
+    return "en";
+}
+function smartNaturalFilter(rows,q){
+    const n=normalizeText(q);
+    const words=n.split(/\s+/).filter(Boolean);
+    const stop=new Set(["show","find","search","give","me","the","all","data","record","records","customer","customers","ka","ke","ki","ko","mein","me","hai","hain","batao","dikhao","mujhe","mera","meri","my","please","what","is","are","how","many","total","kitne","kitni","kitna","kya"]);
+    const useful=words.filter(w=>!stop.has(w)&&w.length>1);
+    if(!useful.length)return rows;
+    return rows.filter(x=>{
+        const hay=normalizeText([x.customerName,x.customerCode,x.phone,x.customerPhone,x.imei,x.brand,x.model,x.device,x.problem,x.name,x.category,x.sn,x.financeCompany,x.city,x.state,x.pincode,x.__section,formatDateTime(x)].join(" "));
+        return useful.every(w=>hay.includes(w));
+    });
+}
 function smartSearch(){
- const q=val("universalSearchInput");const a=$("smartSearchAnswer"),r=$("smartSearchResults");if(!a||!r)return;const n=normalizeText(q);if(!n){a.innerHTML='<div class="empty">पूछें: “आज कितने customer हैं?”, “Aman ka phone dikhao”, “show repairing data”, “profit कितना है?”</div>';r.innerHTML="";return;}
- const lang=smartAnswerLanguage(q), rows=allDataRows();let answer="", filtered=[];
- const total=customers.length, repairs=repairing.length, second=secondHand.length, acc=accessories.length;
- if(/(total|kitne|how many|count|कितने|कितनी|कितना).*(customer|customers|ग्राहक)/i.test(q)) answer=lang==="hi"?`कुल ${total} customer हैं।`:lang==="hinglish"?`Total ${total} customers hain.`:`There are ${total} customers in the database.`;
- else if(/(repair|repairing|रिपेयर)/i.test(q)&&/(total|kitne|count|कितने)/i.test(q)) answer=lang==="hi"?`Repairing में ${repairs} records हैं।`:lang==="hinglish"?`Repairing mein ${repairs} records hain.`:`There are ${repairs} repairing records.`;
- else if(/(second|second hand)/i.test(q)&&/(total|kitne|count|कितने)/i.test(q)) answer=`Second Hand mein ${second} records hain.`;
- else if(/(accessor|accessories)/i.test(q)&&/(total|kitne|count|कितने)/i.test(q)) answer=`Accessories mein ${acc} records hain.`;
- else if(/(profit|munafa|मुनाफा)/i.test(q)){const prof=repairing.reduce((s,x)=>s+Number(x.profit??(Number(x.total ?? x.payment ?? 0)-Number(x.partsPrice||0))),0)+secondHand.reduce((s,x)=>s+Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))),0)+accessories.reduce((s,x)=>s+Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))),0);answer=lang==="hi"?`कुल ज्ञात profit ₹${prof.toLocaleString("en-IN")} है।`:`Total known profit is ₹${prof.toLocaleString("en-IN")}.`;}
- else {filtered=rows.filter(x=>normalizeText([x.customerName,x.customerCode,x.phone,x.customerPhone,x.imei,x.brand,x.model,x.device,x.problem,x.name,x.category,x.sn,x.financeCompany,x.__section,formatDateTime(x)].join(" ")).includes(n));answer=filtered.length?(lang==="hi"?`${filtered.length} matching records मिले।`:lang==="hinglish"?`${filtered.length} matching records mile.`:`Found ${filtered.length} matching records.`):(lang==="hi"?"कोई matching record नहीं मिला।":"No matching record found.");}
- a.innerHTML=`<div class="smart-answer-text">${esc(answer)}</div>`;r.innerHTML=filtered.slice(0,50).map(x=>`<article class="result"><div class="result-name">${esc(x.customerName||x.name||"Record")}</div><div class="result-meta">${esc(x.__section||"")} • ${esc(x.phone||x.customerPhone||"")} • ${esc(formatDateTime(x))}</div><div class="result-grid">${item("Device",x.device||`${x.brand||""} ${x.model||""}`)}${item("IMEI / SN",x.imei||x.sn||"—")}${item("Amount",x.phoneAmount!=null?`₹${Number(x.phoneAmount).toLocaleString("en-IN")}`:x.total!=null?`₹${Number(x.total).toLocaleString("en-IN")}`:x.salePrice!=null?`₹${Number(x.salePrice).toLocaleString("en-IN")}`:"—")}${item("Customer",x.customerName||x.name||"—")}</div></article>`).join("");
+    const q=val("universalSearchInput"),a=$("smartSearchAnswer"),r=$("smartSearchResults");
+    if(!a||!r)return;
+    const n=normalizeText(q);
+    if(!n){
+        a.innerHTML='<div class="empty">पूछें: “आज कितने customer हैं?”, “Aman ka phone dikhao”, “show repairing data”, “profit कितना है?”, “Bajaj Finance ke customers dikhao”</div>';
+        r.innerHTML="";
+        return;
+    }
+    const lang=smartAnswerLanguage(q), rows=allDataRows();
+    let answer="", filtered=[];
+    const total=customers.length, repairs=repairing.length, second=secondHand.length, acc=accessories.length;
+    const today=new Date().toLocaleDateString("en-CA");
+    const todayRows=rows.filter(x=>recordDay(x)===today);
+
+    const countWords=/(total|how many|count|kitne|kitni|kitna|कितने|कितनी|कितना)/i;
+    if(countWords.test(q)&&/(customer|customers|ग्राहक)/i.test(q)){
+        answer=lang==="hi"?`कुल ${total} customer हैं।`:lang==="hinglish"?`Total ${total} customers hain.`:`There are ${total} customers in the database.`;
+    }else if(countWords.test(q)&&/(repair|repairing|रिपेयर)/i.test(q)){
+        answer=lang==="hi"?`Repairing में ${repairs} records हैं।`:`Repairing mein ${repairs} records hain.`;
+    }else if(countWords.test(q)&&/(second|second hand)/i.test(q)){
+        answer=`Second Hand mein ${second} records hain.`;
+    }else if(countWords.test(q)&&/(accessor|accessories)/i.test(q)){
+        answer=`Accessories mein ${acc} records hain.`;
+    }else if(/(today|aaj|आज)/i.test(q)&&countWords.test(q)){
+        answer=lang==="hi"?`आज ${todayRows.length} records का work मिला।`:`Aaj ${todayRows.length} records ka work mila.`;
+        filtered=todayRows;
+    }else if(/(profit|munafa|मुनाफा)/i.test(q)){
+        const prof=repairing.reduce((s,x)=>s+Number(x.profit??(Number(x.total??x.payment??0)-Number(x.partsPrice||0))),0)
+          +secondHand.reduce((s,x)=>s+Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))),0)
+          +accessories.reduce((s,x)=>s+Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))),0);
+        answer=lang==="hi"?`कुल ज्ञात profit ₹${prof.toLocaleString("en-IN")} है।`:`Total known profit is ₹${prof.toLocaleString("en-IN")}.`;
+    }else if(/(finance|bajaj|hdb|tvs|home credit|idfc|tata capital|shriram)/i.test(q)){
+        filtered=smartNaturalFilter(rows,q);
+        answer=filtered.length?`${filtered.length} finance/data records मिले।`:"कोई matching finance record नहीं मिला।";
+    }else{
+        filtered=smartNaturalFilter(rows,q);
+        if(filtered.length){
+            answer=lang==="hi"?`${filtered.length} matching records मिले।`:lang==="hinglish"?`${filtered.length} matching records mile.`:`Found ${filtered.length} matching records.`;
+        }else{
+            answer=lang==="hi"?"मुझे matching data नहीं मिला। Customer name, phone, IMEI, code, finance company, brand/model या section का नाम पूछें।":"Matching data nahi mila. Customer name, phone, IMEI, code, finance company, brand/model ya section ka naam pooch sakte hain.";
+        }
+    }
+    a.innerHTML=`<div class="smart-answer-text">${esc(answer)}</div><div class="ai-status">Kabir Data Assistant • Hindi / English / Hinglish</div>`;
+    r.innerHTML=filtered.slice(0,50).map(x=>`<article class="result"><div class="result-name">${esc(x.customerName||x.name||"Record")}</div><div class="result-meta">${esc(x.__section||"")} • ${esc(x.phone||x.customerPhone||"")} • ${esc(formatDateTime(x))}</div><div class="result-grid">${item("Device",x.device||`${x.brand||""} ${x.model||""}`)}${item("IMEI / SN",x.imei||x.sn||"—")}${item("Amount",x.phoneAmount!=null?`₹${Number(x.phoneAmount).toLocaleString("en-IN")}`:x.total!=null?`₹${Number(x.total).toLocaleString("en-IN")`:x.salePrice!=null?`₹${Number(x.salePrice).toLocaleString("en-IN")}`:"—")}${item("Customer",x.customerName||x.name||"—")}</div></article>`).join("");
+}
+function setupSmartVoice(){
+    const btn=$("smartVoiceButton"),input=$("universalSearchInput");
+    if(!btn||!input)return;
+    const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;
+    if(!Recognition){btn.disabled=true;btn.title="Voice recognition is not supported in this browser";return;}
+    if(btn.dataset.ready==="1")return;
+    const recognition=new Recognition();
+    recognition.lang=(navigator.language||"en-IN").toLowerCase().startsWith("hi")?"hi-IN":"en-IN";
+    recognition.interimResults=true;
+    recognition.continuous=false;
+    recognition.maxAlternatives=3;
+    recognition.onstart=()=>{btn.classList.add("listening");btn.textContent="🔴";input.placeholder="Bolkar poochhiye… / बोलकर पूछिए…";};
+    recognition.onresult=e=>{
+        let text="";
+        for(let i=e.resultIndex;i<e.results.length;i++) text+=e.results[i][0].transcript+" ";
+        input.value=text.trim();
+        smartSearch();
+    };
+    recognition.onerror=e=>{console.warn("Voice recognition:",e.error);};
+    recognition.onend=()=>{btn.classList.remove("listening");btn.textContent="🎙️";input.placeholder="पूछें: आज कितने customer हैं? / show finance data / Aman ka phone…";};
+    btn.addEventListener("click",()=>{
+        try{recognition.start();}catch(_){try{recognition.stop();setTimeout(()=>recognition.start(),120)}catch(e){}}
+    });
+    btn.dataset.ready="1";
 }
 
 function applyTheme(theme){
@@ -2202,9 +2285,11 @@ function featureNav(){
     $("deleteCustomerButton")?.addEventListener("click",e=>{e.preventDefault();e.stopPropagation();deleteCustomer();});
     $("editCustomerButton")?.addEventListener("click",e=>{e.preventDefault();e.stopPropagation();editCustomer();});
     $("closeDetailButton")?.addEventListener("click",e=>{e.preventDefault();e.stopPropagation();closeCustomerDetail();});
-    $("homeSearchButton")?.addEventListener("click",()=>{show("smartSearchSection");$("universalSearchInput")?.focus();smartSearch();audit("customer_search",{section:"All Data",description:"Smart database search opened"});});
+    $("homeSearchButton")?.addEventListener("click",()=>{show("smartSearchSection");$("universalSearchInput")?.focus();smartSearch();setupSmartVoice();audit("customer_search",{section:"All Data",description:"Smart database search opened"});});
+    $("deleteCustomerCard")?.addEventListener("click",()=>{show("customerPage");renderAllCustomers();$("allCustomerSearchInput")?.focus();});
     $("recentDeletedButton")?.addEventListener("click",()=>{show("recentDeletedSection");renderRecentlyDeleted();});
     $("universalSearchInput")?.addEventListener("input",smartSearch);
+    $("universalSearchInput")?.addEventListener("focus",setupSmartVoice);
     $("closePdfSelectButton")?.addEventListener("click",()=>$("pdfSelectModal")?.classList.add("hidden"));
     $("pdfChoices")?.addEventListener("click",e=>{const b=e.target.closest("[data-pdf-section]");if(b)runPdfWithSelectedDate(b.dataset.pdfSection)});
 }
@@ -2264,6 +2349,7 @@ async function init(){
      */
     themeSystem();
     featureNav();
+    setupSmartVoice();
     if(!$('appScreen')?.classList.contains('admin')) audit('page_open',{section:'Kabir Mobile Data',description:'Website opened',deviceBrand:deviceInfo().brand,deviceModel:deviceInfo().model});
     setupHomeDateFilter();
     adminAnalytics();
