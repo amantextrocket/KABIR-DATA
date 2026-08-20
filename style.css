@@ -323,55 +323,69 @@ html[data-theme="rose"] body{background:radial-gradient(circle at 15% 8%,rgba(25
 @media(min-width:800px){.home-bottom-actions{bottom:24px}.home-modules .module-card{min-height:165px!important}}
 
 
-/* ===== HOME NAV + GOOGLE-STYLE SEARCH BORDER ===== */
-#homeButton{font-size:22px!important;line-height:1!important;display:grid!important;place-items:center!important}
-#homeButton:active{transform:scale(.92)}
+/* ===== FINAL SEARCH / RECENTLY DELETED CLEAN PREMIUM OVERRIDE ===== */
+/* Remove all colour-animation effects from these controls. */
+.home-bottom-actions .home-search-fab,
+.home-bottom-actions .recently-deleted-fab,
+#recentDeletedButton,
+#homeSearchButton{
+  animation:none!important;
+  background:rgba(255,255,255,.075)!important;
+  color:var(--text)!important;
+  border:1px solid var(--border)!important;
+  box-shadow:0 14px 32px rgba(0,0,0,.20),inset 0 1px 0 rgba(255,255,255,.07)!important;
+  backdrop-filter:blur(22px) saturate(135%)!important;
+  -webkit-backdrop-filter:blur(22px) saturate(135%)!important;
+}
+/* Search alone gets a subtle premium distinction — no moving/animated colours. */
+#homeSearchButton{
+  border-color:rgba(255,255,255,.30)!important;
+  background:linear-gradient(145deg,rgba(255,255,255,.15),rgba(255,255,255,.065))!important;
+  box-shadow:0 16px 36px rgba(0,0,0,.24),inset 0 1px 0 rgba(255,255,255,.14),0 0 0 1px rgba(255,255,255,.035)!important;
+  font-weight:850!important;
+  letter-spacing:.12em!important;
+}
+#homeSearchButton span{color:var(--text)!important;text-shadow:0 2px 12px rgba(255,255,255,.18)}
+#homeSearchButton:hover{transform:scale(1.015)!important;border-color:rgba(255,255,255,.42)!important}
+#recentDeletedButton:hover{transform:none!important}
+#homeSearchButton:active,#recentDeletedButton:active{transform:scale(.97)!important}
 
-.home-search-fab{
+/* Smart Search input: completely static, normal premium glass. */
+.smart-search-box{
+  border:1px solid var(--border)!important;
+  background:rgba(255,255,255,.055)!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06)!important;
+  animation:none!important;
+}
+.smart-search-box span{color:var(--muted)!important}
+
+
+/* FINAL PREMIUM SEARCH + RECENTLY DELETED */
+.home-bottom-actions .home-search-fab,
+.home-bottom-actions .recently-deleted-fab,
+#homeSearchButton,#recentDeletedButton{
   position:relative!important;
-  isolation:isolate;
-  border:0!important;
   overflow:hidden!important;
-  background:rgba(255,255,255,.07)!important;
-  box-shadow:0 12px 35px rgba(0,0,0,.24),inset 0 1px 0 rgba(255,255,255,.10)!important;
+  animation:kabirPremiumFloat 3.8s ease-in-out infinite!important;
+  background:linear-gradient(145deg,rgba(255,255,255,.15),rgba(255,255,255,.055))!important;
+  border:1px solid rgba(255,255,255,.20)!important;
+  color:var(--text)!important;
+  box-shadow:0 14px 34px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.14)!important;
+  backdrop-filter:blur(22px) saturate(140%)!important;
+  -webkit-backdrop-filter:blur(22px) saturate(140%)!important;
 }
-.home-search-fab::before{
-  content:"";
-  position:absolute;
-  inset:-2px;
-  padding:2px;
-  border-radius:inherit;
-  background:conic-gradient(from 0deg,#4285f4,#9b72ff,#e942f5,#ff4f81,#fbbc05,#34a853,#4285f4);
-  animation:searchBorderSpin 4s linear infinite;
-  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
-  -webkit-mask-composite:xor;
-  mask-composite:exclude;
-  z-index:-1;
-  filter:blur(.2px) saturate(1.25);
-}
-.home-search-fab::after{
-  content:"";
-  position:absolute;
-  inset:2px;
-  border-radius:inherit;
-  background:linear-gradient(110deg,rgba(66,133,244,.10),rgba(155,114,255,.08),rgba(234,67,53,.08),rgba(52,168,83,.08));
-  background-size:260% 260%;
-  animation:searchBorderGlow 5s ease-in-out infinite;
-  z-index:-1;
+.home-bottom-actions .home-search-fab::after,
+.home-bottom-actions .recently-deleted-fab::after{
+  content:"";position:absolute;inset:1px;border-radius:inherit;
+  background:linear-gradient(115deg,transparent 0%,rgba(255,255,255,.13) 45%,transparent 62%);
+  transform:translateX(-120%);animation:kabirSheen 4.8s ease-in-out infinite;
   pointer-events:none;
 }
-.home-search-fab>*{position:relative;z-index:2}
-@keyframes searchBorderSpin{to{transform:rotate(360deg)}}
-@keyframes searchBorderGlow{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
-.smart-search-box{
-  position:relative!important;
-  border:1px solid transparent!important;
-  background:
-    linear-gradient(var(--glass),var(--glass)) padding-box,
-    linear-gradient(110deg,#4285f4,#9b72ff,#ea4335,#fbbc05,#34a853,#4285f4) border-box!important;
-  background-size:100% 100%,300% 100%!important;
-  animation:smartSearchBorder 5s linear infinite!important;
-  box-shadow:0 0 26px rgba(110,100,255,.10),inset 0 1px 0 rgba(255,255,255,.10)!important;
-}
-@keyframes smartSearchBorder{0%{background-position:0 0,0% 50%}50%{background-position:0 0,100% 50%}100%{background-position:0 0,0% 50%}}
-@media(prefers-reduced-motion:reduce){.home-search-fab::before,.home-search-fab::after,.smart-search-box{animation:none!important}}
+#homeSearchButton{border-color:rgba(130,170,255,.34)!important;box-shadow:0 16px 38px rgba(0,0,0,.25),0 0 20px rgba(100,150,255,.10),inset 0 1px 0 rgba(255,255,255,.16)!important;font-weight:850!important}
+#recentDeletedButton{border-color:rgba(255,205,100,.28)!important;box-shadow:0 16px 38px rgba(0,0,0,.23),0 0 18px rgba(255,190,70,.07),inset 0 1px 0 rgba(255,255,255,.15)!important;font-weight:850!important}
+@keyframes kabirPremiumFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
+@keyframes kabirSheen{0%,55%{transform:translateX(-120%)}78%,100%{transform:translateX(120%)}}
+#homeSearchButton:active,#recentDeletedButton:active{transform:scale(.97)!important}
+
+/* Only Search and Recently Deleted are highlighted; the input and deleted list stay normal. */
+.smart-search-box{animation:none!important;border:1px solid var(--border)!important;background:rgba(255,255,255,.055)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.06)!important}
