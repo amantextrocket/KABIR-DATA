@@ -356,111 +356,178 @@ async function changeSharedPin(newPin){
 
 
 /* =========================================================
-   ADMIN — NEW WORK HISTORY + PROFESSIONAL TRAFFIC
+   WORK HISTORY / AUDIT LOGS
 ========================================================= */
+function deviceInfo(){
+    const ua=navigator.userAgent||"";
+    let brand="Browser",model=navigator.platform||"Unknown";
+    if(/iPhone/i.test(ua)){brand="Apple";model="iPhone";}
+    else if(/iPad/i.test(ua)){brand="Apple";model="iPad";}
+    else if(/Android/i.test(ua)){
+        brand="Android";
+        const m=ua.match(/Android[^;)]*;[^;)]*;\s*([^;)]+?)(?:\s+Build\/[^;)]+)?[;)]/i);
+        model=m?.[1]?.trim()||"Android device";
+    }
+    else if(/Macintosh/i.test(ua)){brand="Apple";model="Mac";}
+    return {brand,model,userAgent:ua.slice(0,180)};
+}
+
 function auditLabel(action){
-    const labels={customer_add:"Customer Add",customer_edit:"Customer Edit",customer_delete:"Customer Delete",customer_bill_update:"Customer Bill Update",repairing_add:"Repairing Add",customer_search:"Customer Search",repairing_search:"Repairing Search",customer_export:"Customer Excel Download",repairing_export:"Repairing Excel Download",customer_pdf:"Customer PDF Download",pin_change:"PIN Changed",login_success:"Login Success",login_failed:"Login Failed",page_open:"Website Opened",pdf_download:"Complete PDF Download"};
+    const labels={
+        customer_add:"Customer Add",
+        customer_edit:"Customer Edit",
+        customer_delete:"Customer Delete",
+        customer_bill_update:"Customer Bill Update",
+        repairing_add:"Repairing Add",
+        customer_search:"Customer Search",
+        repairing_search:"Repairing Search",
+        customer_export:"Customer Excel Download",
+        repairing_export:"Repairing Excel Download",
+        customer_pdf:"Customer PDF Download",
+        pin_change:"PIN Changed",
+        login_success:"Login Success",
+        login_failed:"Login Failed",
+        page_open:"Website Opened",
+        second_hand_add:"Second Hand Phone Added",
+        accessory_add:"Accessory Added",
+        pdf_download:"Complete PDF Download"
+    };
     return labels[action]||String(action||"Work").replaceAll("_"," ");
 }
 async function audit(action,details={}){
-    try{await addDoc(collection(db,AUDIT_COL),{action:String(action||"work"),label:auditLabel(action),userUid:user?.uid||"unknown",userName:localStorage.getItem("kabir_current_user")||"Kabir User",section:details.section||"Kabir Mobile Data",customerId:details.customerId||null,customerCode:details.customerCode||null,customerName:details.customerName||null,description:details.description||auditLabel(action),details:details.extra||null,deviceBrand:details.deviceBrand||deviceInfo().brand,deviceModel:details.deviceModel||deviceInfo().model,clientTime:new Date().toISOString(),createdAt:serverTimestamp()});}catch(e){console.warn("Audit log failed:",e?.message||e);}
+    try{
+        await addDoc(collection(db,AUDIT_COL),{
+            action:String(action||"work"),
+            label:auditLabel(action),
+            userUid:user?.uid||"unknown",
+            userName:localStorage.getItem("kabir_current_user")||"Kabir User",
+            section:details.section||"Kabir Mobile Data",
+            customerId:details.customerId||null,
+            customerCode:details.customerCode||null,
+            customerName:details.customerName||null,
+            description:details.description||auditLabel(action),
+            details:details.extra||null,
+            deviceBrand:details.deviceBrand||deviceInfo().brand,
+            deviceModel:details.deviceModel||deviceInfo().model,
+            clientTime:new Date().toISOString(),
+            createdAt:serverTimestamp()
+        });
+    }catch(e){
+        // Audit failure must never block the actual customer/repairing operation.
+        console.warn("Audit log failed:",e?.message||e);
+    }
 }
-function auditMillis(x){return x?.createdAt?.toMillis?.()||Date.parse(x?.clientTime||"")||0;}
-function auditDaySafe(x){const d=x?.createdAt?.toDate?.()||(x?.clientTime?new Date(x.clientTime):null);return d&&!Number.isNaN(d.getTime())?d.toLocaleDateString("en-CA"):"";}
-function subscribeAuditLogs(){
-    if(auditListenerStarted)return;
-    auditListenerStarted=true;
-    onSnapshot(collection(db,AUDIT_COL),snap=>{auditLogs=snap.docs.map(d=>({id:d.id,...d.data()}));auditLogs.sort((a,b)=>auditMillis(b)-auditMillis(a));renderTraffic();},e=>console.warn("Audit listener:",e));
+
+function auditTime(x){
+    const d=x?.createdAt?.toDate?.() || (x?.clientTime?new Date(x.clientTime):null);
+    if(!d || Number.isNaN(d.getTime())) return "Time pending";
+    return d.toLocaleString("en-IN",{dateStyle:"medium",timeStyle:"medium"});
 }
-function recordMillis(x){
-    return x?.createdAt?.toMillis?.() || Date.parse(x?.clientTime||x?.date||x?.updatedAt||"") || 0;
-}
-function recordDaySafe(x){
-    const d=x?.createdAt?.toDate?.() || (x?.clientTime?new Date(x.clientTime):null) || (x?.date?new Date(x.date):null) || (x?.updatedAt?new Date(x.updatedAt):null);
+function auditDay(x){
+    const d=x?.createdAt?.toDate?.() || (x?.clientTime?new Date(x.clientTime):null);
     return d&&!Number.isNaN(d.getTime())?d.toLocaleDateString("en-CA"):"";
 }
-function recordTimeSafe(x){
-    const d=x?.createdAt?.toDate?.() || (x?.clientTime?new Date(x.clientTime):null) || (x?.date?new Date(x.date):null) || (x?.updatedAt?new Date(x.updatedAt):null);
-    return d&&!Number.isNaN(d.getTime())?d.toLocaleString("en-IN",{dateStyle:"medium",timeStyle:"short"}):"Time pending";
+function auditHour(x){
+    const d=x?.createdAt?.toDate?.() || (x?.clientTime?new Date(x.clientTime):null);
+    return d&&!Number.isNaN(d.getTime())?d.getHours():-1;
 }
-function recordPhone(x){return x?.phone||x?.customerPhone||"—";}
-function recordTitle(x,type){
-    if(type==="finance") return `${x.customerName||"Customer"} • ${[x.brand,x.model].filter(Boolean).join(" ")||"Finance"}`;
-    return `${x.customerName||"Customer"} • ${x.device||[x.brand,x.model].filter(Boolean).join(" ")||"Repairing"}`;
+function sortAudit(){
+    auditLogs.sort((a,b)=>{
+        const ta=a.createdAt?.toMillis?.()||Date.parse(a.clientTime||"")||0;
+        const tb=b.createdAt?.toMillis?.()||Date.parse(b.clientTime||"")||0;
+        return tb-ta;
+    });
+}
+function subscribeAuditLogs(){
+    if(auditListenerStarted || !$('workHistoryResults')) return;
+    auditListenerStarted=true;
+    onSnapshot(collection(db,AUDIT_COL),snap=>{
+        auditLogs=snap.docs.map(d=>({id:d.id,...d.data()}));
+        sortAudit();
+        renderWorkHistory();
+        renderTraffic();
+    },e=>{
+        console.error("Audit listener:",e);
+        if($('workHistoryResults'))$('workHistoryResults').innerHTML='<div class="empty">Work History load नहीं हुआ. Firebase Rules में auditLogs read permission check करें.</div>';
+    });
 }
 function renderWorkHistory(){
     const box=$("workHistoryResults"); if(!box)return;
     const q=val("workSearchInput").toLowerCase();
-    const rows=[
-        ...customers.map(x=>({...x,__type:"finance"})),
-        ...repairing.map(x=>({...x,__type:"repairing"}))
-    ].sort((a,b)=>recordMillis(b)-recordMillis(a));
-    const filtered=rows.filter(x=>{
-        if(!q)return true;
-        const hay=[x.customerName,recordPhone(x),x.customerCode,x.imei,x.brand,x.model,x.device,x.problem,x.financeCompany,x.lockName,x.__type].join(" ").toLowerCase();
-        return hay.includes(q);
-    });
-    if(!filtered.length){box.innerHTML='<div class="empty">अभी Finance या Repairing का कोई record नहीं मिला.</div>';return;}
-    box.innerHTML=filtered.slice(0,300).map((x,i)=>{
-        const finance=x.__type==="finance";
-        const amount=finance?Number(x.phoneAmount||0):Number(x.total??x.payment??0);
-        const extra=finance?`IMEI ${x.imei||"—"} • ${x.financeCompany||"Finance"}`:`${x.problem||"Repairing"} • Profit ₹${Number(x.profit??(amount-Number(x.partsPrice||0))).toLocaleString("en-IN")}`;
-        return `<article class="admin-work-card ${finance?'finance-work':'repair-work'}"><div class="admin-work-icon">${finance?'💳':'🛠️'}</div><div class="admin-work-main"><div class="admin-work-top"><div><b>${esc(recordTitle(x,x.__type))}</b><small>${finance?'Finance':'Repairing'} • ${esc(recordTimeSafe(x))}</small></div><span class="admin-work-amount">₹${amount.toLocaleString("en-IN")}</span></div><div class="admin-work-meta"><span>📞 ${esc(recordPhone(x))}</span><span>${esc(extra)}</span></div></div><button class="admin-work-delete" data-admin-delete-type="${x.__type}" data-admin-delete-id="${esc(x.id)}" aria-label="Delete record">🗑</button></article>`;
-    }).join("");
-    box.querySelectorAll(".admin-work-delete").forEach(btn=>btn.onclick=async e=>{
-        e.stopPropagation();
-        const type=btn.dataset.adminDeleteType,id=btn.dataset.adminDeleteId;
-        const source=type==="finance"?customers:repairing;
-        const row=source.find(x=>x.id===id);
-        if(!row)return;
-        const label=type==="finance"?"Finance":"Repairing";
-        if(!confirm(`${row.customerName||"This record"} का ${label} record Recently Deleted में भेजें?`))return;
-        try{
-            await deleteWithRecycle(type==="finance"?COL:REPAIR_COL,id,row);
-            await audit("customer_delete",{section:type==="finance"?"Kabir Finance Data":"Kabir Repairing Data",customerId:id,customerName:row.customerName||"",description:`${label} record deleted from Admin Work History and moved to Recently Deleted`});
-            renderWorkHistory();
-            showSuccessToast("Deleted","Record Recently Deleted में भेज दिया गया");
-        }catch(err){console.error(err);alert("Delete failed. Firebase Rules check करें.");}
-    });
+    const rows=auditLogs.filter(x=>!q||[x.label,x.action,x.userName,x.userUid,x.section,x.customerCode,x.customerName,x.description,auditTime(x)].join(" ").toLowerCase().includes(q));
+    if(!rows.length){box.innerHTML='<div class="empty">अभी कोई work history उपलब्ध नहीं है.</div>';return;}
+    const iconMap={customer_add:"👤",customer_edit:"✏️",customer_delete:"🗑️",customer_bill_update:"🧾",repairing_add:"🛠️",customer_search:"🔎",repairing_search:"🔎",customer_export:"📥",repairing_export:"📥",customer_pdf:"📄",pin_change:"🔐",login_success:"🟢",login_failed:"🔴",page_open:"🟡",pdf_download:"🔵",second_hand_add:"📱",accessory_add:"🎧"};
+    box.innerHTML=rows.slice(0,300).map((x,i)=>`<article class="result work-log">
+      <div class="work-log-head"><div class="work-log-icon">${iconMap[x.action]||"⚡"}</div><div class="work-log-title"><b>${esc(x.label||auditLabel(x.action))}</b><small>${esc(x.section||"Kabir Mobile Data")} • ${esc(x.userName||x.userUid||"Kabir User")}</small></div><time class="work-log-time">${esc(auditTime(x))}</time></div>
+      <div class="work-log-desc">${esc(x.description||auditLabel(x.action))}</div><div class="work-log-tags"><span class="work-log-tag">Device: ${esc(x.deviceBrand||"—")} ${esc(x.deviceModel||"")}</span></div>
+      <div class="work-log-tags"><span class="work-log-tag">#${i+1}</span>${x.customerCode?`<span class="work-log-tag">${esc(x.customerCode)}</span>`:""}${x.customerName?`<span class="work-log-tag">${esc(x.customerName)}</span>`:""}<span class="work-log-tag">${esc(x.action||"work")}</span></div>
+    </article>`).join("");
 }
 function renderTraffic(){
-    const all=[...auditLogs].sort((a,b)=>auditMillis(b)-auditMillis(a));
-    const today=new Date().toLocaleDateString("en-CA");
-    const visits=all.filter(x=>x.action==="page_open"||x.action==="login_success");
-    const todayActivity=all.filter(x=>auditDaySafe(x)===today);
-    const financeToday=customers.filter(x=>recordDaySafe(x)===today).length;
-    const repairToday=repairing.filter(x=>recordDaySafe(x)===today).length;
-    $("trafficTotal")&&($("trafficTotal").textContent=String(visits.length||all.length));
-    $("trafficToday")&&($("trafficToday").textContent=String(todayActivity.length));
-    $("trafficAdds")&&($("trafficAdds").textContent=String(financeToday));
-    $("trafficRepairs")&&($("trafficRepairs").textContent=String(repairToday));
-    const days=[]; const now=new Date(); now.setHours(0,0,0,0);
-    for(let i=13;i>=0;i--){const d=new Date(now);d.setDate(now.getDate()-i);const key=d.toLocaleDateString("en-CA");days.push({d,key,traffic:all.filter(x=>auditDaySafe(x)===key).length,finance:customers.filter(x=>recordDaySafe(x)===key).length,repairing:repairing.filter(x=>recordDaySafe(x)===key).length});}
-    const totalTraffic=days.reduce((n,x)=>n+x.traffic,0); $("trafficTrendTotal")&&($("trafficTrendTotal").textContent=String(totalTraffic));
-    const totalWork=days.reduce((n,x)=>n+x.finance+x.repairing,0); $("trafficWorkTotal")&&($("trafficWorkTotal").textContent=String(totalWork));
-    renderPremiumDailyGraph(days); renderPremiumWorkGraph(days); renderPremiumHours(all);
+    const total=auditLogs.length;
+    const today=new Date().toLocaleDateString('en-CA');
+    const todayRows=auditLogs.filter(x=>auditDay(x)===today);
+    const count=a=>auditLogs.filter(x=>x.action===a).length;
+    const users=new Set(auditLogs.map(x=>x.userUid).filter(Boolean));
+    $('trafficTotal')&&($('trafficTotal').textContent=String(total));
+    $('trafficToday')&&($('trafficToday').textContent=String(todayRows.length));
+    $('trafficAdds')&&($('trafficAdds').textContent=String(count('customer_add')));
+    $('trafficEdits')&&($('trafficEdits').textContent=String(count('customer_edit')));
+    $('trafficDeletes')&&($('trafficDeletes').textContent=String(count('customer_delete')));
+    $('trafficRepairs')&&($('trafficRepairs').textContent=String(count('repairing_add')));
+    $('trafficUsers')&&($('trafficUsers').textContent=String(users.size));
+    const hours=Array.from({length:24},(_,h)=>auditLogs.filter(x=>auditHour(x)===h).length);
+    const peak=Math.max(...hours,0),peakHour=peak?hours.indexOf(peak):-1;
+    $('trafficPeak')&&($('trafficPeak').textContent=peakHour<0?'—':`${String(peakHour).padStart(2,'0')}:00 (${peak})`);
+    const hb=$('trafficHours');
+    if(hb){
+        const max=Math.max(...hours,1);
+        hb.innerHTML=hours.map((n,h)=>`<div class="traffic-hour"><span>${String(h).padStart(2,'0')}</span><div><i style="width:${Math.round(n/max*100)}%"></i></div><b>${n}</b></div>`).join('');
+    }
+    const types={};
+    auditLogs.forEach(x=>types[x.action||'other']=(types[x.action||'other']||0)+1);
+    const tb=$('trafficTypes');
+    if(tb){
+        const list=Object.entries(types).sort((a,b)=>b[1]-a[1]);
+        const max=Math.max(list[0]?.[1]||1,1);
+        tb.innerHTML=list.slice(0,15).map(([a,n])=>`<div class="traffic-type"><span>${esc(auditLabel(a))}</span><div><i style="width:${Math.round(n/max*100)}%"></i></div><b>${n}</b></div>`).join('')||'<div class="empty">No traffic data.</div>';
+    }
+    renderCustomerDateGraph();
 }
-function renderPremiumDailyGraph(days){
-    const box=$("trafficDailyGraph");if(!box)return;const max=Math.max(...days.map(x=>x.traffic),1);
-    box.innerHTML=days.map(x=>`<div class="premium-bar-col" title="${x.key}: ${x.traffic}"><div class="premium-bar-value">${x.traffic||""}</div><i style="height:${Math.max(5,Math.round(x.traffic/max*100))}%"></i><span>${x.d.getDate()} ${x.d.toLocaleString("en-IN",{month:"short"})}</span></div>`).join("");
-}
-function renderPremiumWorkGraph(days){
-    const box=$("trafficWorkGraph");if(!box)return;const max=Math.max(...days.map(x=>Math.max(x.finance,x.repairing)),1);
-    box.innerHTML=days.map(x=>`<div class="premium-bar-col dual-col" title="${x.key}: Finance ${x.finance}, Repairing ${x.repairing}"><div class="dual-bars"><i style="height:${Math.max(4,Math.round(x.finance/max*100))}%"></i><b style="height:${Math.max(4,Math.round(x.repairing/max*100))}%"></b></div><span>${x.d.getDate()}</span></div>`).join("");
-}
-function renderPremiumHours(all){
-    const box=$("trafficHours");if(!box)return;const hours=Array.from({length:24},(_,h)=>all.filter(x=>{const d=x?.createdAt?.toDate?.()||(x?.clientTime?new Date(x.clientTime):null);return d&&!Number.isNaN(d.getTime())&&d.getHours()===h}).length);const max=Math.max(...hours,1),peak=Math.max(...hours);const ph=hours.indexOf(peak);$("trafficPeak")&&($("trafficPeak").textContent=peak?`${String(ph).padStart(2,"0")}:00`:"—");box.innerHTML=hours.map((n,h)=>`<div class="premium-bar-col hour-col" title="${String(h).padStart(2,"0")}:00 — ${n}"><i style="height:${Math.max(4,Math.round(n/max*100))}%"></i><span>${h%3===0?String(h).padStart(2,"0"):""}</span></div>`).join("");
+function renderCustomerDateGraph(){
+    const box=$("customerDateGraph"); if(!box)return;
+    const range=Number($("customerGraphRange")?.value||30);
+    const now=new Date(); now.setHours(0,0,0,0);
+    const rows=[];
+    for(let i=range-1;i>=0;i--){
+        const d=new Date(now); d.setDate(now.getDate()-i);
+        const key=d.toLocaleDateString("en-CA");
+        rows.push({d,key,count:customers.filter(c=>recordDay(c)===key).length});
+    }
+    const max=Math.max(...rows.map(x=>x.count),1);
+    box.innerHTML=rows.map(x=>`<div class="customer-bar" title="${x.key}: ${x.count} customer"><div class="customer-bar-value">${x.count||""}</div><i style="height:${Math.max(4,Math.round(x.count/max*100))}%"></i><span>${x.d.getDate()} ${x.d.toLocaleString("en-IN",{month:"short"})}</span></div>`).join("");
 }
 function adminAnalytics(){
-    if(!$('workHistoryButton')||!$('trafficButton'))return;
-    const open=id=>{document.querySelectorAll('[data-admin-page]').forEach(x=>x.classList.add('hidden'));$(id)?.classList.remove('hidden');$(id)?.scrollIntoView({behavior:'smooth',block:'start'});};
-    $('pinSettingsButton')?.addEventListener('click',()=>open('pinPage'));
-    $('workHistoryButton').addEventListener('click',()=>{open('workHistorySection');renderWorkHistory();});
-    $('trafficButton').addEventListener('click',()=>{open('trafficSection');renderTraffic();});
-    document.querySelectorAll('[data-admin-back]').forEach(b=>b.addEventListener('click',()=>open(b.dataset.adminBack)));
-    $('workSearchInput')?.addEventListener('input',renderWorkHistory);
+    if(!$("workHistoryButton")||!$("trafficButton"))return;
+    const open=id=>{document.querySelectorAll("[data-admin-page]").forEach(x=>x.classList.add("hidden"));$(id)?.classList.remove("hidden");$(id)?.scrollIntoView({behavior:"smooth",block:"start"});};
+    $("pinSettingsButton")?.addEventListener("click",()=>open("pinPage"));
+    $("workHistoryButton").addEventListener("click",()=>{open("workHistorySection");renderWorkHistory();});
+    $("trafficButton").addEventListener("click",()=>{open("trafficSection");renderTraffic();});
+    document.querySelectorAll("[data-admin-back]").forEach(b=>b.addEventListener("click",()=>open(b.dataset.adminBack)));
+    $("refreshWorkButton")?.addEventListener("click",renderWorkHistory);$("refreshTrafficButton")?.addEventListener("click",renderTraffic);$("workSearchInput")?.addEventListener("input",renderWorkHistory);$("customerGraphRange")?.addEventListener("change",renderCustomerDateGraph);
+    document.querySelectorAll("[data-management]").forEach(b=>b.addEventListener("click",()=>renderManagementData(b.dataset.management)));
     subscribeAuditLogs();
 }
+function renderManagementData(type){
+    const box=$("trafficManagementDetail");if(!box)return;
+    let title="",rows=[];
+    if(type==="finance"){title="Finance Management";rows=customers.map(x=>[x.customerName,x.phone,`${x.brand||""} ${x.model||""}`,x.imei,`₹${x.phoneAmount||0}`]);}
+    if(type==="repairing"){title="Repairing Management";rows=repairing.map(x=>[x.customerName,x.phone,x.device,x.problem,`₹${x.total??x.payment??0}`,`₹${x.partsPrice||0}`,`₹${x.profit??(Number(x.total ?? x.payment ?? 0)-Number(x.partsPrice||0))}`]);}
+    if(type==="secondHand"){title="Second Hand Management";rows=secondHand.map(x=>[x.customerName,`${x.brand||""} ${x.model||x.device||""}`,x.imei,x.condition,`₹${x.price||0}`,`₹${x.salePrice||0}`,`₹${x.profit??(Number(x.salePrice||0)-Number(x.price||0))}`]);}
+    if(type==="accessories"){title="Accessories Management";rows=accessories.map(x=>[x.name,x.category,x.sn,x.quantity,`₹${x.price||0}`,`₹${x.salePrice||0}`,`₹${x.profit??(Number(x.salePrice||0)-Number(x.price||0))}`]);}
+    box.innerHTML=`<div class="section-head"><div><div class="eyebrow">SELECTED MANAGEMENT</div><h3>${esc(title)}</h3></div><b>${rows.length} Records</b></div>`+(rows.length?`<div class="admin-data-table">${rows.slice(0,500).map(r=>`<div class="admin-data-row">${r.map(v=>`<span>${esc(v)}</span>`).join("")}</div>`).join("")}</div>`:'<div class="empty">No data found.</div>');
+}
+
 
 function msg(id,t,ok=false){
     let e=$(id);
