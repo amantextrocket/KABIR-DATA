@@ -72,13 +72,13 @@
 <label>4. IMEI<div class="with-button"><input id="secondImei" inputmode="numeric" maxlength="15" placeholder="15 digit IMEI"><button class="scan-code-button" data-scan-target="secondImei" type="button">▣ Scan</button></div></label>
 <div class="cols"><label>5. Purchase Price<input id="secondPrice" type="number" inputmode="decimal" min="0" required placeholder="₹"></label><label>6. Sell Price<input id="secondSalePrice" type="number" inputmode="decimal" min="0" placeholder="₹"></label></div>
 <div id="secondProfitBox" class="bill-box"><span><strong>Profit</strong><small>Sell Price − Purchase Price</small></span><em id="secondProfit">₹0</em></div>
-<label>7. Customer Name<input id="secondCustomerName" required list="existingCustomerNames"></label><label>8. Phone Number<input id="secondPhone" type="tel" inputmode="tel" maxlength="10" required list="existingCustomerPhones"></label>
+<label>7. Customer Name<input id="secondCustomerName" required></label><label>8. Phone Number<input id="secondPhone" type="tel" inputmode="tel" maxlength="10" required></label>
 <button class="save" type="submit">SAVE SECOND HAND PHONE</button><p id="secondMessage" class="message"></p>
 </form></section>
 
 <section id="secondListSection" data-page class="glass panel hidden app-page"><div class="section-head"><div><div class="eyebrow">SECOND HAND DATABASE</div><h2>Second Hand Phone List</h2></div><button class="close" data-page-back="secondPage">×</button></div><div class="search"><span>⌕</span><input id="secondSearchInput" type="search" placeholder="Name, phone, IMEI, brand, model…"></div><div id="secondResults" class="results"></div></section>
 
-<section id="accessoryAddSection" data-page class="glass panel hidden app-page"><div class="section-head"><div><div class="eyebrow">ACCESSORIES</div><h2>Add Accessory</h2></div><button class="close" data-page-back="accessoriesPage">×</button></div><form id="accessoryForm"><label>Accessory Name<input id="accessoryName" required placeholder="Charger / Cable / Cover…"></label><label>Category<input id="accessoryCategory" required></label><label>Serial Number (SN)<div class="with-button"><input id="accessorySn" inputmode="text" maxlength="80" placeholder="Accessory SN"><button class="scan-code-button" data-scan-target="accessorySn" type="button">▣ Scan</button></div></label><label>Quantity<input id="accessoryQty" type="number" inputmode="numeric" min="1" required></label><div class="cols"><label>Purchase Price<input id="accessoryPrice" type="number" inputmode="decimal" min="0"></label><label>Sale Price<input id="accessorySalePrice" type="number" inputmode="decimal" min="0"></label></div><div id="accessoryProfitBox" class="bill-box"><span><strong>Profit</strong><small>Sale Price − Purchase Price</small></span><em id="accessoryProfit">₹0</em></div><label>Customer Name (optional)<input id="accessoryCustomerName" placeholder="Customer name" list="existingCustomerNames"></label><label>Customer Phone (optional)<input id="accessoryCustomerPhone" type="tel" inputmode="tel" maxlength="10" list="existingCustomerPhones"></label><button class="save" type="submit">ADD ACCESSORY</button><p id="accessoryMessage" class="message"></p></form></section>
+<section id="accessoryAddSection" data-page class="glass panel hidden app-page"><div class="section-head"><div><div class="eyebrow">ACCESSORIES</div><h2>Add Accessory</h2></div><button class="close" data-page-back="accessoriesPage">×</button></div><form id="accessoryForm"><label>Accessory Name<input id="accessoryName" required placeholder="Charger / Cable / Cover…"></label><label>Category<input id="accessoryCategory" required></label><label>Serial Number (SN)<div class="with-button"><input id="accessorySn" inputmode="text" maxlength="80" placeholder="Accessory SN"><button class="scan-code-button" data-scan-target="accessorySn" type="button">▣ Scan</button></div></label><label>Quantity<input id="accessoryQty" type="number" inputmode="numeric" min="1" required></label><div class="cols"><label>Purchase Price<input id="accessoryPrice" type="number" inputmode="decimal" min="0"></label><label>Sale Price<input id="accessorySalePrice" type="number" inputmode="decimal" min="0"></label></div><div id="accessoryProfitBox" class="bill-box"><span><strong>Profit</strong><small>Sale Price − Purchase Price</small></span><em id="accessoryProfit">₹0</em></div><label>Customer Name (optional)<input id="accessoryCustomerName" placeholder="Customer name"></label><label>Customer Phone (optional)<input id="accessoryCustomerPhone" type="tel" inputmode="tel" maxlength="10"></label><button class="save" type="submit">ADD ACCESSORY</button><p id="accessoryMessage" class="message"></p></form></section>
 
 <section id="accessoryListSection" data-page class="glass panel hidden app-page"><div class="section-head"><div><div class="eyebrow">ACCESSORIES DATABASE</div><h2>Accessories List</h2></div><button class="close" data-page-back="accessoriesPage">×</button></div><div class="search"><span>⌕</span><input id="accessorySearchInput" type="search" placeholder="Name, category, SN…"></div><div id="accessoryResults" class="results"></div></section>
 
@@ -88,12 +88,12 @@
   <div class="section-head"><div><div class="eyebrow">NEW RECORD</div><h2>Add Customer</h2></div><button class="close" data-close="addSection">×</button></div>
   <form id="customerForm">
     <div class="block"><b>Customer Details</b>
-      <label>1. Customer Name<input id="customerName" required autocomplete="name" list="existingCustomerNames"><small class="existing-customer-hint">पहले से saved customer का नाम लिखते ही suggestion आएगा.</small></label>
+      <label>1. Customer Name<input id="customerName" required autocomplete="name"></label>
       <label>Customer Code<input id="customerCode" readonly placeholder="Automatic KM1234"></label>
       <label>2. Address<textarea id="address" rows="3" required></textarea></label>
       <label>3. PIN Code<input id="pincode" inputmode="numeric" maxlength="6" required placeholder="6 digit PIN code"><small id="pincodeStatus"></small></label>
       <div class="cols"><label>4. City / Village<input id="city" required placeholder="Auto from PIN"></label><label>State<input id="state" required placeholder="Auto from PIN"></label></div>
-      <label>Mobile Number<input id="phone" type="tel" inputmode="tel" maxlength="10" required list="existingCustomerPhones"><small class="existing-customer-hint">Saved customer number डालने पर details auto-fill हो सकती हैं.</small></label>
+      <label>Mobile Number<input id="phone" type="tel" inputmode="tel" maxlength="10" required></label>
     </div>
     <div class="block"><b>Device Details</b>
       <label>5. Phone Brand<select id="brand" required><option value="">Select brand</option></select></label>
@@ -120,8 +120,8 @@
 <section id="repairAddSection" data-page class="glass panel hidden app-page">
   <div class="section-head"><div><div class="eyebrow">NEW REPAIRING</div><h2>Add Repairing</h2></div><button class="close" data-close="repairAddSection">×</button></div>
   <form id="repairForm">
-    <label>1. Customer Name<input id="repairCustomerName" required list="existingCustomerNames"><small class="existing-customer-hint">Saved customer name/number suggestions उपलब्ध हैं.</small></label>
-    <label>2. Customer Phone Number<input id="repairPhone" type="tel" inputmode="tel" maxlength="10" required list="existingCustomerPhones"></label>
+    <label>1. Customer Name<input id="repairCustomerName" required></label>
+    <label>2. Customer Phone Number<input id="repairPhone" type="tel" inputmode="tel" maxlength="10" required></label>
     <label>3. Brand or Model<input id="repairDevice" required></label>
     <label>4. Problem<input id="repairProblem" required placeholder="Problem manually type करें"></label>
     <label>5. Repairing By<input id="repairBy" required></label>
@@ -139,7 +139,6 @@
 
 <section id="homeDateWorkSection" data-page class="glass panel hidden app-page"><div class="section-head"><div><div class="eyebrow">DATE WISE HOME</div><h2>उस तारीख का पूरा Work</h2></div><button class="close" data-page-back="homeView">×</button></div><div class="date-filter-row"><label>काम की तारीख<input id="homeWorkDate" type="date"></label><div class="date-filter-stats"><div><span>Customers</span><strong id="homeDateCustomerCount">0</strong></div><div><span>Repairing</span><strong id="homeDateRepairCount">0</strong></div></div></div><div id="homeDateResults" class="date-work-results"></div></section>
 
-<datalist id="existingCustomerNames"></datalist><datalist id="existingCustomerPhones"></datalist>
 <div id="customerDetailModal" class="modal hidden"><div class="glass modal-card detail-card"><div class="section-head"><div><div class="eyebrow">CUSTOMER DETAILS</div><h2 id="detailTitle">Customer</h2></div><button id="closeDetailButton" class="close">×</button></div><div id="customerDetailBody"></div><div class="detail-actions"><button id="editCustomerButton" class="glass save secondary" type="button">EDIT CUSTOMER</button><button id="deleteCustomerButton" class="glass save danger-btn" type="button">DELETE CUSTOMER</button></div></div></div>
 <div id="pdfSelectModal" class="modal hidden">
   <div class="glass modal-card pdf-select-card">
