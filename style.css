@@ -358,3 +358,42 @@ html[data-theme="rose"] body{background:radial-gradient(circle at 15% 8%,rgba(25
   animation:none!important;
 }
 .smart-search-box span{color:var(--muted)!important}
+
+/* ===== FINAL PREMIUM BUTTON MOTION — NO COLOUR LINES ===== */
+.home-bottom-actions .home-search-fab,
+.home-bottom-actions .recently-deleted-fab{
+  position:relative!important;
+  overflow:hidden!important;
+  isolation:isolate;
+  transition:transform .22s ease,box-shadow .22s ease,border-color .22s ease!important;
+  animation:premiumFloat 3.8s ease-in-out infinite!important;
+}
+.home-bottom-actions .home-search-fab::after,
+.home-bottom-actions .recently-deleted-fab::after{
+  content:"";
+  position:absolute;
+  inset:1px;
+  border-radius:16px;
+  pointer-events:none;
+  background:linear-gradient(105deg,transparent 0%,rgba(255,255,255,.10) 46%,transparent 58%);
+  transform:translateX(-120%);
+  animation:premiumSheen 5.5s ease-in-out infinite;
+  z-index:0;
+}
+.home-bottom-actions .home-search-fab>* ,
+.home-bottom-actions .recently-deleted-fab>*{position:relative;z-index:1}
+#homeSearchButton{
+  border-color:rgba(255,255,255,.38)!important;
+  background:linear-gradient(145deg,rgba(255,255,255,.18),rgba(255,255,255,.07))!important;
+  box-shadow:0 18px 42px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.18),0 0 22px rgba(255,255,255,.06)!important;
+}
+#recentDeletedButton{
+  border-color:rgba(255,255,255,.24)!important;
+  background:linear-gradient(145deg,rgba(255,255,255,.11),rgba(255,255,255,.045))!important;
+  box-shadow:0 16px 38px rgba(0,0,0,.24),inset 0 1px 0 rgba(255,255,255,.10)!important;
+}
+#homeSearchButton:hover{transform:translateY(-2px) scale(1.015)!important;box-shadow:0 22px 48px rgba(0,0,0,.30),inset 0 1px 0 rgba(255,255,255,.20),0 0 28px rgba(255,255,255,.08)!important}
+#recentDeletedButton:hover{transform:translateY(-2px)!important;box-shadow:0 20px 44px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.14)!important}
+@keyframes premiumFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
+@keyframes premiumSheen{0%,62%{transform:translateX(-120%);opacity:0}72%{opacity:1}86%,100%{transform:translateX(120%);opacity:0}}
+@media(prefers-reduced-motion:reduce){.home-bottom-actions .home-search-fab,.home-bottom-actions .recently-deleted-fab,.home-bottom-actions .home-search-fab::after,.home-bottom-actions .recently-deleted-fab::after{animation:none!important}}
