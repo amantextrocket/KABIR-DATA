@@ -444,3 +444,18 @@ html[data-theme="rose"] body{background:radial-gradient(circle at 15% 8%,rgba(25
 /* ===== EXISTING CUSTOMER SUGGESTIONS ===== */
 .existing-customer-hint{font-size:10px;color:var(--muted);margin-top:5px}
 .customer-suggestions{position:relative;z-index:30}
+/* ===== PDF DATE INPUT COMPACT FINAL FIX ===== */
+#pdfSelectModal .pdf-date-row input[type="date"]{
+  height:40px!important;
+  min-height:40px!important;
+  line-height:40px!important;
+  padding:0 8px!important;
+  font-size:13px!important;
+  border-radius:13px!important;
+}
+#pdfSelectModal .pdf-date-row label{font-size:12px!important}
+#pdfSelectModal .pdf-date-filter{padding:12px!important}
+@media(max-width:520px){
+  #pdfSelectModal .pdf-date-row{gap:8px!important}
+  #pdfSelectModal .pdf-date-row input[type="date"]{height:38px!important;min-height:38px!important;font-size:12px!important}
+}
