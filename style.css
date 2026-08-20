@@ -321,3 +321,26 @@ html[data-theme="rose"]{--bg:#160a12;--text:#fff2f8;--muted:rgba(255,242,248,.62
 html[data-theme="rose"] body{background:radial-gradient(circle at 15% 8%,rgba(255,70,150,.20),transparent 30%),radial-gradient(circle at 90% 90%,rgba(160,70,255,.16),transparent 30%),var(--bg)}
 @media(max-width:600px){.topbar{top:6px;min-height:82px!important}.home-view{padding-top:10px}.home-modules .module-card{min-height:138px!important}.home-bottom-actions{bottom:12px;width:calc(100vw - 24px)}}
 @media(min-width:800px){.home-bottom-actions{bottom:24px}.home-modules .module-card{min-height:165px!important}}
+
+/* ===== REQUESTED FIXES: PDF MOBILE + PREMIUM MODAL ===== */
+.pdf-select-card{position:relative;max-height:calc(100svh - 28px);overflow:auto;padding:18px}
+#pdfSelectModal{z-index:1000;align-items:flex-start;padding:12px;padding-top:max(12px,env(safe-area-inset-top))}
+#pdfSelectModal .section-head{position:sticky;top:0;z-index:5;background:rgba(12,14,20,.88);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);padding-bottom:10px}
+#pdfSelectModal .close{position:relative;z-index:10;flex:0 0 auto}
+.pdf-date-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.pdf-date-row label{min-width:0}
+.pdf-date-row input{min-width:0;width:100%;max-width:100%}
+@media(max-width:520px){
+  .pdf-date-row{grid-template-columns:1fr}
+  .pdf-select-card{width:100%;padding:16px;border-radius:24px}
+  #pdfSelectModal .section-head{gap:8px}
+  #pdfSelectModal .section-head h2{font-size:19px}
+}
+/* ===== ADMIN USES THE SAME THEME AS MAIN WEBSITE ===== */
+.admin .topbar .round{font-size:20px}
+/* ===== PER-RECORD DELETE ACTION ===== */
+.result-actions{display:grid;grid-template-columns:1fr;gap:8px;margin-top:12px}
+.result-actions .danger-btn{min-height:46px;margin:0;border-radius:16px}
+/* ===== EXISTING CUSTOMER SUGGESTIONS ===== */
+.existing-customer-hint{font-size:10px;color:var(--muted);margin-top:5px}
+.customer-suggestions{position:relative;z-index:30}
