@@ -859,8 +859,6 @@ function nav(){
     $("homePdfButton")?.addEventListener("click",downloadFullPdf);
     setupSecondHandFields();
     setupAccessoryFields();
-    setupExistingCustomerSuggestions();
-    attachExistingCustomerAutofill();
 }
 
 
@@ -1262,30 +1260,8 @@ async function save(e){
          * optional हैं और अभी save process को रोकेंगे नहीं.
          */
 
-        // Same mobile number = same customer.
-        // अगर यह number पहले से Finance/Customer master में है, तो
-        // नया duplicate customer document बनाने के बजाय उसी customer को
-        // automatically update किया जाएगा. User को manually EDIT दबाने की जरूरत नहीं होगी.
-        let editId=$("customerForm").dataset.editId;
-        const phoneMaster=customers.find(c=>String(c.phone||"").replace(/\D/g,"")===phone);
-        const autoPhoneMatch=!editId && !!phoneMaster?.id;
-        if(autoPhoneMatch){
-            editId=phoneMaster.id;
-            $("customerForm").dataset.editId=editId;
-        }
+        const editId=$("customerForm").dataset.editId;
         const existing=editId?customers.find(c=>c.id===editId):null;
-        const previousDevice=existing?{
-            brand:existing.brand||"",model:existing.model||"",imei:existing.imei||"",
-            colour:existing.colour||"",storage:existing.storage||"",
-            phoneAmount:Number(existing.phoneAmount||0),
-            financeCompany:existing.financeCompany||"",
-            addedAt:existing.createdAt||null
-        }:null;
-        const deviceHistory=Array.isArray(existing?.deviceHistory)?[...existing.deviceHistory]:[];
-        if(previousDevice && (previousDevice.brand||previousDevice.model||previousDevice.imei)){
-            const oldKey=[previousDevice.imei,previousDevice.brand,previousDevice.model].join("|");
-            if(!deviceHistory.some(d=>[d.imei,d.brand,d.model].join("|")===oldKey)) deviceHistory.push(previousDevice);
-        }
         let customerData={
 
             customerCode:existing?.customerCode || await uniqueCustomerCode(),
@@ -1361,8 +1337,7 @@ async function save(e){
 
             billYes:existing?.billYes===true,
 
-            deviceCount:autoPhoneMatch && existing ? Math.max(1,Number(existing.deviceCount||1)+1) : (existing?.deviceCount||1),
-            deviceHistory,
+            deviceCount:1,
 
             /*
              * Documents अभी खाली रखे जा रहे हैं.
@@ -1818,33 +1793,13 @@ function renderSecondHand(){
     const box=$("secondResults");if(!box)return;
     const q=val("secondSearchInput").toLowerCase();
     const rows=secondHand.filter(x=>!q||[x.customerName,x.phone,x.brand,x.model,x.device,x.imei,x.condition].join(" ").toLowerCase().includes(q));
-    box.innerHTML=rows.length?rows.map(x=>{const profit=Number(x.salePrice||0)-Number(x.price||0);return `<article class="result">
-      <div class="result-name">${esc(`${x.brand||""} ${x.model||x.device||"Second Hand Phone"}`.trim())}</div><div class="result-meta">${esc(x.customerName||"")} • ${esc(x.phone||"")}</div>
-      <div class="result-grid">${item("IMEI",x.imei||"")}${item("Condition",x.condition||"")}${item("Purchase Price",`₹${Number(x.price||0).toLocaleString("en-IN")}`)}${item("Sell Price",`₹${Number(x.salePrice||0).toLocaleString("en-IN")}`)}${item("Profit",`₹${profit.toLocaleString("en-IN")}`)}</div>
-      <div class="result-actions"><button type="button" class="save danger-btn second-delete-btn" data-second-id="${esc(x.id)}">DELETE CUSTOMER / RECORD</button></div>
-    </article>`}).join(""):"<div class=\"empty\">No second-hand records found.</div>";
-    box.querySelectorAll(".second-delete-btn").forEach(btn=>btn.onclick=async e=>{
-        e.stopPropagation(); const x=secondHand.find(r=>r.id===btn.dataset.secondId); if(!x)return;
-        if(!confirm(`Delete ${x.customerName||"this customer"} second-hand record?`))return;
-        try{await deleteWithRecycle(SECOND_COL,x.id,x);await audit("customer_delete",{section:"Second Hand",customerId:x.id,customerName:x.customerName,description:`Second-hand customer ${x.customerName||x.id} moved to Recently Deleted`});renderSecondHand();renderAllCustomers();showSuccessToast("Deleted","Second-hand record moved to Recently Deleted");}
-        catch(err){console.error(err);alert("Delete failed. Firebase Rules check करें.");}
-    });
+    box.innerHTML=rows.length?rows.map(x=>{const profit=Number(x.salePrice||0)-Number(x.price||0);return `<article class="result"><div class="result-name">${esc(`${x.brand||""} ${x.model||x.device||"Second Hand Phone"}`.trim())}</div><div class="result-meta">${esc(x.customerName||"")} • ${esc(x.phone||"")}</div><div class="result-grid">${item("IMEI",x.imei||"")}${item("Condition",x.condition||"")}${item("Purchase Price",`₹${Number(x.price||0).toLocaleString("en-IN")}`)}${item("Sell Price",`₹${Number(x.salePrice||0).toLocaleString("en-IN")}`)}${item("Profit",`₹${profit.toLocaleString("en-IN")}`)}</div></article>`}).join(""):"<div class=\"empty\">No second-hand records found.</div>";
 }
 function renderAccessories(){
     const box=$("accessoryResults");if(!box)return;
     const q=val("accessorySearchInput").toLowerCase();
     const rows=accessories.filter(x=>!q||[x.name,x.category,x.sn,x.customerName,x.customerPhone].join(" ").toLowerCase().includes(q));
-    box.innerHTML=rows.length?rows.map(x=>{const profit=Number(x.salePrice||0)-Number(x.price||0);return `<article class="result">
-      <div class="result-name">${esc(x.name||"Accessory")}</div><div class="result-meta">${esc(x.category||"")} • SN: ${esc(x.sn||"—")}</div>
-      <div class="result-grid">${item("Quantity",x.quantity||0)}${item("Purchase Price",`₹${Number(x.price||0).toLocaleString("en-IN")}`)}${item("Sale Price",`₹${Number(x.salePrice||0).toLocaleString("en-IN")}`)}${item("Profit",`₹${profit.toLocaleString("en-IN")}`)}${item("Customer",x.customerName||"—")}</div>
-      <div class="result-actions"><button type="button" class="save danger-btn accessory-delete-btn" data-accessory-id="${esc(x.id)}">DELETE CUSTOMER / RECORD</button></div>
-    </article>`}).join(""):"<div class=\"empty\">No accessories found.</div>";
-    box.querySelectorAll(".accessory-delete-btn").forEach(btn=>btn.onclick=async e=>{
-        e.stopPropagation(); const x=accessories.find(r=>r.id===btn.dataset.accessoryId); if(!x)return;
-        if(!confirm(`Delete ${x.customerName||x.name||"this customer"} accessory record?`))return;
-        try{await deleteWithRecycle(ACCESSORY_COL,x.id,x);await audit("customer_delete",{section:"Accessories",customerId:x.id,customerName:x.customerName,description:`Accessory customer ${x.customerName||x.name||x.id} moved to Recently Deleted`});renderAccessories();renderAllCustomers();showSuccessToast("Deleted","Accessory record moved to Recently Deleted");}
-        catch(err){console.error(err);alert("Delete failed. Firebase Rules check करें.");}
-    });
+    box.innerHTML=rows.length?rows.map(x=>{const profit=Number(x.salePrice||0)-Number(x.price||0);return `<article class="result"><div class="result-name">${esc(x.name||"Accessory")}</div><div class="result-meta">${esc(x.category||"")} • SN: ${esc(x.sn||"—")}</div><div class="result-grid">${item("Quantity",x.quantity||0)}${item("Purchase Price",`₹${Number(x.price||0).toLocaleString("en-IN")}`)}${item("Sale Price",`₹${Number(x.salePrice||0).toLocaleString("en-IN")}`)}${item("Profit",`₹${profit.toLocaleString("en-IN")}`)}${item("Customer",x.customerName||"—")}</div></article>`}).join(""):"<div class=\"empty\">No accessories found.</div>";
 }
 function setupSecondHandFields(){
     const b=$("secondBrand"),m=$("secondModel");if(!b||!m)return;
@@ -1877,55 +1832,7 @@ async function saveAccessory(e){
     try{await addDoc(collection(db,ACCESSORY_COL),data);await audit("accessory_add",{section:"Accessories",customerName:data.customerName,description:`Accessory added: ${data.name}`,extra:{category:data.category,quantity:data.quantity,sn:data.sn,profit:data.profit,customerPhone:data.customerPhone}});e.target.reset();updateAccessoryProfit();showSuccessToast("Successfully Saved","Accessory stock में add हो गया.");}catch(err){console.error(err);msg("accessoryMessage",err?.message||"Save failed.");}
 }
 
-function getUnifiedCustomerByPhone(raw){
-    const p=String(raw||"").replace(/\D/g,"");
-    if(p.length<10)return null;
-    const all=[...customers,...repairing,...secondHand,...accessories];
-    const matches=all.filter(x=>String(x.phone||x.customerPhone||"").replace(/\D/g,"")===p);
-    if(!matches.length)return null;
-    // Finance/Customer master को सबसे पहले रखें, क्योंकि इसमें पूरा profile data होता है.
-    return matches.find(x=>x.address||x.pincode||x.city||x.state||x.brand||x.model)||matches[0];
-}
-function setupExistingCustomerSuggestions(){
-    const names=$("existingCustomerNames"), phones=$("existingCustomerPhones");
-    const records=[]; const seen=new Set();
-    const add=(name,phone,data)=>{
-        const n=String(name||"").trim(),p=String(phone||"").replace(/\D/g,"");
-        if(!n&&!p)return; const key=(p||n.toLowerCase()); if(seen.has(key))return; seen.add(key); records.push({name:n,phone:p,data});
-    };
-    customers.forEach(x=>add(x.customerName,x.phone,x)); repairing.forEach(x=>add(x.customerName,x.phone,x)); secondHand.forEach(x=>add(x.customerName,x.phone,x)); accessories.forEach(x=>add(x.customerName,x.customerPhone,x));
-    if(names) names.innerHTML=records.filter(x=>x.name).slice(0,300).map(x=>`<option value="${esc(x.name)}">${esc(x.phone||"")}</option>`).join("");
-    if(phones) phones.innerHTML=records.filter(x=>x.phone).slice(0,300).map(x=>`<option value="${esc(x.phone)}">${esc(x.name||"")}</option>`).join("");
-}
-function attachExistingCustomerAutofill(){
-    const nameIds=["customerName","repairCustomerName","secondCustomerName","accessoryCustomerName"];
-    const phoneIds=["phone","repairPhone","secondPhone","accessoryCustomerPhone"];
-    const fill=(x)=>{
-        if(!x)return;
-        const name=x.customerName||"",phone=x.phone||x.customerPhone||"";
-        const profileFields={address:x.address,pincode:x.pincode,city:x.city,state:x.state};
-        nameIds.forEach(id=>{const el=$(id);if(el && name)el.value=name;});
-        phoneIds.forEach(id=>{const el=$(id);if(el && phone)el.value=phone;});
-        Object.entries(profileFields).forEach(([key,value])=>{const el=$(key);if(el&&value)el.value=value;});
-        // Finance customer already exists: next save will automatically update the same master record.
-        const master=customers.find(c=>String(c.phone||"").replace(/\D/g,"")===String(phone).replace(/\D/g,""));
-        if(master?.id && $("customerForm") && String(phone).replace(/\D/g,"").length===10){
-            $("customerForm").dataset.editId=master.id;
-            if($("customerCode"))$("customerCode").value=master.customerCode||"";
-        }
-    };
-    const find=raw=>{
-        const q=String(raw||"").trim().toLowerCase(),p=q.replace(/\D/g,"");
-        if(!q)return null;
-        if(p.length>=10)return getUnifiedCustomerByPhone(p);
-        const all=[...customers,...repairing,...secondHand,...accessories];
-        return all.find(x=>String(x.customerName||"").trim().toLowerCase()===q)||null;
-    };
-    [...nameIds,...phoneIds].forEach(id=>$(id)?.addEventListener("input",e=>{const x=find(e.target.value);if(x)fill(x);}));
-}
-
 function renderAllCustomers(){
-    setupExistingCustomerSuggestions();
     const box=$("allCustomerResults");if(!box)return;const q=val("allCustomerSearchInput").toLowerCase();
     const map=new Map();
     const add=(r,type,name,phone)=>{const n=String(name||"").trim(),p=String(phone||"").replace(/\D/g,"");if(!n&&!p)return;const key=p||n.toLowerCase();if(!map.has(key))map.set(key,{name:n||"Customer",phone:p,types:new Set()});map.get(key).types.add(type);};
@@ -1987,7 +1894,6 @@ function renderRepairing(){
     box.innerHTML=arr.map(r=>`<article class="result">
       <div class="result-name">${esc(r.customerName||"")}</div><div class="result-meta">${esc(r.phone||"")} • ${esc(formatDateTime(r))}</div>
       <div class="result-grid">${item("Brand / Model",r.device)}${item("Problem",r.problem)}${item("Repairing By",r.repairBy)}${item("Total",`₹${Number(r.total??r.payment??0).toLocaleString("en-IN")}`)}${item("Parts Price",`₹${Number(r.partsPrice||0).toLocaleString("en-IN")}`)}${item("Profit",`₹${Number(r.profit??(Number(r.total??r.payment??0)-Number(r.partsPrice||0))).toLocaleString("en-IN")}`)}</div>
-      <div class="result-actions"><button type="button" class="save danger-btn repair-delete-btn" data-repair-id="${esc(r.id)}">DELETE CUSTOMER / RECORD</button></div>
     </article>`).join("");
     box.querySelectorAll(".repair-delete-btn").forEach(btn=>btn.onclick=async e=>{e.stopPropagation();const r=repairing.find(x=>x.id===btn.dataset.repairId);if(!r||!confirm(`Delete ${r.customerName||"this customer"} repairing record?`))return;try{await deleteWithRecycle(REPAIR_COL,r.id,r);await audit("customer_delete",{section:"Kabir Repairing Data",customerId:r.id,customerName:r.customerName,description:`Repairing customer ${r.customerName||r.id} moved to Recently Deleted`});renderRepairing();renderAllCustomers();showSuccessToast("Deleted","Repairing record moved to Recently Deleted");}catch(err){console.error(err);alert("Delete failed. Firebase Rules check करें.");}});
 }
@@ -2065,8 +1971,7 @@ let pdfFontReady=false;
 async function ensurePdfFont(pdf){
     if(pdfFontReady){pdf.setFont("NotoSans","normal");return true;}
     try{
-        /* Noto Sans Devanagari includes ₹ plus Hindi/Latin glyphs. */
-        const url="https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-devanagari@5.2.5/files/noto-sans-devanagari-devanagari-400-normal.ttf";
+        const url="https://cdn.jsdelivr.net/npm/@fontsource/noto-sans@5.2.5/files/noto-sans-latin-400-normal.ttf";
         const res=await fetch(url,{mode:"cors",cache:"force-cache"});
         if(!res.ok)throw Error("PDF font unavailable");
         const buf=await res.arrayBuffer();
@@ -2235,124 +2140,610 @@ function runPdfWithSelectedDate(section){
     const from=$("pdfFromDate")?.value||"",to=$("pdfToDate")?.value||"";
     buildSelectedPdf(section,from,to);
 }
-function normalizeText(x){return String(x||"").toLowerCase().replace(/[^\p{L}\p{N}]+/gu," ").trim();}
-function allDataRows(){return [
- ...customers.map(x=>({...x,__section:"Finance"})),
- ...repairing.map(x=>({...x,__section:"Repairing"})),
- ...secondHand.map(x=>({...x,__section:"Second Hand"})),
- ...accessories.map(x=>({...x,__section:"Accessories"}))
-];}
+
+/* =========================================================
+   KABIR DATA — ADVANCED SMART SEARCH / AI-LIKE QUERY ENGINE
+   Understands the 290 Hindi / Hinglish / English examples
+   without changing Firebase data or existing UI.
+   ========================================================= */
+
+function normalizeText(x){
+    return String(x??"")
+        .toLowerCase()
+        .normalize("NFKC")
+        .replace(/[’'`]/g,"")
+        .replace(/[^\p{L}\p{N}₹]+/gu," ")
+        .trim();
+}
+
+function searchTokens(x){
+    return normalizeText(x).split(/\s+/).filter(Boolean);
+}
+
+function dataDate(row){
+    const d = row?.createdAt?.toDate?.()
+        || (row?.createdAt instanceof Date ? row.createdAt : null)
+        || (row?.clientTime ? new Date(row.clientTime) : null)
+        || (row?.date ? new Date(row.date) : null)
+        || (row?.createdDate ? new Date(row.createdDate) : null);
+    return d && !Number.isNaN(d.getTime()) ? d : null;
+}
+
+function dayKey(d){
+    return d && !Number.isNaN(d.getTime()) ? d.toLocaleDateString("en-CA") : "";
+}
+
+function startOfDay(d=new Date()){
+    const x=new Date(d); x.setHours(0,0,0,0); return x;
+}
+function endOfDay(d=new Date()){
+    const x=new Date(d); x.setHours(23,59,59,999); return x;
+}
+function startOfMonth(d=new Date()){
+    const x=new Date(d.getFullYear(),d.getMonth(),1); return x;
+}
+function endOfMonth(d=new Date()){
+    const x=new Date(d.getFullYear(),d.getMonth()+1,0,23,59,59,999); return x;
+}
+function startOfYear(d=new Date()){
+    return new Date(d.getFullYear(),0,1);
+}
+function endOfYear(d=new Date()){
+    return new Date(d.getFullYear(),11,31,23,59,59,999);
+}
+function startOfWeek(d=new Date()){
+    const x=startOfDay(d), day=x.getDay();
+    x.setDate(x.getDate()-(day===0?6:day-1));
+    return x;
+}
+function endOfWeek(d=new Date()){
+    const x=startOfWeek(d); x.setDate(x.getDate()+6); x.setHours(23,59,59,999); return x;
+}
+
+const KABIR_MONTHS={
+    january:0,february:1,march:2,april:3,may:4,june:5,july:6,august:7,september:8,october:9,november:10,december:11,
+    jan:0,feb:1,mar:2,apr:3,jun:5,jul:6,aug:7,sep:8,sept:8,oct:9,nov:10,dec:11,
+    जनवरी:0,फरवरी:1,मार्च:2,अप्रैल:3,मई:4,जून:5,जुलाई:6,अगस्त:7,सितंबर:8,सितम्बर:8,अक्टूबर:9,नवंबर:10,दिसंबर:11
+};
+
+function parseDMY(s){
+    const m=String(s||"").match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
+    if(!m)return null;
+    let y=Number(m[3]); if(y<100)y+=2000;
+    const d=new Date(y,Number(m[2])-1,Number(m[1]));
+    return Number.isNaN(d.getTime())?null:d;
+}
+
+function smartDateRange(q){
+    const n=normalizeText(q), now=new Date();
+
+    /* Explicit range: 01/08/2026 se 20/08/2026 / from ... to ... */
+    const dates=[...n.matchAll(/\b(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})\b/g)]
+        .map(m=>parseDMY(m[1])).filter(Boolean);
+    if(dates.length>=2) return {from:startOfDay(dates[0]),to:endOfDay(dates[1]),label:`${dates[0].toLocaleDateString("en-IN")} से ${dates[1].toLocaleDateString("en-IN")}`};
+    if(dates.length===1) return {from:startOfDay(dates[0]),to:endOfDay(dates[0]),label:dates[0].toLocaleDateString("en-IN")};
+
+    const monthMatch=n.match(/\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec|जनवरी|फरवरी|मार्च|अप्रैल|मई|जून|जुलाई|अगस्त|सितंबर|सितम्बर|अक्टूबर|नवंबर|दिसंबर)\b/);
+    if(monthMatch){
+        let mi=KABIR_MONTHS[monthMatch[1]], year=now.getFullYear();
+        const ym=n.match(new RegExp(monthMatch[1]+String.raw`\s*(20\d{2})`,"i"));
+        if(ym)year=Number(ym[1]);
+        const from=new Date(year,mi,1),to=new Date(year,mi+1,0,23,59,59,999);
+        return {from,to,label:from.toLocaleString("en-IN",{month:"long",year:"numeric"})};
+    }
+
+    if(/\b(today|aaj|आज|आजका|आजकी)\b/i.test(q)) return {from:startOfDay(now),to:endOfDay(now),label:"आज"};
+    if(/\b(yesterday|kal|कल|yesterday ka)\b/i.test(q) && !/\btomorrow\b/i.test(q)){
+        const d=new Date(now); d.setDate(d.getDate()-1);
+        return {from:startOfDay(d),to:endOfDay(d),label:"कल"};
+    }
+    if(/\b(day before yesterday|parso|परसों)\b/i.test(q)){
+        const d=new Date(now); d.setDate(d.getDate()-2);
+        return {from:startOfDay(d),to:endOfDay(d),label:"परसों"};
+    }
+    if(/\b(last|pichhle|pichla|पिछले|पिछला)\s*(7|seven|सात)\s*(days|din|दिन)\b/i.test(q))
+        {const from=new Date(now);from.setDate(from.getDate()-6);return {from:startOfDay(from),to:endOfDay(now),label:"पिछले 7 दिन"};}
+    if(/\b(last|pichhle|पिछले)\s*(30|thirty|तीस)\s*(days|din|दिन)\b/i.test(q))
+        {const from=new Date(now);from.setDate(from.getDate()-29);return {from:startOfDay(from),to:endOfDay(now),label:"पिछले 30 दिन"};}
+    if(/\b(this|current|is|इस)\s*(week|hafte|हफ्ते|सप्ताह)\b/i.test(q))
+        return {from:startOfWeek(now),to:endOfWeek(now),label:"इस हफ्ते"};
+    if(/\b(this|current|is|इस)\s*(month|mahina|महीने)\b/i.test(q))
+        return {from:startOfMonth(now),to:endOfMonth(now),label:"इस महीने"};
+    if(/\b(last|previous|pichhle|पिछले)\s*(month|mahine|महीने)\b/i.test(q)){
+        const d=new Date(now.getFullYear(),now.getMonth()-1,1);
+        return {from:startOfMonth(d),to:endOfMonth(d),label:"पिछले महीने"};
+    }
+    if(/\b(this|current|is|इस)\s*(year|saal|साल)\b/i.test(q))
+        return {from:startOfYear(now),to:endOfYear(now),label:"इस साल"};
+    if(/\b(last|previous|pichhle|पिछले)\s*(year|saal|साल)\b/i.test(q)){
+        const y=now.getFullYear()-1,d=new Date(y,0,1);
+        return {from:startOfYear(d),to:endOfYear(d),label:"पिछले साल"};
+    }
+    return null;
+}
+
+function rowInRange(row,range){
+    if(!range)return true;
+    const d=dataDate(row); return !!d && d>=range.from && d<=range.to;
+}
+
+function allDataRows(){
+    return [
+        ...customers.map(x=>({...x,__section:"Finance"})),
+        ...repairing.map(x=>({...x,__section:"Repairing"})),
+        ...secondHand.map(x=>({...x,__section:"Second Hand"})),
+        ...accessories.map(x=>({...x,__section:"Accessories"}))
+    ];
+}
+
 function smartAnswerLanguage(q){
     const n=normalizeText(q);
     if(/[\u0900-\u097f]/.test(q))return "hi";
-    if(/\b(kya|kitne|kaun|dikhao|batao|aaj|kal|naam|customer|data|profit|kaam|work|record)\b/i.test(n))return "hinglish";
+    if(/\b(kya|kitne|kitni|kitna|kaun|dikhao|batao|btao|aaj|kal|naam|grahak|customer|data|hisab|kam|kaam|hua|hue|hain|hai|profit|munafa|paisa|rupaye|rupees)\b/i.test(n))return "hinglish";
     return "en";
 }
-function smartMoney(n){return `₹${Number(n||0).toLocaleString("en-IN")}`;}
-function smartDateKey(d){return d.toLocaleDateString("en-CA");}
-function smartRecordDate(x){
-    const v=x?.createdAt;
-    const d=v?.toDate?.() || (v instanceof Date?v:(v?new Date(v):null));
-    return d && !Number.isNaN(d.getTime()) ? d : null;
-}
-function smartRecordsBetween(rows,start,end){
-    return rows.filter(x=>{const d=smartRecordDate(x);return d&&d>=start&&d<=end;});
-}
-function smartTodayRows(){
-    const now=new Date();
-    const start=new Date(now.getFullYear(),now.getMonth(),now.getDate());
-    const end=new Date(start);end.setDate(end.getDate()+1);
-    return {rows:smartRecordsBetween(allDataRows(),start,end),start,end};
-}
-function smartProfit(rows){
-    return rows.reduce((sum,x)=>{
-        if(x.__section==="Repairing") return sum+Number(x.profit??(Number(x.total??x.payment??0)-Number(x.partsPrice||0)));
-        if(x.__section==="Second Hand") return sum+Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0)));
-        if(x.__section==="Accessories") return sum+Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0)));
-        return sum+Number(x.profit||0);
-    },0);
-}
-function smartSectionRows(rows,section){
-    if(section==="finance")return rows.filter(x=>x.__section==="Finance");
-    if(section==="repairing")return rows.filter(x=>x.__section==="Repairing");
-    if(section==="second")return rows.filter(x=>x.__section==="Second Hand");
-    if(section==="accessories")return rows.filter(x=>x.__section==="Accessories");
-    return rows;
-}
-function smartFormatDate(d){return d?d.toLocaleDateString("en-IN",{day:"2-digit",month:"2-digit",year:"numeric"}):"—";}
-function smartSearch(){
-    const q=val("universalSearchInput"),a=$("smartSearchAnswer"),r=$("smartSearchResults");
-    if(!a||!r)return;
-    const n=normalizeText(q);
-    if(!n){
-        a.innerHTML='<div class="empty">आप कुछ भी पूछ सकते हैं — जैसे “आज क्या क्या काम हुआ है?”, “आज कितना profit हुआ?”, “कुल कितने customer हैं?”, “Aman का phone दिखाओ”, “कल कितनी repairing हुई?”</div>';
-        r.innerHTML="";return;
-    }
-    const lang=smartAnswerLanguage(q),all=allDataRows();
-    const {rows:today}=smartTodayRows();
-    const now=new Date(),ys=new Date(now);ys.setDate(ys.getDate()-1);
-    const yStart=new Date(ys.getFullYear(),ys.getMonth(),ys.getDate()),yEnd=new Date(yStart);yEnd.setDate(yEnd.getDate()+1);
-    const yesterday=smartRecordsBetween(all,yStart,yEnd);
-    const lower=n;
-    const isToday=/(aaj|today|आज)/i.test(q);
-    const isYesterday=/(kal|yesterday|कल)/i.test(q);
-    const isProfit=/(profit|profit hua|profit hua hai|munafa|मुनाफा|लाभ|कमाई)/i.test(q);
-    const asksWork=/(kya kya|kya|kaam|work|काम|कार्य|record|records|entry|entries|डेटा|data)/i.test(q);
-    const asksCount=/(kitne|kitni|kitna|how many|count|कितने|कितनी|कितना|कितना हुआ)/i.test(q);
-    const asksCustomer=/(customer|customers|ग्राहक|client)/i.test(q);
-    const section = /repair|repairing|रिपेयर/i.test(q)?"repairing":/second hand|second|पुराना/i.test(q)?"second":/accessor|accessories|एसेसरी/i.test(q)?"accessories":/finance|फोन|mobile|मोबाइल/i.test(q)?"finance":null;
-    let scope=all;
-    if(isToday)scope=today;
-    else if(isYesterday)scope=yesterday;
-    if(section)scope=smartSectionRows(scope,section);
-    let answer="",filtered=[];
 
-    if(isProfit){
-        const amount=smartProfit(scope);
-        const prefix=isToday?"आज ":isYesterday?"कल ":"";
-        if(lang==="hi")answer=`${prefix}कुल profit ${smartMoney(amount)} हुआ है।`;
-        else if(lang==="hinglish")answer=`${prefix}total profit ${smartMoney(amount)} hua hai.`;
-        else answer=`${prefix}total profit is ${smartMoney(amount)}.`;
-    }else if(isToday && asksWork && !asksCustomer && !section && !isProfit){
-        const parts=[];
-        const groups={Finance:today.filter(x=>x.__section==="Finance"),Repairing:today.filter(x=>x.__section==="Repairing"),"Second Hand":today.filter(x=>x.__section==="Second Hand"),Accessories:today.filter(x=>x.__section==="Accessories")};
-        Object.entries(groups).forEach(([name,list])=>{if(list.length)parts.push(`${name}: ${list.length}`);});
-        const count=today.length;
-        if(lang==="hi")answer=`आज ${count} काम/records हुए हैं${parts.length?" — "+parts.join(", "):"।"}`;
-        else if(lang==="hinglish")answer=`Aaj ${count} kaam/records hue hain${parts.length?" — "+parts.join(", "):"."}`;
-        else answer=`There were ${count} work records today${parts.length?" — "+parts.join(", "):"."}`;
-        filtered=today;
-    }else if((isToday||isYesterday) && asksCustomer){
-        const list=scope.filter(x=>x.__section==="Finance");
-        const prefix=isToday?"आज":"कल";
-        answer=lang==="hi"?`${prefix} ${list.length} customer add हुए हैं।`:lang==="hinglish"?`${prefix} ${list.length} customers add hue hain.`:`${list.length} customers were added ${isToday?"today":"yesterday"}.`;
-        filtered=list;
-    }else if(asksCount && section){
-        answer=lang==="hi"?`${section==="repairing"?"Repairing":section==="second"?"Second Hand":section==="accessories"?"Accessories":"Finance"} में ${scope.length} records हैं।`:`${section} has ${scope.length} records.`;
-        filtered=scope;
-    }else if(asksCount && asksCustomer){
-        answer=lang==="hi"?`कुल ${customers.length} customer हैं।`:lang==="hinglish"?`Total ${customers.length} customers hain.`:`There are ${customers.length} customers.`;
-        filtered=customers.map(x=>({...x,__section:"Finance"}));
-    }else{
-        /* Natural-language database search: use every meaningful token instead of requiring exact phrase. */
-        const stop=new Set("aaj today kal yesterday kya kitne kitni kitna how many hai hain hua hue huye ka ki ke me mein se kaun batao dikhao show find search please mujhe mere mera meri data record records customer customers profit kitna kya kya kaam work".split(" "));
-        const tokens=lower.split(" ").filter(t=>t.length>1&&!stop.has(t));
-        const fields=x=>normalizeText([x.customerName,x.customerCode,x.phone,x.customerPhone,x.imei,x.brand,x.model,x.device,x.problem,x.name,x.category,x.sn,x.financeCompany,x.__section,formatDateTime(x)].join(" "));
-        filtered=scope.filter(x=>tokens.length?tokens.every(t=>fields(x).includes(t)):fields(x).includes(lower));
-        if(!filtered.length && tokens.length)filtered=scope.filter(x=>tokens.some(t=>fields(x).includes(t)));
-        if(filtered.length){
-            answer=lang==="hi"?`${filtered.length} matching records मिले हैं।`:lang==="hinglish"?`${filtered.length} matching records mile hain.`:`Found ${filtered.length} matching records.`;
-        }else{
-            answer=lang==="hi"?"इस सवाल का जवाब उपलब्ध data से नहीं मिल पाया। आप customer, phone, IMEI, date, section, काम या profit के बारे में पूछ सकते हैं।":"Is question का matching data नहीं मिला। आप customer, phone, IMEI, date, section, work or profit के बारे में पूछ सकते हैं।";
+function smartSay(lang,hi,hinglish,en){
+    return lang==="hi"?hi:(lang==="hinglish"?hinglish:en);
+}
+
+function rupees(n){
+    return `₹${Number(n||0).toLocaleString("en-IN")}`;
+}
+
+function num(v){return Number(v||0);}
+function repairProfit(x){return num(x.profit??(num(x.total??x.payment)-num(x.partsPrice)));}
+function secondProfit(x){return num(x.profit??(num(x.salePrice)-num(x.price)));}
+function accessoryProfit(x){return num(x.profit??(num(x.salePrice)-num(x.price)));}
+
+function rowSearchText(x){
+    return normalizeText([
+        x.customerName,x.customerCode,x.phone,x.customerPhone,x.imei,x.brand,x.model,x.device,
+        x.problem,x.repairBy,x.name,x.category,x.sn,x.financeCompany,x.lockName,x.stock,x.counter,
+        x.financerName,x.condition,x.colour,x.storage,x.pincode,x.city,x.state,x.__section,
+        formatDateTime(x)
+    ].join(" "));
+}
+
+function sectionOfQuery(q){
+    const n=normalizeText(q);
+    if(/\b(finance|financed|finance company|emi|down payment|downpayment|फाइनेंस|ईएमआई|डाउन पेमेंट)\b/i.test(n))return "Finance";
+    if(/\b(repair|repairing|repairing data|repaired|repair|रिपेयर|रिपेयरिंग)\b/i.test(n))return "Repairing";
+    if(/\b(second hand|secondhand|used phone|used mobile|सेकंड हैंड|पुराना फोन)\b/i.test(n))return "Second Hand";
+    if(/\b(accessor|accessories|accessory|सामान|एक्सेसरी)\b/i.test(n))return "Accessories";
+    return null;
+}
+
+function metricOfQuery(q){
+    const n=normalizeText(q);
+    if(/\b(profit|profit hua|munafa|मुनाफा|फायदा|कमाई|कमाया|earning|earnings)\b/i.test(n))return "profit";
+    if(/\b(sale|sales|bikri|बिक्री|बेचा|sold|sell|revenue|business hua|business)\b/i.test(n))return "sale";
+    if(/\b(down payment|downpayment|dp|डाउन पेमेंट)\b/i.test(n))return "downPayment";
+    if(/\b(emi|ईएमआई)\b/i.test(n))return "emi";
+    if(/\b(parts price|parts|part cost|पार्ट्स|पार्ट)\b/i.test(n))return "parts";
+    if(/\b(quantity|qty|stock|quantity|कितना stock|स्टॉक)\b/i.test(n))return "quantity";
+    if(/\b(phone amount|phone price|amount|राशि|कीमत|price|दाम)\b/i.test(n))return "amount";
+    return "count";
+}
+
+function rowsForSection(section){
+    if(section==="Finance")return customers.map(x=>({...x,__section:"Finance"}));
+    if(section==="Repairing")return repairing.map(x=>({...x,__section:"Repairing"}));
+    if(section==="Second Hand")return secondHand.map(x=>({...x,__section:"Second Hand"}));
+    if(section==="Accessories")return accessories.map(x=>({...x,__section:"Accessories"}));
+    return allDataRows();
+}
+
+function metricValue(row,metric,section){
+    if(metric==="profit"){
+        if(section==="Repairing")return repairProfit(row);
+        if(section==="Second Hand")return secondProfit(row);
+        if(section==="Accessories")return accessoryProfit(row);
+        return num(row.profit); /* Finance has no standard profit field. */
+    }
+    if(metric==="sale"){
+        if(section==="Finance")return num(row.phoneAmount);
+        if(section==="Repairing")return num(row.total??row.payment);
+        if(section==="Second Hand")return num(row.salePrice);
+        if(section==="Accessories")return num(row.salePrice);
+    }
+    if(metric==="downPayment")return num(row.downPayment);
+    if(metric==="emi")return num(row.emiAmount);
+    if(metric==="parts")return num(row.partsPrice);
+    if(metric==="quantity")return num(row.quantity);
+    if(metric==="amount"){
+        return section==="Finance"?num(row.phoneAmount):
+            section==="Repairing"?num(row.total??row.payment):
+            section==="Second Hand"?num(row.salePrice):
+            num(row.salePrice);
+    }
+    return 1;
+}
+
+function countBy(rows,pred){return rows.filter(pred).length;}
+
+function uniqueCustomers(rows){
+    const m=new Map();
+    rows.forEach(x=>{
+        const p=String(x.phone||x.customerPhone||"").replace(/\D/g,"");
+        const name=String(x.customerName||x.name||"").trim();
+        const key=p||normalizeText(name);
+        if(!key)return;
+        if(!m.has(key))m.set(key,{name:name||"Customer",phone:p});
+    });
+    return [...m.values()];
+}
+
+function detectEntityQuery(q){
+    const n=normalizeText(q);
+    const phone=(String(q).match(/\b\d{10}\b/)||[])[0]||"";
+    const imei=(String(q).match(/\b\d{14,16}\b/)||[])[0]||"";
+    const code=(String(q).match(/\bkm\d{3,8}\b/i)||[])[0]||"";
+    return {phone,imei,code,n};
+}
+
+function entityRows(rows,q){
+    const e=detectEntityQuery(q),n=normalizeText(q);
+    let out=rows;
+    if(e.phone) out=out.filter(x=>String(x.phone||x.customerPhone||"").replace(/\D/g,"")===e.phone);
+    else if(e.imei) out=out.filter(x=>String(x.imei||"").replace(/\D/g,"")===e.imei);
+    else if(e.code) out=out.filter(x=>normalizeText(x.customerCode)===normalizeText(e.code));
+    else{
+        /* Remove generic query words and look for meaningful person/model terms. */
+        const stop=/\b(today|aaj|kal|parso|total|kitne|kitni|kitna|how|many|what|show|give|tell|me|the|all|data|record|records|history|complete|full|pura|puri|dikhao|batao|hisab|ka|ki|ke|hai|hain|customer|customers|grahak|finance|repair|repairing|second|hand|accessories|accessory|profit|munafa|sale|sales|work|kam|kaam|hua|hue|huye|month|month|week|year|today|कल|आज|ग्राहक|डेटा|दिखाओ|बताओ|हिसाब|मुनाफा|बिक्री)\b/gi;
+        const words=n.replace(stop," ").split(/\s+/).filter(w=>w.length>=2);
+        if(words.length){
+            out=out.filter(x=>{
+                const text=rowSearchText(x);
+                return words.some(w=>text.includes(w));
+            });
         }
     }
-    a.innerHTML=`<div class="smart-answer-text">${esc(answer)}</div>`;
-    r.innerHTML=filtered.slice(0,50).map(x=>{
-        const amount=x.phoneAmount!=null?smartMoney(x.phoneAmount):x.total!=null?smartMoney(x.total):x.salePrice!=null?smartMoney(x.salePrice):"—";
-        const profit=x.__section==="Repairing"?smartMoney(x.profit??(Number(x.total??x.payment??0)-Number(x.partsPrice||0))):x.__section==="Second Hand"?smartMoney(x.profit??(Number(x.salePrice||0)-Number(x.price||0))):x.__section==="Accessories"?smartMoney(x.profit??(Number(x.salePrice||0)-Number(x.price||0))):"—";
-        return `<article class="result"><div class="result-name">${esc(x.customerName||x.name||"Record")}</div><div class="result-meta">${esc(x.__section||"")} • ${esc(x.phone||x.customerPhone||"")} • ${esc(smartFormatDate(smartRecordDate(x)))}</div><div class="result-grid">${item("Device",x.device||`${x.brand||""} ${x.model||""}`)}${item("IMEI / SN",x.imei||x.sn||"—")}${item("Amount",amount)}${item("Profit",profit)}</div></article>`;
+    return out;
+}
+
+function renderSmartRows(rows){
+    return rows.slice(0,80).map(x=>{
+        const section=x.__section||"";
+        const amount=section==="Finance"?x.phoneAmount:
+            section==="Repairing"?x.total??x.payment:
+            section==="Second Hand"?x.salePrice:
+            section==="Accessories"?x.salePrice:null;
+        const profit=section==="Repairing"?repairProfit(x):
+            section==="Second Hand"?secondProfit(x):
+            section==="Accessories"?accessoryProfit(x):null;
+        return `<article class="result">
+            <div class="result-name">${esc(x.customerName||x.name||x.device||"Record")}</div>
+            <div class="result-meta">${esc(section)} • ${esc(x.phone||x.customerPhone||"")} • ${esc(formatDateTime(x))}</div>
+            <div class="result-grid">
+                ${item("Device",x.device||`${x.brand||""} ${x.model||""}`)}
+                ${item("IMEI / SN",x.imei||x.sn||"—")}
+                ${item("Amount",amount!=null?rupees(amount):"—")}
+                ${item("Profit",profit!=null?rupees(profit):"—")}
+                ${item("Customer",x.customerName||x.name||"—")}
+            </div>
+        </article>`;
     }).join("");
 }
+
+function smartSummaryForRange(range,section){
+    const rows=rowsForSection(section).filter(x=>rowInRange(x,range));
+    const finance=rows.filter(x=>x.__section==="Finance").length;
+    const repair=rows.filter(x=>x.__section==="Repairing").length;
+    const second=rows.filter(x=>x.__section==="Second Hand").length;
+    const acc=rows.filter(x=>x.__section==="Accessories").length;
+    const profit=rows.reduce((s,x)=>{
+        if(x.__section==="Repairing")return s+repairProfit(x);
+        if(x.__section==="Second Hand")return s+secondProfit(x);
+        if(x.__section==="Accessories")return s+accessoryProfit(x);
+        return s;
+    },0);
+    const sale=rows.reduce((s,x)=>s+metricValue(x,"sale",x.__section),0);
+    return {rows,finance,repair,second,acc,profit,sale,customers:uniqueCustomers(rows).length};
+}
+
+function smartSearch(){
+    const q=val("universalSearchInput");
+    const a=$("smartSearchAnswer"),r=$("smartSearchResults");
+    if(!a||!r)return;
+    const n=normalizeText(q);
+
+    if(!n){
+        a.innerHTML='<div class="empty">आप Hindi, Hinglish या English में कोई भी business question पूछ सकते हैं — जैसे “आज का पूरा हिसाब बताओ”, “this month profit”, “Aman ki full history”, “which technician did most repairs?”</div>';
+        r.innerHTML="";
+        return;
+    }
+
+    const lang=smartAnswerLanguage(q);
+    const section=sectionOfQuery(q);
+    const range=smartDateRange(q);
+    let rows=rowsForSection(section);
+    let answer="";
+    let filtered=[];
+    let metric=metricOfQuery(q);
+    const nrm=normalizeText(q);
+
+    /* ---------- Comparison ---------- */
+    const compareTodayYesterday=/\b(compare|comparison|difference|farak|अंतर|difference batao|better|बेहतर|kal se|कल से)\b/i.test(nrm)
+        && /\b(today|aaj|आज)\b/i.test(nrm)
+        && /\b(yesterday|kal|कल)\b/i.test(nrm);
+
+    if(compareTodayYesterday){
+        const now=new Date(), yd=new Date(now); yd.setDate(yd.getDate()-1);
+        const tr=smartSummaryForRange({from:startOfDay(now),to:endOfDay(now)},section);
+        const yr=smartSummaryForRange({from:startOfDay(yd),to:endOfDay(yd)},section);
+        const diffProfit=tr.profit-yr.profit, diffSale=tr.sale-yr.sale, diffCount=tr.rows.length-yr.rows.length;
+        answer=smartSay(lang,
+            `आज ${tr.rows.length} काम/records हुए और ${rupees(tr.profit)} profit हुआ। कल ${yr.rows.length} records और ${rupees(yr.profit)} profit था। Profit में ${rupees(Math.abs(diffProfit))} ${diffProfit>=0?"ज्यादा":"कम"} है।`,
+            `Aaj ${tr.rows.length} kaam/records hue aur ${rupees(tr.profit)} profit hua. Kal ${yr.rows.length} records aur ${rupees(yr.profit)} profit tha. Profit ${rupees(Math.abs(diffProfit))} ${diffProfit>=0?"zyada":"kam"} hai.`,
+            `Today had ${tr.rows.length} records and ${rupees(tr.profit)} profit. Yesterday had ${yr.rows.length} records and ${rupees(yr.profit)} profit. Profit is ${rupees(Math.abs(diffProfit))} ${diffProfit>=0?"higher":"lower"}.`
+        );
+        r.innerHTML=renderSmartRows(tr.rows);
+    }
+
+    /* ---------- Complete activity / report ---------- */
+    else if(/\b(what happened|kya kya|क्या क्या|pura hisab|पूरा हिसाब|complete report|full report|business summary|summary|daily report|आज का हिसाब|आज की report|today.*work|aaj.*kam|aaj.*kaam)\b/i.test(nrm)
+        || (range && metric==="count" && !section && /\b(work|kaam|काम|activity|business)\b/i.test(nrm))){
+        const rr=range||{from:startOfDay(),to:endOfDay()};
+        const s=smartSummaryForRange(rr,section);
+        const period=rr.label||"इस अवधि";
+        answer=smartSay(lang,
+            `${period} में कुल ${s.rows.length} काम/records हुए। Finance ${s.finance}, Repairing ${s.repair}, Second Hand ${s.second}, Accessories ${s.acc}। कुल ज्ञात profit ${rupees(s.profit)} और sale/collection ${rupees(s.sale)} है।`,
+            `${period} mein total ${s.rows.length} kaam/records hue. Finance ${s.finance}, Repairing ${s.repair}, Second Hand ${s.second}, Accessories ${s.acc}. Total known profit ${rupees(s.profit)} aur sale/collection ${rupees(s.sale)} hai.`,
+            `${period}: ${s.rows.length} total records — Finance ${s.finance}, Repairing ${s.repair}, Second Hand ${s.second}, Accessories ${s.acc}. Known profit ${rupees(s.profit)} and sale/collection ${rupees(s.sale)}.`
+        );
+        filtered=s.rows;
+    }
+
+    /* ---------- Count questions ---------- */
+    else if(metric==="count" && /\b(total|how many|count|kitne|kitni|kitna|कितने|कितनी|कितना|number|कुल)\b/i.test(nrm)){
+        const rr=range;
+        const source=rows.filter(x=>rowInRange(x,rr));
+        let count=source.length;
+        let label=section||"काम";
+        if(section==="Finance" && /\bcustomer|ग्राहक\b/i.test(nrm))count=uniqueCustomers(source).length;
+        if(!section && /\bcustomer|customers|ग्राहक\b/i.test(nrm)){count=uniqueCustomers(rr?allDataRows().filter(x=>rowInRange(x,rr)):customers);label="customers";}
+        answer=smartSay(lang,
+            `${range?.label||"कुल"} ${label} ${count} हैं।`,
+            `${range?.label||"Total"} ${label} ${count} hain.`,
+            `${range?.label||"Total"} ${label}: ${count}.`
+        );
+        filtered=source;
+    }
+
+    /* ---------- Profit questions ---------- */
+    else if(metric==="profit"){
+        const rr=range;
+        const source=rows.filter(x=>rowInRange(x,rr));
+        if(section==="Finance"){
+            answer=smartSay(lang,
+                `Finance records में अलग profit field उपलब्ध नहीं है, इसलिए Finance का profit अभी calculate नहीं किया जा सकता। Finance sale/phone amount ${rupees(source.reduce((s,x)=>s+num(x.phoneAmount),0))} है।`,
+                `Finance records mein separate profit field nahi hai, isliye Finance profit abhi calculate nahi ho sakta. Finance sale/phone amount ${rupees(source.reduce((s,x)=>s+num(x.phoneAmount),0))} hai.`,
+                `Finance records do not have a standard profit field. Finance phone/sale amount is ${rupees(source.reduce((s,x)=>s+num(x.phoneAmount),0))}.`
+            );
+        }else{
+            const p=source.reduce((sum,x)=>sum+metricValue(x,"profit",x.__section),0);
+            answer=smartSay(lang,
+                `${range?.label||"कुल"} ${section?section+" का ":""}profit ${rupees(p)} है।`,
+                `${range?.label||"Total"} ${section?section+" ka ":""}profit ${rupees(p)} hai.`,
+                `${range?.label||"Total"} ${section?section+" ":""}profit is ${rupees(p)}.`
+            );
+        }
+        filtered=source;
+    }
+
+    /* ---------- Sale / amount / money questions ---------- */
+    else if(["sale","downPayment","emi","parts","quantity","amount"].includes(metric)){
+        const rr=range, source=rows.filter(x=>rowInRange(x,rr));
+        const total=source.reduce((s,x)=>s+metricValue(x,metric,x.__section),0);
+        const labels={sale:"sale/collection",downPayment:"down payment",emi:"EMI amount",parts:"parts cost",quantity:"quantity/stock",amount:"amount"};
+        answer=smartSay(lang,
+            `${range?.label||"कुल"} ${section?section+" की ":""}${labels[metric]} ${metric==="quantity"?total:rupees(total)} है।`,
+            `${range?.label||"Total"} ${section?section+" ki ":""}${labels[metric]} ${metric==="quantity"?total:rupees(total)} hai.`,
+            `${range?.label||"Total"} ${section?section+" ":""}${labels[metric]}: ${metric==="quantity"?total:rupees(total)}.`
+        );
+        filtered=source;
+    }
+
+    /* ---------- Top / most questions ---------- */
+    else if(/\b(most|maximum|highest|top|sabse zyada|सबसे ज्यादा|सबसे अधिक|कम|lowest|least|sabse kam|सबसे कम)\b/i.test(nrm)){
+        const source=rows.filter(x=>rowInRange(x,range));
+        let field=null,label="";
+        if(/\btechnician|repairing by|repair by|technician ne|technician ने\b/i.test(nrm)){field="repairBy";label="technician";}
+        else if(/\bfinance company|financer|finance company ke\b/i.test(nrm)){field="financeCompany";label="finance company";}
+        else if(/\baccessor|accessory|एक्सेसरी\b/i.test(nrm)){field="name";label="accessory";}
+        else if(/\bmodel|phone|mobile\b/i.test(nrm)){field="model";label="model";}
+        else if(/\bbrand\b/i.test(nrm)){field="brand";label="brand";}
+        else if(/\bcustomer|ग्राहक\b/i.test(nrm)){field="customerName";label="customer";}
+        if(field){
+            const map=new Map();
+            source.forEach(x=>{const k=String(x[field]||"Unknown").trim()||"Unknown";map.set(k,(map.get(k)||0)+1);});
+            const arr=[...map.entries()].sort((a,b)=>b[1]-a[1]);
+            if(arr.length){
+                const top=/\b(lowest|least|sabse kam|सबसे कम)\b/i.test(nrm)?arr[arr.length-1]:arr[0];
+                answer=smartSay(lang,
+                    `${label} में सबसे ज्यादा/कम record: ${top[0]} — ${top[1]} records।`,
+                    `${label} mein sabse zyada/kam records: ${top[0]} — ${top[1]} records.`,
+                    `Top ${label}: ${top[0]} — ${top[1]} records.`
+                );
+                filtered=source.filter(x=>String(x[field]||"").trim()===top[0]);
+            }
+        }
+        if(!answer){
+            const ranked=source.map(x=>({x,v:metricValue(x,metric,x.__section)})).sort((a,b)=>b.v-a.v);
+            const top=ranked[0];
+            if(top){
+                answer=smartSay(lang,`सबसे बड़ा record ${rupees(top.v)} का है।`, `Sabse bada record ${rupees(top.v)} ka hai.`, `Highest record is ${rupees(top.v)}.`);
+                filtered=[top.x];
+            }
+        }
+    }
+
+    /* ---------- Customer history / entity questions ---------- */
+    else if(/\b(history|complete history|full history|pura data|पूरी history|पूरा data|transactions|transaction|record dikhao|record दिखाओ|show|dikhao|दिखाओ)\b/i.test(nrm)){
+        const entity=entityRows(allDataRows(),q);
+        if(entity.length){
+            const person=entity[0].customerName||entity[0].name||"Customer";
+            answer=smartSay(lang,
+                `${person} के ${entity.length} matching records मिले। पूरी history नीचे है।`,
+                `${person} ke ${entity.length} matching records mile. Puri history neeche hai.`,
+                `${entity.length} matching records found for ${person}. Full history is below.`
+            );
+            filtered=entity;
+        }
+    }
+
+    /* ---------- Search by name / phone / IMEI / model / generic ---------- */
+    if(!answer){
+        const entity=entityRows(rows,q);
+        if(entity.length){
+            filtered=entity;
+            answer=smartSay(lang,
+                `${entity.length} matching records मिले।`,
+                `${entity.length} matching records mile.`,
+                `Found ${entity.length} matching records.`
+            );
+        }else{
+            /* Fuzzy token matching for natural questions not covered by a metric. */
+            const words=searchTokens(nrm).filter(w=>w.length>2);
+            filtered=rows.filter(x=>{
+                const text=rowSearchText(x);
+                return words.filter(w=>!["show","give","tell","please","today","aaj","ka","ki","ke","hai","hain","data","record","records","customer","customers"].includes(w))
+                    .some(w=>text.includes(w));
+            });
+            answer=filtered.length
+                ? smartSay(lang,`${filtered.length} matching records मिले।`,`${filtered.length} matching records mile.`,`Found ${filtered.length} matching records.`)
+                : smartSay(lang,"इस सवाल के लिए matching data नहीं मिला।","Is sawal ke liye matching data nahi mila.","No matching data was found for this question.");
+        }
+    }
+
+    a.innerHTML=`<div class="smart-answer-text">${esc(answer)}</div>`;
+    r.innerHTML=renderSmartRows(filtered);
+}
+
+/* =========================================================
+   290 MASTER QUESTION EXAMPLES
+   These are intentionally kept as semantic examples/aliases.
+   The engine above is not limited to these exact sentences.
+   ========================================================= */
+const KABIR_AI_QUESTION_EXAMPLES = [
+"कुल कितने customers हैं?","Total customers कितने हैं?","आज कितने customer add हुए?","आज कितने नए ग्राहक आए?","आज कौन-कौन से customers add हुए?","कल कितने customers add हुए थे?","इस महीने कितने customers आए?","पिछले 7 दिनों में कितने customers आए?","Aman का data दिखाओ","Aman की पूरी history दिखाओ","9876543210 का पूरा data दिखाओ","इस number का customer कौन है?","customer code KM1234 का data दिखाओ","इस customer ने पहले क्या-क्या करवाया है?",
+"Finance में कितने customers हैं?","Total finance records कितने हैं?","आज कितने finance हुए?","आज कितने phones finance हुए?","आज finance का पूरा हिसाब बताओ","आज कौन-कौन से phones finance हुए?","इस महीने कितने finance हुए?","इस महीने finance से कितनी sale हुई?","कौन सी finance company के सबसे ज्यादा customers हैं?","Finance में total phone amount कितना है?","आज कितनी down payment मिली?","आज कितनी EMI बनी?","Finance की पूरी history दिखाओ","इस number की finance history दिखाओ","इस IMEI का finance record दिखाओ",
+"Repairing में कितने records हैं?","आज कितनी repairing हुई?","आज कितने phones repair हुए?","आज कौन-कौन से phones repair हुए?","आज की पूरी repairing list दिखाओ","इस महीने कितनी repairing हुई?","आज repairing से कितना पैसा आया?","आज repairing में कितना profit हुआ?","इस महीने repairing का profit कितना है?","Aman की repairing history दिखाओ","इस customer की repairing history दिखाओ","इस phone में क्या problem थी?","किस technician ने सबसे ज्यादा repairing की?","कौन सी problem सबसे ज्यादा आ रही है?","किस model की सबसे ज्यादा repairing हुई?",
+"Second Hand में कितने phones हैं?","आज कितने second hand phones आए?","आज कितने second hand phones बिके?","आज कौन सा second hand phone बिका?","Second Hand का आज का हिसाब बताओ","इस महीने कितने second hand phones बिके?","इस महीने second hand में कितना profit हुआ?","कौन सा second hand phone सबसे ज्यादा profit में बिका?","कौन-कौन से phones stock में हैं?","कौन सा iPhone stock में है?","IMEI से phone दिखाओ","इस phone की purchase price कितनी थी?","इस phone की sale price कितनी है?","इस phone में कितना profit हुआ?","कौन सा model available है?",
+"Accessories कितनी हैं?","Total accessories stock कितना है?","आज कितनी accessories बिकी?","आज कौन-कौन सी accessories बिकी?","आज accessories की total sale कितनी है?","आज accessories में कितना profit हुआ?","कौन सी accessory सबसे ज्यादा बिकी?","कौन सी accessories खत्म होने वाली हैं?","कौन-कौन सी accessories available हैं?","इस accessory की quantity कितनी है?","इस accessory का purchase price कितना है?","इस accessory का sale price कितना है?","SN number से accessory दिखाओ","किस customer ने accessory खरीदी?",
+"आज कितना profit हुआ?","Aaj kitna profit hua?","आज का total profit बताओ","आज कितने रुपए कमाए?","आज की earning कितनी है?","आज का पूरा profit breakup बताओ","Finance से आज कितना profit हुआ?","Repairing से आज कितना profit हुआ?","Second Hand से आज कितना profit हुआ?","Accessories से आज कितना profit हुआ?","इस महीने कितना profit हुआ?","पिछले 7 दिनों का profit कितना है?","पिछले 30 दिनों का profit कितना है?","इस साल कितना profit हुआ?","किस section से सबसे ज्यादा profit हुआ?",
+"आज क्या-क्या काम हुआ है?","Aaj ka pura hisab batao","आज का पूरा काम बताओ","आज कितने काम हुए?","आज total कितने records बने?","आज कितने finance, repairing, second hand और accessories के काम हुए?","आज की पूरी activity बताओ","आज की पूरी business report दिखाओ","आज कितना business हुआ?","आज कितनी sale हुई?","आज कितने customers आए?","आज कितने नए customers आए?","आज कितने पुराने customers आए?","आज कितने phones repair हुए?","आज कितने phones finance हुए?","आज कितनी accessories बिकी?","आज का total collection कितना है?","आज का पूरा summary दो","What happened today?",
+"कल कितने काम हुए?","परसों कितने काम हुए?","पिछले 7 दिनों में क्या हुआ?","पिछले 30 दिनों में क्या हुआ?","इस हफ्ते का हिसाब बताओ","इस महीने का हिसाब बताओ","पिछले महीने का हिसाब बताओ","इस साल का हिसाब बताओ","जनवरी में कितना काम हुआ?","अगस्त में कितने customers आए?","1 अगस्त से 20 अगस्त तक कितने काम हुए?","01/08/2026 से 20/08/2026 तक का profit बताओ","इस तारीख को क्या-क्या हुआ था?","15 अगस्त को कितने customers आए?","इस हफ्ते सबसे ज्यादा काम किस दिन हुआ?","किस दिन सबसे ज्यादा profit हुआ?","आज और कल का comparison करो",
+"Aman को खोजो","इस नाम का पूरा data दिखाओ","इस number को खोजो","इस IMEI को खोजो","इस customer code को खोजो","iPhone 15 के सारे records दिखाओ","Samsung के सारे records दिखाओ","सभी iPhone दिखाओ","सभी Samsung customers दिखाओ","इस model के सारे customers दिखाओ","इस brand की पूरी history दिखाओ","इस phone number से जुड़े सारे records दिखाओ","इस customer के सारे transactions दिखाओ","इसका सबसे पुराना record दिखाओ","इसका सबसे नया record दिखाओ",
+"आज और कल में कितना difference है?","इस महीने और पिछले महीने की sale compare करो","इस महीने और पिछले महीने का profit compare करो","किस section ने सबसे ज्यादा profit दिया?","किस section में सबसे ज्यादा काम हुआ?","किस दिन सबसे ज्यादा customers आए?","किस दिन सबसे ज्यादा sale हुई?","कौन सा model सबसे ज्यादा बिका?","कौन सा brand सबसे ज्यादा बिका?","कौन सा accessory सबसे ज्यादा बिका?","किस technician ने सबसे ज्यादा काम किया?","किस finance company के सबसे ज्यादा records हैं?","किस customer के सबसे ज्यादा transactions हैं?",
+"भाई आज का हिसाब क्या है?","आज दुकान पर क्या-क्या हुआ?","आज कितने लोग आए?","आज कितना काम किया?","आज कितने phone निकले?","आज कितनी कमाई हुई?","आज सबसे ज्यादा कमाई किससे हुई?","आज कौन सा काम सबसे ज्यादा हुआ?","आज कौन सा phone सबसे ज्यादा आया?","कल से आज business कैसा रहा?","इस महीने business कैसा चल रहा है?","कौन सा section अच्छा perform कर रहा है?","मुझे आज की पूरी report समझाओ","मुझे इस महीने का पूरा हिसाब समझाओ","सबका हिसाब एक साथ बताओ","आज का पूरा summary दो",
+"How many customers were added today?","How many customers do we have?","What happened today?","Give me today's complete report.","How much profit did we make today?","Which section made the most profit?","How many phones were repaired today?","How many phones were financed today?","How many second-hand phones were sold today?","How many accessories were sold today?","Show today's customers.","Show Aman’s complete history.","Show all records for this phone number.","What was our total sale this month?","Compare today's profit with yesterday.","Which phone sold the most?","Which technician did the most repairs?","Which finance company has the most records?","Give me the complete business summary."
+,
+"आज कितने phones आए?",
+"आज कितने phones बिके?",
+"आज कितने पुराने customers आए?",
+"आज कितने customer में काम हुआ?",
+"आज customer में क्या-क्या काम हुआ?",
+"Finance में सबसे ज्यादा कौन सी company इस्तेमाल हुई?",
+"कौन-कौन सी finance companies इस्तेमाल हुई हैं?",
+"इस customer ने कौन सी finance company ली?",
+"इस phone की finance company कौन सी है?",
+"Finance में total down payment कितना है?",
+"Finance में total EMI कितना है?",
+"आज finance में कितना पैसा आया?",
+"आज finance में कौन सा model सबसे ज्यादा बिका?",
+"सबसे ज्यादा कौन सा phone finance हुआ?",
+"Finance में कितने pending records हैं?",
+"Finance के सभी records दिखाओ",
+"इस महीने repairing की sale कितनी हुई?",
+"आज repairing का total कितना है?",
+"आज parts पर कितना खर्च हुआ?",
+"Total repairing profit कितना है?",
+"किसने phone repair किया?",
+"आज किस technician ने कितने काम किए?",
+"सबसे महंगी repairing कौन सी थी?",
+"सबसे ज्यादा profit वाली repairing कौन सी थी?",
+"आज कितने repairing jobs complete हुए?",
+"आज कौन-कौन से repairing काम हुए?",
+"आज का पूरा repairing work दिखाओ",
+"Second Hand की पूरी list दिखाओ",
+"इस महीने second hand से कितनी sale हुई?",
+"आज second hand का profit कितना है?",
+"Total second hand profit कितना है?",
+"सबसे ज्यादा profit वाला phone कौन सा है?",
+"सबसे कम price वाला phone कौन सा है?",
+"सबसे महंगा phone कौन सा है?",
+"कौन सा phone किस condition में है?",
+"सबसे ज्यादा कौन सा brand stock में है?",
+"कौन सा model सबसे ज्यादा है?",
+"इस IMEI का पूरा data दिखाओ",
+"किस customer का second hand phone है?",
+"आज किस customer ने accessory खरीदी?",
+"इस महीने accessories की पूरी sale दिखाओ",
+"Accessories की पूरी history दिखाओ",
+"कौन सी accessory सबसे ज्यादा stock में है?",
+"इस accessory में कितना profit है?",
+"इस SN number का data दिखाओ",
+"आज का profit कल से ज्यादा है या कम?",
+"आज और कल के profit में कितना difference है?",
+"इस महीने सबसे ज्यादा profit किस section ने दिया?",
+"आज सबसे ज्यादा profit किस काम से हुआ?",
+"इस महीने और पिछले महीने का profit compare करो",
+"पिछले महीने का profit कितना था?",
+"पिछले महीने कितनी sale हुई?",
+"पिछले महीने कितने customers आए?",
+"इस साल कितने customers आए?",
+"इस साल कितनी sale हुई?",
+"इस साल का profit कितना है?",
+"पिछले रविवार को कितने काम हुए?",
+"इस हफ्ते का total profit कितना है?",
+"इस हफ्ते कितनी sale हुई?",
+"इस हफ्ते कितने customers आए?",
+"इस हफ्ते कौन सा काम ज्यादा हुआ?",
+"इस तारीख को कितने records बने?",
+"इस date range में कितनी sale हुई?",
+"आज की पूरी business activity दिखाओ",
+"आज की पूरी business report दो",
+"आज की complete report Hindi में दो",
+"Give me today's business summary",
+"Show me everything done today",
+"What was today's total business?",
+"How much money came in today?",
+"How many jobs were completed today?",
+"How many finance records are there?",
+"How much was today's down payment?",
+"How much was today's EMI amount?",
+"Show all repairing records",
+"What problem was repaired most?",
+"Which phone model had the most repairs?",
+"Show second hand stock",
+"Which used phone has the highest profit?",
+"Show accessories stock",
+"Which accessory sold the most?",
+"Find Aman",
+"Find this phone number",
+"Find this IMEI",
+"Find this customer code",
+"Show complete customer history",
+"Show all transactions of this customer",
+"Show the latest record",
+"Show the oldest record",
+"bhai aaj ka scene kya raha?",
+"aaj jeb me kitna paisa bana?",
+"aaj kitna fayda hua?",
+"aaj ka pura kaam kya tha?",
+"aaj kitne bande aaye?",
+"is mahine ka business kaisa raha?",
+"kaunsa section sabse achha chal raha hai?",
+"kaunsa phone sabse zyada bik raha hai?",
+"kis customer ki sabse zyada transactions hain?",
+"sab ka hisab ek saath batao",
+"aaj koi unusual cheez hui?",
+"mere business ka summary do",
+"आज सबसे ज्यादा sale किस section में हुई?",
+"Which section had the highest sales today?"];
+
 function applyTheme(theme){
     const allowed=["dark","light","midnight","silver","glass","sunset","emerald","rose"];
     if(!allowed.includes(theme)) theme="dark";
@@ -2435,8 +2826,6 @@ async function init(){
 
     setupFinanceCompany();
     setupRepairFields();
-    setupExistingCustomerSuggestions();
-    attachExistingCustomerAutofill();
 
     pincode();
 
