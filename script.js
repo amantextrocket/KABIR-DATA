@@ -859,6 +859,8 @@ function nav(){
     $("homePdfButton")?.addEventListener("click",downloadFullPdf);
     setupSecondHandFields();
     setupAccessoryFields();
+    setupExistingCustomerSuggestions();
+    attachExistingCustomerAutofill();
 }
 
 
@@ -1793,13 +1795,33 @@ function renderSecondHand(){
     const box=$("secondResults");if(!box)return;
     const q=val("secondSearchInput").toLowerCase();
     const rows=secondHand.filter(x=>!q||[x.customerName,x.phone,x.brand,x.model,x.device,x.imei,x.condition].join(" ").toLowerCase().includes(q));
-    box.innerHTML=rows.length?rows.map(x=>{const profit=Number(x.salePrice||0)-Number(x.price||0);return `<article class="result"><div class="result-name">${esc(`${x.brand||""} ${x.model||x.device||"Second Hand Phone"}`.trim())}</div><div class="result-meta">${esc(x.customerName||"")} • ${esc(x.phone||"")}</div><div class="result-grid">${item("IMEI",x.imei||"")}${item("Condition",x.condition||"")}${item("Purchase Price",`₹${Number(x.price||0).toLocaleString("en-IN")}`)}${item("Sell Price",`₹${Number(x.salePrice||0).toLocaleString("en-IN")}`)}${item("Profit",`₹${profit.toLocaleString("en-IN")}`)}</div></article>`}).join(""):"<div class=\"empty\">No second-hand records found.</div>";
+    box.innerHTML=rows.length?rows.map(x=>{const profit=Number(x.salePrice||0)-Number(x.price||0);return `<article class="result">
+      <div class="result-name">${esc(`${x.brand||""} ${x.model||x.device||"Second Hand Phone"}`.trim())}</div><div class="result-meta">${esc(x.customerName||"")} • ${esc(x.phone||"")}</div>
+      <div class="result-grid">${item("IMEI",x.imei||"")}${item("Condition",x.condition||"")}${item("Purchase Price",`₹${Number(x.price||0).toLocaleString("en-IN")}`)}${item("Sell Price",`₹${Number(x.salePrice||0).toLocaleString("en-IN")}`)}${item("Profit",`₹${profit.toLocaleString("en-IN")}`)}</div>
+      <div class="result-actions"><button type="button" class="save danger-btn second-delete-btn" data-second-id="${esc(x.id)}">DELETE CUSTOMER / RECORD</button></div>
+    </article>`}).join(""):"<div class=\"empty\">No second-hand records found.</div>";
+    box.querySelectorAll(".second-delete-btn").forEach(btn=>btn.onclick=async e=>{
+        e.stopPropagation(); const x=secondHand.find(r=>r.id===btn.dataset.secondId); if(!x)return;
+        if(!confirm(`Delete ${x.customerName||"this customer"} second-hand record?`))return;
+        try{await deleteWithRecycle(SECOND_COL,x.id,x);await audit("customer_delete",{section:"Second Hand",customerId:x.id,customerName:x.customerName,description:`Second-hand customer ${x.customerName||x.id} moved to Recently Deleted`});renderSecondHand();renderAllCustomers();showSuccessToast("Deleted","Second-hand record moved to Recently Deleted");}
+        catch(err){console.error(err);alert("Delete failed. Firebase Rules check करें.");}
+    });
 }
 function renderAccessories(){
     const box=$("accessoryResults");if(!box)return;
     const q=val("accessorySearchInput").toLowerCase();
     const rows=accessories.filter(x=>!q||[x.name,x.category,x.sn,x.customerName,x.customerPhone].join(" ").toLowerCase().includes(q));
-    box.innerHTML=rows.length?rows.map(x=>{const profit=Number(x.salePrice||0)-Number(x.price||0);return `<article class="result"><div class="result-name">${esc(x.name||"Accessory")}</div><div class="result-meta">${esc(x.category||"")} • SN: ${esc(x.sn||"—")}</div><div class="result-grid">${item("Quantity",x.quantity||0)}${item("Purchase Price",`₹${Number(x.price||0).toLocaleString("en-IN")}`)}${item("Sale Price",`₹${Number(x.salePrice||0).toLocaleString("en-IN")}`)}${item("Profit",`₹${profit.toLocaleString("en-IN")}`)}${item("Customer",x.customerName||"—")}</div></article>`}).join(""):"<div class=\"empty\">No accessories found.</div>";
+    box.innerHTML=rows.length?rows.map(x=>{const profit=Number(x.salePrice||0)-Number(x.price||0);return `<article class="result">
+      <div class="result-name">${esc(x.name||"Accessory")}</div><div class="result-meta">${esc(x.category||"")} • SN: ${esc(x.sn||"—")}</div>
+      <div class="result-grid">${item("Quantity",x.quantity||0)}${item("Purchase Price",`₹${Number(x.price||0).toLocaleString("en-IN")}`)}${item("Sale Price",`₹${Number(x.salePrice||0).toLocaleString("en-IN")}`)}${item("Profit",`₹${profit.toLocaleString("en-IN")}`)}${item("Customer",x.customerName||"—")}</div>
+      <div class="result-actions"><button type="button" class="save danger-btn accessory-delete-btn" data-accessory-id="${esc(x.id)}">DELETE CUSTOMER / RECORD</button></div>
+    </article>`}).join(""):"<div class=\"empty\">No accessories found.</div>";
+    box.querySelectorAll(".accessory-delete-btn").forEach(btn=>btn.onclick=async e=>{
+        e.stopPropagation(); const x=accessories.find(r=>r.id===btn.dataset.accessoryId); if(!x)return;
+        if(!confirm(`Delete ${x.customerName||x.name||"this customer"} accessory record?`))return;
+        try{await deleteWithRecycle(ACCESSORY_COL,x.id,x);await audit("customer_delete",{section:"Accessories",customerId:x.id,customerName:x.customerName,description:`Accessory customer ${x.customerName||x.name||x.id} moved to Recently Deleted`});renderAccessories();renderAllCustomers();showSuccessToast("Deleted","Accessory record moved to Recently Deleted");}
+        catch(err){console.error(err);alert("Delete failed. Firebase Rules check करें.");}
+    });
 }
 function setupSecondHandFields(){
     const b=$("secondBrand"),m=$("secondModel");if(!b||!m)return;
@@ -1832,7 +1854,28 @@ async function saveAccessory(e){
     try{await addDoc(collection(db,ACCESSORY_COL),data);await audit("accessory_add",{section:"Accessories",customerName:data.customerName,description:`Accessory added: ${data.name}`,extra:{category:data.category,quantity:data.quantity,sn:data.sn,profit:data.profit,customerPhone:data.customerPhone}});e.target.reset();updateAccessoryProfit();showSuccessToast("Successfully Saved","Accessory stock में add हो गया.");}catch(err){console.error(err);msg("accessoryMessage",err?.message||"Save failed.");}
 }
 
+function setupExistingCustomerSuggestions(){
+    const names=$("existingCustomerNames"), phones=$("existingCustomerPhones");
+    if(!names||!phones)return;
+    const records=[]; const seen=new Set();
+    const add=(name,phone,data)=>{
+        const n=String(name||"").trim(),p=String(phone||"").replace(/\D/g,"");
+        if(!n&&!p)return; const key=(p||n.toLowerCase()); if(seen.has(key))return; seen.add(key); records.push({name:n,phone:p,data});
+    };
+    customers.forEach(x=>add(x.customerName,x.phone,x)); repairing.forEach(x=>add(x.customerName,x.phone,x)); secondHand.forEach(x=>add(x.customerName,x.phone,x)); accessories.forEach(x=>add(x.customerName,x.customerPhone,x));
+    names.innerHTML=records.filter(x=>x.name).slice(0,300).map(x=>`<option value="${esc(x.name)}">${esc(x.phone||"")}</option>`).join("");
+    phones.innerHTML=records.filter(x=>x.phone).slice(0,300).map(x=>`<option value="${esc(x.phone)}">${esc(x.name||"")}</option>`).join("");
+}
+function attachExistingCustomerAutofill(){
+    const nameIds=["customerName","repairCustomerName","secondCustomerName","accessoryCustomerName"];
+    const phoneIds=["phone","repairPhone","secondPhone","accessoryCustomerPhone"];
+    const find=raw=>{const q=String(raw||"").trim().toLowerCase(),p=q.replace(/\D/g,""); if(!q)return null; const all=[...customers,...repairing,...secondHand,...accessories]; return all.find(x=>{const n=String(x.customerName||"").trim().toLowerCase(),xp=String(x.phone||x.customerPhone||"").replace(/\D/g,"");return (p&&xp===p)||(!p&&n===q);})||null;};
+    const fill=(x)=>{if(!x)return; const name=x.customerName||"",phone=x.phone||x.customerPhone||""; nameIds.forEach(id=>{const el=$(id);if(el&&document.activeElement!==el&&(!el.value||el.value.trim().toLowerCase()===name.toLowerCase()))el.value=name;}); phoneIds.forEach(id=>{const el=$(id);if(el&&document.activeElement!==el&&(!el.value||el.value.replace(/\D/g,"")===String(phone).replace(/\D/g,"")))el.value=phone;});};
+    [...nameIds,...phoneIds].forEach(id=>$(id)?.addEventListener("input",e=>{const x=find(e.target.value); if(x) fill(x);}));
+}
+
 function renderAllCustomers(){
+    setupExistingCustomerSuggestions();
     const box=$("allCustomerResults");if(!box)return;const q=val("allCustomerSearchInput").toLowerCase();
     const map=new Map();
     const add=(r,type,name,phone)=>{const n=String(name||"").trim(),p=String(phone||"").replace(/\D/g,"");if(!n&&!p)return;const key=p||n.toLowerCase();if(!map.has(key))map.set(key,{name:n||"Customer",phone:p,types:new Set()});map.get(key).types.add(type);};
@@ -1894,6 +1937,7 @@ function renderRepairing(){
     box.innerHTML=arr.map(r=>`<article class="result">
       <div class="result-name">${esc(r.customerName||"")}</div><div class="result-meta">${esc(r.phone||"")} • ${esc(formatDateTime(r))}</div>
       <div class="result-grid">${item("Brand / Model",r.device)}${item("Problem",r.problem)}${item("Repairing By",r.repairBy)}${item("Total",`₹${Number(r.total??r.payment??0).toLocaleString("en-IN")}`)}${item("Parts Price",`₹${Number(r.partsPrice||0).toLocaleString("en-IN")}`)}${item("Profit",`₹${Number(r.profit??(Number(r.total??r.payment??0)-Number(r.partsPrice||0))).toLocaleString("en-IN")}`)}</div>
+      <div class="result-actions"><button type="button" class="save danger-btn repair-delete-btn" data-repair-id="${esc(r.id)}">DELETE CUSTOMER / RECORD</button></div>
     </article>`).join("");
     box.querySelectorAll(".repair-delete-btn").forEach(btn=>btn.onclick=async e=>{e.stopPropagation();const r=repairing.find(x=>x.id===btn.dataset.repairId);if(!r||!confirm(`Delete ${r.customerName||"this customer"} repairing record?`))return;try{await deleteWithRecycle(REPAIR_COL,r.id,r);await audit("customer_delete",{section:"Kabir Repairing Data",customerId:r.id,customerName:r.customerName,description:`Repairing customer ${r.customerName||r.id} moved to Recently Deleted`});renderRepairing();renderAllCustomers();showSuccessToast("Deleted","Repairing record moved to Recently Deleted");}catch(err){console.error(err);alert("Delete failed. Firebase Rules check करें.");}});
 }
@@ -2149,18 +2193,32 @@ function allDataRows(){return [
 ];}
 function smartAnswerLanguage(q){const n=normalizeText(q);if(/[\u0900-\u097f]/.test(q))return "hi";if(/\b(kya|kitne|kaun|dikhao|batao|hai|hain|aaj|kal|naam|customer|data)\b/i.test(n))return "hinglish";return "en";}
 function smartSearch(){
- const q=val("universalSearchInput");const a=$("smartSearchAnswer"),r=$("smartSearchResults");if(!a||!r)return;const n=normalizeText(q);if(!n){a.innerHTML='<div class="empty">पूछें: “आज कितने customer हैं?”, “Aman ka phone dikhao”, “show repairing data”, “profit कितना है?”</div>';r.innerHTML="";return;}
- const lang=smartAnswerLanguage(q), rows=allDataRows();let answer="", filtered=[];
+ const q=val("universalSearchInput"),a=$("smartSearchAnswer"),r=$("smartSearchResults");if(!a||!r)return;
+ const n=normalizeText(q);if(!n){a.innerHTML='<div class="empty">पूछें: “आज कितने customer add हुए हैं?”, “Aman ka phone dikhao”, “show repairing data”, “profit कितना है?”</div>';r.innerHTML="";return;}
+ const lang=smartAnswerLanguage(q), rows=allDataRows(); let answer="", filtered=[];
  const total=customers.length, repairs=repairing.length, second=secondHand.length, acc=accessories.length;
- if(/(total|kitne|how many|count|कितने|कितनी|कितना).*(customer|customers|ग्राहक)/i.test(q)) answer=lang==="hi"?`कुल ${total} customer हैं।`:lang==="hinglish"?`Total ${total} customers hain.`:`There are ${total} customers in the database.`;
- else if(/(repair|repairing|रिपेयर)/i.test(q)&&/(total|kitne|count|कितने)/i.test(q)) answer=lang==="hi"?`Repairing में ${repairs} records हैं।`:lang==="hinglish"?`Repairing mein ${repairs} records hain.`:`There are ${repairs} repairing records.`;
+ const today=new Date().toLocaleDateString("en-CA"), yesterday=(()=>{const d=new Date();d.setDate(d.getDate()-1);return d.toLocaleDateString("en-CA")})();
+ const todayCustomers=customers.filter(x=>recordDay(x)===today).length;
+ const todayAll=rows.filter(x=>recordDay(x)===today).length;
+ const yesterdayCustomers=customers.filter(x=>recordDay(x)===yesterday).length;
+ const wantsToday=/(aaj|today|आज)/i.test(q), wantsYesterday=/(kal|yesterday|कल)/i.test(q);
+ if(wantsToday && /(customer|customers|ग्राहक)/i.test(q) && /(add|added|save|saved|bana|bने|जुड़े|जुड़े|जोड़|जोड़े|हुए|हुए हैं|हैं|hai|hain|kitne|count|कितने)/i.test(q)) answer=lang==="hi"?`आज ${todayCustomers} customer add हुए हैं।`:lang==="hinglish"?`Aaj ${todayCustomers} customers add hue hain.`:`${todayCustomers} customers were added today.`;
+ else if(wantsToday && /(work|record|data|entry|काम|डेटा|रिकॉर्ड)/i.test(q)) answer=lang==="hi"?`आज कुल ${todayAll} records हैं।`:lang==="hinglish"?`Aaj total ${todayAll} records hain.`:`There are ${todayAll} records today.`;
+ else if(wantsYesterday && /(customer|customers|ग्राहक)/i.test(q)) answer=lang==="hi"?`कल ${yesterdayCustomers} customer add हुए थे।`:lang==="hinglish"?`Kal ${yesterdayCustomers} customers add hue the.`:`${yesterdayCustomers} customers were added yesterday.`;
+ else if(/(total|kitne|how many|count|कितने|कितनी|कितना).*(customer|customers|ग्राहक)/i.test(q)) answer=lang==="hi"?`कुल ${total} customer हैं।`:lang==="hinglish"?`Total ${total} customers hain.`:`There are ${total} customers in the database.`;
+ else if(/(repair|repairing|रिपेयर)/i.test(q)&&/(total|kitne|count|कितने)/i.test(q)) answer=`Repairing mein ${repairs} records hain.`;
  else if(/(second|second hand)/i.test(q)&&/(total|kitne|count|कितने)/i.test(q)) answer=`Second Hand mein ${second} records hain.`;
  else if(/(accessor|accessories)/i.test(q)&&/(total|kitne|count|कितने)/i.test(q)) answer=`Accessories mein ${acc} records hain.`;
+ else if(/(finance)/i.test(q)&&/(total|kitne|count|कितने)/i.test(q)) answer=`Finance mein ${total} customer records hain.`;
  else if(/(profit|munafa|मुनाफा)/i.test(q)){const prof=repairing.reduce((s,x)=>s+Number(x.profit??(Number(x.total ?? x.payment ?? 0)-Number(x.partsPrice||0))),0)+secondHand.reduce((s,x)=>s+Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))),0)+accessories.reduce((s,x)=>s+Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))),0);answer=lang==="hi"?`कुल ज्ञात profit ₹${prof.toLocaleString("en-IN")} है।`:`Total known profit is ₹${prof.toLocaleString("en-IN")}.`;}
- else {filtered=rows.filter(x=>normalizeText([x.customerName,x.customerCode,x.phone,x.customerPhone,x.imei,x.brand,x.model,x.device,x.problem,x.name,x.category,x.sn,x.financeCompany,x.__section,formatDateTime(x)].join(" ")).includes(n));answer=filtered.length?(lang==="hi"?`${filtered.length} matching records मिले।`:lang==="hinglish"?`${filtered.length} matching records mile.`:`Found ${filtered.length} matching records.`):(lang==="hi"?"कोई matching record नहीं मिला।":"No matching record found.");}
- a.innerHTML=`<div class="smart-answer-text">${esc(answer)}</div>`;r.innerHTML=filtered.slice(0,50).map(x=>`<article class="result"><div class="result-name">${esc(x.customerName||x.name||"Record")}</div><div class="result-meta">${esc(x.__section||"")} • ${esc(x.phone||x.customerPhone||"")} • ${esc(formatDateTime(x))}</div><div class="result-grid">${item("Device",x.device||`${x.brand||""} ${x.model||""}`)}${item("IMEI / SN",x.imei||x.sn||"—")}${item("Amount",x.phoneAmount!=null?`₹${Number(x.phoneAmount).toLocaleString("en-IN")}`:x.total!=null?`₹${Number(x.total).toLocaleString("en-IN")}`:x.salePrice!=null?`₹${Number(x.salePrice).toLocaleString("en-IN")}`:"—")}${item("Customer",x.customerName||x.name||"—")}</div></article>`).join("");
+ else if(/(show|dikhao|batao|find|search|ढूंढ|दिखा|खोज|ka|ke|ki)/i.test(q)){
+   filtered=rows.filter(x=>normalizeText([x.customerName,x.customerCode,x.phone,x.customerPhone,x.imei,x.brand,x.model,x.device,x.problem,x.name,x.category,x.sn,x.financeCompany,x.__section,formatDateTime(x)].join(" ")).includes(n));
+   if(!filtered.length){const tokens=n.split(" ").filter(t=>t.length>1);filtered=rows.filter(x=>tokens.some(t=>normalizeText([x.customerName,x.customerCode,x.phone,x.customerPhone,x.imei,x.brand,x.model,x.device,x.problem,x.name,x.category,x.sn,x.financeCompany,x.__section].join(" ")).includes(t)));}
+   answer=filtered.length?(lang==="hi"?`${filtered.length} matching records मिले।`:lang==="hinglish"?`${filtered.length} matching records mile.`:`Found ${filtered.length} matching records.`):(lang==="hi"?"कोई matching record नहीं मिला।":"No matching record found.");
+ } else { filtered=rows.filter(x=>normalizeText([x.customerName,x.customerCode,x.phone,x.customerPhone,x.imei,x.brand,x.model,x.device,x.problem,x.name,x.category,x.sn,x.financeCompany,x.__section,formatDateTime(x)].join(" ")).includes(n)); answer=filtered.length?`${filtered.length} matching records मिले।`:"इस सवाल के लिए matching data नहीं मिला। आप date, customer, section, phone, IMEI, profit या count पूछ सकते हैं।"; }
+ a.innerHTML=`<div class="smart-answer-text">${esc(answer)}</div>`;
+ r.innerHTML=filtered.slice(0,50).map(x=>`<article class="result"><div class="result-name">${esc(x.customerName||x.name||"Record")}</div><div class="result-meta">${esc(x.__section||"")} • ${esc(x.phone||x.customerPhone||"")} • ${esc(formatDateTime(x))}</div><div class="result-grid">${item("Device",x.device||`${x.brand||""} ${x.model||""}`)}${item("IMEI / SN",x.imei||x.sn||"—")}${item("Amount",x.phoneAmount!=null?`₹${Number(x.phoneAmount).toLocaleString("en-IN")}`:x.total!=null?`₹${Number(x.total).toLocaleString("en-IN")}`:x.salePrice!=null?`₹${Number(x.salePrice).toLocaleString("en-IN")}`:"—")}${item("Customer",x.customerName||x.name||"—")}</div></article>`).join("");
 }
-
 function applyTheme(theme){
     const allowed=["dark","light","midnight","silver","glass","sunset","emerald","rose"];
     if(!allowed.includes(theme)) theme="dark";
