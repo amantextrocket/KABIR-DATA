@@ -8,12 +8,6 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<script>/* KABIR DATA FIREBASE FIX V2 */
-window.__kabirFirebaseBoot=Date.now();
-window.addEventListener('error',function(e){if(e.target&&e.target.tagName==='SCRIPT'){var el=document.getElementById('connectionStatus')||document.getElementById('adminFirebaseStatus');if(el){el.textContent='JavaScript load error: '+(e.message||'script failed');el.classList.add('error');}}});
-window.addEventListener('unhandledrejection',function(e){console.error('Kabir Firebase boot rejection:',e.reason);});
-</script>
-
 <section id="pinScreen" class="pin-screen">
   <div class="glass pin-card">
     <div class="logo">KM</div>
@@ -48,11 +42,11 @@ window.addEventListener('unhandledrejection',function(e){console.error('Kabir Fi
 </section>
 
 
-<section id="smartSearchSection" data-page class="glass panel hidden app-page smart-search-page"><div class="section-head"><div><div class="eyebrow">SMART DATABASE SEARCH</div><h2>Search Everything</h2><small class="section-subtitle">Hindi • English • Hinglish — data se direct answer</small></div><button class="close" data-page-back="homeView">×</button></div><div class="smart-search-box"><span>⌕</span><input id="universalSearchInput" type="search" placeholder="पूछें: आज कितने customer हैं? / show finance data / Aman ka phone…" autocomplete="off"><button id="smartVoiceButton" class="smart-voice-button" type="button" title="Voice Assistant" aria-label="Voice Assistant">🎙️</button></div><div id="smartSearchAnswer" class="smart-answer"><div class="empty">Apna question ya search yahan type करें.</div></div><div id="smartSearchResults" class="results"></div></section>
+<section id="smartSearchSection" data-page class="glass panel hidden app-page smart-search-page"><div class="section-head"><div><div class="eyebrow">SMART DATABASE SEARCH</div><h2>Search Everything</h2><small class="section-subtitle">Hindi • English • Hinglish — data se direct answer</small></div><button class="close" data-page-back="homeView">×</button></div><div class="smart-search-box"><span>⌕</span><input id="universalSearchInput" type="search" placeholder="पूछें: आज कितने customer हैं? / show finance data / Aman ka phone…" autocomplete="off"></div><div id="smartSearchAnswer" class="smart-answer"><div class="empty">Apna question ya search yahan type करें.</div></div><div id="smartSearchResults" class="results"></div></section>
 
 <section id="recentDeletedSection" data-page class="glass panel hidden app-page"><div class="section-head"><div><div class="eyebrow">RECENTLY DELETED</div><h2>Recently Deleted</h2><small class="section-subtitle">Deleted data 30 days तक recover किया जा सकता है</small></div><button class="close" data-page-back="homeView">×</button></div><div id="recentDeletedResults" class="results"></div></section>
 <section id="financePage" data-page class="glass panel hidden app-page"><div class="section-head"><div><div class="eyebrow">FINANCE</div><h2>Finance Management</h2></div><button class="close" data-page-back="homeView">×</button></div>
-  <div class="module-grid"><button id="totalCustomersCard" class="glass stat" type="button"><span class="icon">👥</span><span>Total Customers</span><strong id="totalCustomers">0</strong></button><button id="totalDevicesCard" class="glass stat" type="button"><span class="icon">📱</span><span>Total Devices</span><strong id="totalDevices">0</strong></button><button id="searchCustomerCard" class="glass action" type="button"><span class="icon">⌕</span><strong>Search Customer</strong><small>Name, mobile, IMEI, date…</small></button><button id="addCustomerCard" class="glass action" type="button"><span class="icon">＋</span><strong>Add Customer</strong><small>Create a new customer record</small></button><button id="deleteCustomerCard" class="glass action danger-card" type="button"><span class="icon">🗑️</span><strong>Delete Customer</strong><small>Customer data को Recently Deleted में भेजें</small></button></div>
+  <div class="module-grid"><button id="totalCustomersCard" class="glass stat" type="button"><span class="icon">👥</span><span>Total Customers</span><strong id="totalCustomers">0</strong></button><button id="totalDevicesCard" class="glass stat" type="button"><span class="icon">📱</span><span>Total Devices</span><strong id="totalDevices">0</strong></button><button id="searchCustomerCard" class="glass action" type="button"><span class="icon">⌕</span><strong>Search Customer</strong><small>Name, mobile, IMEI, date…</small></button><button id="addCustomerCard" class="glass action" type="button"><span class="icon">＋</span><strong>Add Customer</strong><small>Create a new customer record</small></button></div>
 </section>
 
 <section id="repairingPage" data-page class="glass panel hidden app-page"><div class="section-head"><div><div class="eyebrow">REPAIRING</div><h2>Repairing Management</h2></div><button class="close" data-page-back="homeView">×</button></div>
@@ -174,28 +168,6 @@ window.addEventListener('unhandledrejection',function(e){console.error('Kabir Fi
 <div id="successToast" class="success-toast hidden"><div class="success-check">✓</div><div><strong id="successToastTitle">Successfully Saved</strong><small id="successToastText">Data saved successfully</small></div></div>
 </main>
 <footer>Copyright © 2026 Kabir Data powered by AMAN</footer>
-<script>
-(function(){
-  function showFirebaseBootError(text){
-    var el=document.getElementById("connectionStatus");
-    if(el){el.textContent=text;el.classList.add("error");}
-    var a=document.getElementById("adminFirebaseStatus");
-    if(a){a.textContent=text;a.classList.add("error");}
-    console.error(text);
-  }
-  window.addEventListener("unhandledrejection",function(e){
-    var r=e&&e.reason;
-    if(r&&String(r.message||r).toLowerCase().includes("firebase")){
-      showFirebaseBootError("Firebase error: "+(r.message||r));
-    }
-  });
-  window.addEventListener("error",function(e){
-    if(e&&e.message&&/firebase|script\.js|module/i.test(e.message)){
-      showFirebaseBootError("Firebase/script load error: "+e.message);
-    }
-  });
-})();
-</script>
 <script type="module" src="script.js"></script>
 </body>
 </html>
