@@ -8,6 +8,12 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<script>/* KABIR DATA FIREBASE FIX V2 */
+window.__kabirFirebaseBoot=Date.now();
+window.addEventListener('error',function(e){if(e.target&&e.target.tagName==='SCRIPT'){var el=document.getElementById('connectionStatus')||document.getElementById('adminFirebaseStatus');if(el){el.textContent='JavaScript load error: '+(e.message||'script failed');el.classList.add('error');}}});
+window.addEventListener('unhandledrejection',function(e){console.error('Kabir Firebase boot rejection:',e.reason);});
+</script>
+
 <section id="pinScreen" class="pin-screen">
   <div class="glass pin-card">
     <div class="logo">KM</div>
@@ -168,6 +174,28 @@
 <div id="successToast" class="success-toast hidden"><div class="success-check">✓</div><div><strong id="successToastTitle">Successfully Saved</strong><small id="successToastText">Data saved successfully</small></div></div>
 </main>
 <footer>Copyright © 2026 Kabir Data powered by AMAN</footer>
+<script>
+(function(){
+  function showFirebaseBootError(text){
+    var el=document.getElementById("connectionStatus");
+    if(el){el.textContent=text;el.classList.add("error");}
+    var a=document.getElementById("adminFirebaseStatus");
+    if(a){a.textContent=text;a.classList.add("error");}
+    console.error(text);
+  }
+  window.addEventListener("unhandledrejection",function(e){
+    var r=e&&e.reason;
+    if(r&&String(r.message||r).toLowerCase().includes("firebase")){
+      showFirebaseBootError("Firebase error: "+(r.message||r));
+    }
+  });
+  window.addEventListener("error",function(e){
+    if(e&&e.message&&/firebase|script\.js|module/i.test(e.message)){
+      showFirebaseBootError("Firebase/script load error: "+e.message);
+    }
+  });
+})();
+</script>
 <script type="module" src="script.js"></script>
 </body>
 </html>
