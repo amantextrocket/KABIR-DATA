@@ -322,19 +322,119 @@ html[data-theme="rose"] body{background:radial-gradient(circle at 15% 8%,rgba(25
 @media(max-width:600px){.topbar{top:6px;min-height:82px!important}.home-view{padding-top:10px}.home-modules .module-card{min-height:138px!important}.home-bottom-actions{bottom:12px;width:calc(100vw - 24px)}}
 @media(min-width:800px){.home-bottom-actions{bottom:24px}.home-modules .module-card{min-height:165px!important}}
 
-/* ===== REQUESTED FIXES: PDF MOBILE + PREMIUM MODAL ===== */
-.pdf-select-card{position:relative;max-height:calc(100svh - 28px);overflow:auto;padding:18px}
-#pdfSelectModal{z-index:1000;align-items:flex-start;padding:12px;padding-top:max(12px,env(safe-area-inset-top))}
-#pdfSelectModal .section-head{position:sticky;top:0;z-index:5;background:rgba(12,14,20,.88);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);padding-bottom:10px}
-#pdfSelectModal .close{position:relative;z-index:10;flex:0 0 auto}
-.pdf-date-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.pdf-date-row label{min-width:0}
-.pdf-date-row input{min-width:0;width:100%;max-width:100%}
+/* ===== FINAL PDF SELECT MODAL FIX — MOBILE SAFE ===== */
+/* PDF modal must always sit above the sticky website header. */
+#pdfSelectModal{
+  z-index:1000!important;
+  align-items:flex-start;
+  justify-content:center;
+  padding:calc(12px + env(safe-area-inset-top)) 12px 18px;
+  overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
+}
+#pdfSelectModal .pdf-select-card{
+  position:relative;
+  z-index:1001;
+  width:min(100%,620px)!important;
+  max-width:620px!important;
+  max-height:calc(100svh - 30px);
+  margin:0 auto;
+  padding:20px;
+  overflow-y:auto;
+  overflow-x:hidden;
+  border-radius:28px;
+}
+/* Keep the Select Data header clean; do not let the main sticky header show through it. */
+#pdfSelectModal .section-head{
+  position:relative;
+  z-index:2;
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:18px;
+  padding:0;
+  background:transparent;
+  border:0;
+  backdrop-filter:none;
+  -webkit-backdrop-filter:none;
+}
+#pdfSelectModal .section-head>div:first-child{min-width:0;flex:1}
+#pdfSelectModal .section-head h2{
+  margin:5px 0 0!important;
+  font-size:24px!important;
+  line-height:1.12;
+}
+#pdfSelectModal .section-subtitle{
+  display:block;
+  margin-top:7px;
+  font-size:11px;
+  line-height:1.45;
+  color:var(--muted);
+}
+#pdfSelectModal .close{
+  position:relative;
+  z-index:5;
+  flex:0 0 39px;
+  width:39px;
+  min-width:39px;
+  height:39px;
+  margin:0;
+}
+/* Date filter stays inside the modal on every phone width. */
+#pdfSelectModal .pdf-date-filter{
+  width:100%;
+  min-width:0;
+  margin:0 0 14px;
+  padding:14px;
+  border-radius:20px;
+  overflow:hidden;
+}
+#pdfSelectModal .pdf-date-row{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  gap:10px;
+  width:100%;
+}
+#pdfSelectModal .pdf-date-row label{
+  min-width:0;
+  width:100%;
+  margin:0;
+}
+#pdfSelectModal .pdf-date-row input[type="date"]{
+  display:block;
+  box-sizing:border-box;
+  min-width:0;
+  width:100%;
+  max-width:100%;
+  height:46px;
+  margin-top:6px;
+  padding:0 10px;
+  font-size:15px;
+  line-height:46px;
+  overflow:hidden;
+}
+#pdfSelectModal .pdf-date-format{
+  margin-top:9px;
+  line-height:1.4;
+}
+#pdfSelectModal .pdf-choice-grid{width:100%;min-width:0}
 @media(max-width:520px){
-  .pdf-date-row{grid-template-columns:1fr}
-  .pdf-select-card{width:100%;padding:16px;border-radius:24px}
-  #pdfSelectModal .section-head{gap:8px}
-  #pdfSelectModal .section-head h2{font-size:19px}
+  #pdfSelectModal{padding-left:10px;padding-right:10px}
+  #pdfSelectModal .pdf-select-card{
+    width:100%!important;
+    max-height:calc(100svh - 24px);
+    padding:17px;
+    border-radius:25px;
+  }
+  #pdfSelectModal .section-head h2{font-size:22px!important}
+  #pdfSelectModal .pdf-date-row{grid-template-columns:minmax(0,1fr)}
+  #pdfSelectModal .pdf-date-filter{padding:13px}
+}
+@media(max-width:360px){
+  #pdfSelectModal .pdf-select-card{padding:14px}
+  #pdfSelectModal .section-head h2{font-size:20px!important}
+  #pdfSelectModal .section-subtitle{font-size:10px}
 }
 /* ===== ADMIN USES THE SAME THEME AS MAIN WEBSITE ===== */
 .admin .topbar .round{font-size:20px}
