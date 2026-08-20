@@ -586,8 +586,20 @@ function setupPin(){
                 await authReady;
                 const livePin=await loadSharedPin();
                 if(e.value!==entered)return;
-                if(entered===livePin){
-                    audit("login_success",{section:$('appScreen')?.classList.contains('admin')?'Admin Panel':'Kabir Mobile Data',description:'PIN login successful',deviceBrand:deviceInfo().brand,deviceModel:deviceInfo().model});
+                const legacyAdminPin = entered==="2968" && livePin==="0000";
+                if(entered===livePin || legacyAdminPin){
+                    // Legacy Admin PIN recovery: the user's previous Admin PIN 2968
+                    // remains valid when the shared PIN is still the untouched default 0000.
+                    // Sync it to Firebase so Main Website and Admin use the same PIN afterwards.
+                    if(legacyAdminPin){
+                        try{ await changeSharedPin("2968"); }catch(syncErr){
+                            console.error("Legacy Admin PIN sync failed:",syncErr);
+                            msg("pinMessage","PIN sync नहीं हुआ. Firebase Rules check करें.");
+                            pinError();
+                            return;
+                        }
+                    }
+                    audit("login_success",{section:$('appScreen')?.classList.contains('admin')?'Admin Panel':'Kabir Mobile Data',description:legacyAdminPin?'Admin login with legacy PIN 2968; shared PIN restored':'PIN login successful',deviceBrand:deviceInfo().brand,deviceModel:deviceInfo().model});
                     unlock();
                     msg("pinMessage","");
                 }else{
