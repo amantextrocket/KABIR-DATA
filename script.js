@@ -514,11 +514,99 @@ function renderCustomerDateGraph(){
     const max=Math.max(...rows.map(x=>x.count),1);
     box.innerHTML=rows.map(x=>`<div class="customer-bar" title="${x.key}: ${x.count} customer"><div class="customer-bar-value">${x.count||""}</div><i style="height:${Math.max(4,Math.round(x.count/max*100))}%"></i><span>${x.d.getDate()} ${x.d.toLocaleString("en-IN",{month:"short"})}</span></div>`).join("");
 }
+
+/* =========================================================
+   ADMIN TRAFFIC — STATISTICS / PERFORMANCE / REPAIRING PROFIT / OVERVIEW
+   Each view has its own Start Date / End Date filter.
+========================================================= */
+function adminTrafficDate(x){
+    const d=x?.createdAt?.toDate?.() || (x?.clientTime?new Date(x.clientTime):null);
+    return d && !Number.isNaN(d.getTime()) ? d : null;
+}
+function adminTrafficDateKey(x){
+    const d=adminTrafficDate(x); return d ? d.toLocaleDateString("en-CA") : "";
+}
+function adminTrafficRange(prefix){
+    const from=$(prefix+"From")?.value||"", to=$(prefix+"To")?.value||"";
+    const start=from?new Date(from+"T00:00:00"):null;
+    const end=to?new Date(to+"T23:59:59.999"):null;
+    if(start&&end&&start>end)return null;
+    const inRange=x=>{const d=adminTrafficDate(x);return !!d&&(!start||d>=start)&&(!end||d<=end)};
+    return {from,to,start,end,inRange};
+}
+function adminTrafficDateFilter(id,title,sub=""){return `<div class="traffic-date-filter"><div><b>${esc(title)}</b>${sub?`<small>${esc(sub)}</small>`:""}</div><div class="traffic-date-fields"><label>Start Date<input id="${id}From" type="date"></label><label>End Date<input id="${id}To" type="date"></label></div><p id="${id}DateMessage" class="message"></p></div>`}
+function adminTrafficStatCard(label,value,icon="•"){return `<div class="traffic-stat-card"><span>${icon}</span><small>${esc(label)}</small><strong>${esc(value)}</strong></div>`}
+function adminMoney(n){return `₹${Number(n||0).toLocaleString("en-IN")}`}
+function adminTrafficRows(){
+    return [
+      ...customers.map(x=>({...x,__section:"Finance",__name:x.customerName||"—",__phone:x.phone||"—",__revenue:Number(x.phoneAmount||0),__profit:0})),
+      ...repairing.map(x=>({...x,__section:"Repairing",__name:x.customerName||"—",__phone:x.phone||"—",__revenue:Number(x.total??x.payment??0),__profit:Number(x.profit??(Number(x.total??x.payment??0)-Number(x.partsPrice||0)))})),
+      ...secondHand.map(x=>({...x,__section:"Second Hand",__name:x.customerName||"—",__phone:x.phone||"—",__revenue:Number(x.salePrice||x.price||0),__profit:Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0)))})),
+      ...accessories.map(x=>({...x,__section:"Accessories",__name:x.customerName||x.name||"—",__phone:x.customerPhone||"—",__revenue:Number(x.salePrice||x.price||0)*Math.max(1,Number(x.quantity||1)),__profit:Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0)))*Math.max(1,Number(x.quantity||1))}))
+    ];
+}
+function renderTrafficStatistics(){
+    const box=$("trafficAnalyticsContent");if(!box)return;
+    box.innerHTML=adminTrafficDateFilter("trafficStats","Statistics","Finance, Repairing, Second Hand और Accessories");
+    const render=()=>{
+      const range=adminTrafficRange("trafficStats"),m=$("trafficStatsDateMessage");
+      if(!range){m.textContent="Start Date, End Date से बड़ी नहीं हो सकती.";return;}
+      m.textContent="";
+      const rows=adminTrafficRows().filter(range.inRange), finance=rows.filter(x=>x.__section==="Finance"), repair=rows.filter(x=>x.__section==="Repairing"), second=rows.filter(x=>x.__section==="Second Hand"), acc=rows.filter(x=>x.__section==="Accessories");
+      const totalRevenue=rows.reduce((n,x)=>n+x.__revenue,0), totalProfit=rows.reduce((n,x)=>n+x.__profit,0);
+      box.querySelector("#trafficStatsResult")?.remove();
+      const result=document.createElement("div");result.id="trafficStatsResult";result.innerHTML=`<div class="traffic-stat-grid">${adminTrafficStatCard("Total Records",rows.length,"📦")}${adminTrafficStatCard("Finance Customers",finance.length,"💳")}${adminTrafficStatCard("Repairing Records",repair.length,"🛠️")}${adminTrafficStatCard("Second Hand",second.length,"📱")}${adminTrafficStatCard("Accessories",acc.length,"🎧")}${adminTrafficStatCard("Total Revenue",adminMoney(totalRevenue),"💰")}${adminTrafficStatCard("Total Profit",adminMoney(totalProfit),"📈")}</div><div class="traffic-block"><b>Section Summary</b><div class="admin-data-table"><div class="admin-data-row"><b>Section</b><b>Records</b><b>Revenue</b><b>Profit</b></div>${[["Finance",finance],["Repairing",repair],["Second Hand",second],["Accessories",acc]].map(([n,a])=>`<div class="admin-data-row"><span>${n}</span><span>${a.length}</span><span>${adminMoney(a.reduce((v,x)=>v+x.__revenue,0))}</span><span>${adminMoney(a.reduce((v,x)=>v+x.__profit,0))}</span></div>`).join("")}</div></div>`;
+      box.appendChild(result);
+    };
+    $("trafficStatsFrom")?.addEventListener("change",render);$("trafficStatsTo")?.addEventListener("change",render);render();
+}
+function renderTrafficPerformance(){
+    const box=$("trafficAnalyticsContent");if(!box)return;
+    box.innerHTML=adminTrafficDateFilter("trafficPerformance","Performance","Website work and user activity");
+    const render=()=>{
+      const range=adminTrafficRange("trafficPerformance"),m=$("trafficPerformanceDateMessage");if(!range){m.textContent="Start Date, End Date से बड़ी नहीं हो सकती.";return;}m.textContent="";
+      const rows=auditLogs.filter(range.inRange), users=new Set(rows.map(x=>x.userUid||x.userName).filter(Boolean));
+      const actionCount=a=>rows.filter(x=>x.action===a).length;
+      const adds=actionCount("customer_add")+actionCount("repairing_add")+actionCount("second_hand_add")+actionCount("accessory_add"), edits=actionCount("customer_edit"), deletes=actionCount("customer_delete");
+      const byUser={};rows.forEach(x=>{const u=x.userName||x.userUid||"Unknown";byUser[u]=(byUser[u]||0)+1});const usersList=Object.entries(byUser).sort((a,b)=>b[1]-a[1]);
+      box.querySelector("#trafficPerformanceResult")?.remove();const result=document.createElement("div");result.id="trafficPerformanceResult";result.innerHTML=`<div class="traffic-stat-grid">${adminTrafficStatCard("Total Work Actions",rows.length,"⚡")}${adminTrafficStatCard("Active Users",users.size,"👥")}${adminTrafficStatCard("New Entries",adds,"➕")}${adminTrafficStatCard("Edits",edits,"✏️")}${adminTrafficStatCard("Deletes",deletes,"🗑️")}${adminTrafficStatCard("Searches",rows.filter(x=>String(x.action||"").includes("search")).length,"🔎")}</div><div class="traffic-block"><b>User Performance</b><div class="admin-data-table"><div class="admin-data-row"><b>User</b><b>Actions</b><b>Last Activity</b></div>${usersList.slice(0,100).map(([u,n])=>{const last=rows.find(x=>(x.userName||x.userUid||"Unknown")===u);return `<div class="admin-data-row"><span>${esc(u)}</span><span>${n}</span><span>${esc(auditTime(last))}</span></div>`}).join("")||'<div class="empty">इस date range में performance record नहीं है.</div>'}</div></div>`;box.appendChild(result);
+    };
+    $("trafficPerformanceFrom")?.addEventListener("change",render);$("trafficPerformanceTo")?.addEventListener("change",render);render();
+}
+function renderTrafficRepairProfit(){
+    const box=$("trafficAnalyticsContent");if(!box)return;
+    box.innerHTML=adminTrafficDateFilter("trafficRepair","Repairing Profit","Repairing records का detailed profit report");
+    const render=()=>{
+      const range=adminTrafficRange("trafficRepair"),m=$("trafficRepairDateMessage");if(!range){m.textContent="Start Date, End Date से बड़ी नहीं हो सकती.";return;}m.textContent="";
+      const rows=repairing.filter(range.inRange),total=rows.reduce((n,x)=>n+Number(x.total??x.payment??0),0),parts=rows.reduce((n,x)=>n+Number(x.partsPrice||0),0),profit=rows.reduce((n,x)=>n+Number(x.profit??(Number(x.total??x.payment??0)-Number(x.partsPrice||0))),0);
+      box.querySelector("#trafficRepairResult")?.remove();const result=document.createElement("div");result.id="trafficRepairResult";result.innerHTML=`<div class="traffic-stat-grid">${adminTrafficStatCard("Repairing Records",rows.length,"🛠️")}${adminTrafficStatCard("Total Collection",adminMoney(total),"💰")}${adminTrafficStatCard("Parts Cost",adminMoney(parts),"🔧")}${adminTrafficStatCard("Repairing Profit",adminMoney(profit),"📈")}</div><div class="traffic-block"><b>Repairing Profit Details</b><div class="admin-data-table"><div class="admin-data-row"><b>Date</b><b>Customer</b><b>Device</b><b>Total</b><b>Parts</b><b>Profit</b></div>${rows.map(x=>`<div class="admin-data-row"><span>${esc(formatDateTime(x))}</span><span>${esc(x.customerName||"—")}</span><span>${esc(x.device||"—")}</span><span>${adminMoney(x.total??x.payment)}</span><span>${adminMoney(x.partsPrice)}</span><span>${adminMoney(x.profit??(Number(x.total??x.payment??0)-Number(x.partsPrice||0)))}</span></div>`).join("")||'<div class="empty">इस date range में repairing record नहीं है.</div>'}</div></div>`;box.appendChild(result);
+    };
+    $("trafficRepairFrom")?.addEventListener("change",render);$("trafficRepairTo")?.addEventListener("change",render);render();
+}
+function renderTrafficOverview(){
+    const box=$("trafficAnalyticsContent");if(!box)return;
+    box.innerHTML=adminTrafficDateFilter("trafficOverview","Overview","पूरे Kabir Data का combined summary");
+    const render=()=>{
+      const range=adminTrafficRange("trafficOverview"),m=$("trafficOverviewDateMessage");if(!range){m.textContent="Start Date, End Date से बड़ी नहीं हो सकती.";return;}m.textContent="";
+      const rows=adminTrafficRows().filter(range.inRange),profit=rows.reduce((n,x)=>n+x.__profit,0),revenue=rows.reduce((n,x)=>n+x.__revenue,0),audit= auditLogs.filter(range.inRange);
+      const result=document.createElement("div");result.id="trafficOverviewResult";result.innerHTML=`<div class="traffic-stat-grid">${adminTrafficStatCard("All Records",rows.length,"📦")}${adminTrafficStatCard("Revenue / Value",adminMoney(revenue),"💰")}${adminTrafficStatCard("Business Profit",adminMoney(profit),"📈")}${adminTrafficStatCard("Work Actions",audit.length,"⚡")}${adminTrafficStatCard("Customers",new Set(rows.map(x=>x.__phone).filter(x=>x&&x!=="—")).size,"👥")}${adminTrafficStatCard("Repairing Profit",adminMoney(rows.filter(x=>x.__section==="Repairing").reduce((n,x)=>n+x.__profit,0)),"🛠️")}</div><div class="traffic-block"><b>Quick Overview</b><div class="admin-data-table"><div class="admin-data-row"><span>Finance</span><span>${rows.filter(x=>x.__section==="Finance").length} records</span><span>${adminMoney(rows.filter(x=>x.__section==="Finance").reduce((n,x)=>n+x.__revenue,0))}</span></div><div class="admin-data-row"><span>Repairing</span><span>${rows.filter(x=>x.__section==="Repairing").length} records</span><span>Profit ${adminMoney(rows.filter(x=>x.__section==="Repairing").reduce((n,x)=>n+x.__profit,0))}</span></div><div class="admin-data-row"><span>Second Hand</span><span>${rows.filter(x=>x.__section==="Second Hand").length} records</span><span>Profit ${adminMoney(rows.filter(x=>x.__section==="Second Hand").reduce((n,x)=>n+x.__profit,0))}</span></div><div class="admin-data-row"><span>Accessories</span><span>${rows.filter(x=>x.__section==="Accessories").length} records</span><span>Profit ${adminMoney(rows.filter(x=>x.__section==="Accessories").reduce((n,x)=>n+x.__profit,0))}</span></div></div></div>`;box.appendChild(result);
+    };
+    $("trafficOverviewFrom")?.addEventListener("change",render);$("trafficOverviewTo")?.addEventListener("change",render);render();
+}
+function openTrafficTab(tab){
+    document.querySelectorAll("[data-traffic-tab]").forEach(b=>b.classList.toggle("selected",b.dataset.trafficTab===tab));
+    if(tab==="statistics")renderTrafficStatistics();
+    else if(tab==="performance")renderTrafficPerformance();
+    else if(tab==="repairProfit")renderTrafficRepairProfit();
+    else renderTrafficOverview();
+}
+
 function adminAnalytics(){
     const open=id=>{document.querySelectorAll("[data-admin-page]").forEach(x=>x.classList.add("hidden"));$(id)?.classList.remove("hidden");$(id)?.scrollIntoView({behavior:"smooth",block:"start"});};
     $("pinSettingsButton")?.addEventListener("click",()=>open("pinPage"));
     $("workHistoryButton")?.addEventListener("click",()=>{open("workHistorySection");renderWorkHistory();});
-    $("trafficButton")?.addEventListener("click",()=>{open("trafficSection");renderTraffic();});
+    $("trafficButton")?.addEventListener("click",()=>{open("trafficSection");openTrafficTab("statistics");});
+    document.querySelectorAll("[data-traffic-tab]").forEach(b=>b.addEventListener("click",()=>openTrafficTab(b.dataset.trafficTab)));
     document.querySelectorAll("[data-admin-back]").forEach(b=>b.addEventListener("click",()=>open(b.dataset.adminBack)));
     $("refreshWorkButton")?.addEventListener("click",renderWorkHistory);$("refreshTrafficButton")?.addEventListener("click",renderTraffic);$("workSearchInput")?.addEventListener("input",renderWorkHistory);$("customerGraphRange")?.addEventListener("change",renderCustomerDateGraph);
     document.querySelectorAll("[data-management]").forEach(b=>b.addEventListener("click",()=>renderManagementData(b.dataset.management)));
@@ -1893,7 +1981,6 @@ function changePin(){
 let repairListenerStarted=false;
 
 function subscribeInventory(){
-    if(isAdminPage)return;
     onSnapshot(collection(db,SECOND_COL),snap=>{ secondHand=snap.docs.map(d=>({id:d.id,...d.data()})); if($("secondStockCount"))$("secondStockCount").textContent=String(secondHand.length); renderSecondHand(); },e=>console.warn("Second hand load:",e));
     onSnapshot(collection(db,ACCESSORY_COL),snap=>{ accessories=snap.docs.map(d=>({id:d.id,...d.data()})); if($("accessoryStockCount"))$("accessoryStockCount").textContent=String(accessories.reduce((n,x)=>n+Number(x.quantity||0),0)); renderAccessories(); },e=>console.warn("Accessories load:",e));
 }
