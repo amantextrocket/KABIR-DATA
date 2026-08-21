@@ -1251,6 +1251,27 @@ function enforceWriteLock(messageId="formMessage"){
 function makeCustomerCode(){
     return "KM"+Math.floor(1000+Math.random()*9000);
 }
+function findMatchingCustomerByPhone(phone,excludeId=""){const p=normalizeDigits(phone);return customers.find(c=>c.id!==excludeId&&normalizeDigits(c.phone)===p)||null;}
+function findMatchingCustomersByName(name,excludeId=""){const n=String(name||"").trim().toLowerCase();return customers.filter(c=>c.id!==excludeId&&String(c.customerName||"").trim().toLowerCase()===n);}
+function syncCustomerFields(nameId,phoneId){
+    const nameEl=$(nameId),phoneEl=$(phoneId);if(!nameEl||!phoneEl)return;
+    const editId=$("customerForm")?.dataset.editId||"";
+    const p=normalizeDigits(phoneEl.value), byPhone=findMatchingCustomerByPhone(p,editId);
+    if(byPhone){nameEl.value=byPhone.customerName||"";nameEl.readOnly=true;nameEl.dataset.autoMatched="1";return;}
+    nameEl.readOnly=false;nameEl.dataset.autoMatched="";
+    const matches=findMatchingCustomersByName(nameEl.value,editId);
+    if(matches.length===1 && !p) phoneEl.value=matches[0].phone||"";
+}
+function applyCustomerDuplicateState(){
+    const nameEl=$("customerName"),phoneEl=$("phone");if(!nameEl||!phoneEl)return;
+    const editId=$("customerForm")?.dataset.editId||"";
+    const byPhone=findMatchingCustomerByPhone(phoneEl.value,editId);
+    if(byPhone){nameEl.value=byPhone.customerName||"";nameEl.readOnly=true;return;}
+    nameEl.readOnly=false;
+    const matches=findMatchingCustomersByName(nameEl.value,editId);
+    if(matches.length===1 && !normalizeDigits(phoneEl.value)) phoneEl.value=matches[0].phone||"";
+}
+
 async function uniqueCustomerCode(){
     for(let i=0;i<20;i++){
         const code=makeCustomerCode();
@@ -1348,6 +1369,15 @@ async function save(e){
 
         return;
     }
+    const editIdForDup=$("customerForm").dataset.editId||"";
+    const duplicatePhone=findMatchingCustomerByPhone(phone,editIdForDup);
+    if(duplicatePhone){
+        $("customerName").value=duplicatePhone.customerName||"";
+        $("customerName").readOnly=true;
+        msg("formMessage","THIS MOBILE NUMBER ALREADY EXISTS. Existing customer details auto-filled.");
+        return;
+    }
+    if(inventoryImeiExists(imei,"",editIdForDup)){msg("formMessage","THIS IMEI ALREADY IN STOCK");return;}
 
 
     $("saveCustomerButton").disabled=true;
@@ -2874,6 +2904,31 @@ function renderInventoryHome(){
     const body=$("inventoryDashboardBody");if(!body)return;
     body.innerHTML=`<div class="inventory-summary-grid"><div><span>Total Phones</span><b>${total}</b></div><div><span>Available</span><b>${available}</b></div><div><span>Sold</span><b>${sold}</b></div><div><span>Customers</span><b>${customerCount}</b></div><div><span>Vendors</span><b>${inventoryParties.filter(x=>x.type==="vendor").length}</b></div><div><span>Purchase</span><b>${invMoney(purchases)}</b></div><div><span>Sales</span><b>${invMoney(sales)}</b></div><div><span>Invoices</span><b>${inventoryInvoices.length}</b></div></div>`;
 }
+async function editInventoryPartyCustomer(phone,name){
+    if(enforceWriteLock())return;
+    const oldPhone=normalizeDigits(phone),oldName=String(name||"").trim();
+    const newName=prompt("Customer name",oldName);if(newName===null)return;
+    const newPhoneRaw=prompt("Mobile number",oldPhone);if(newPhoneRaw===null)return;
+    const newPhone=normalizeDigits(newPhoneRaw);
+    if(!newName.trim()||!/^[0-9]{10}$/.test(newPhone)){alert("Valid name और 10 digit mobile number जरूरी है.");return;}
+    const clash=customers.find(c=>normalizeDigits(c.phone)===newPhone&&String(c.customerName||"").trim().toLowerCase()!==newName.trim().toLowerCase());
+    if(clash){alert("यह mobile number किसी दूसरे customer के साथ already linked है.");return;}
+    try{
+        const batches=[
+            [COL,customers.filter(c=>normalizeDigits(c.phone)===oldPhone||String(c.customerName||"").trim().toLowerCase()===oldName.toLowerCase())],
+            [REPAIR_COL,repairing.filter(c=>normalizeDigits(c.phone)===oldPhone||String(c.customerName||"").trim().toLowerCase()===oldName.toLowerCase())],
+            [SECOND_COL,secondHand.filter(c=>normalizeDigits(c.phone)===oldPhone||String(c.customerName||"").trim().toLowerCase()===oldName.toLowerCase())],
+            [ACCESSORY_COL,accessories.filter(c=>normalizeDigits(c.customerPhone)===oldPhone||String(c.customerName||"").trim().toLowerCase()===oldName.toLowerCase())]
+        ];
+        for(const [col,arr] of batches)for(const rec of arr){const data=col===ACCESSORY_COL?{customerName:newName.trim(),customerPhone:newPhone}:{customerName:newName.trim(),phone:newPhone};await updateDoc(doc(db,col,rec.id),data);}
+        for(const inv of inventoryInvoices.filter(x=>normalizeDigits(x.partyPhone||x.customerPhone)===oldPhone)){await updateDoc(doc(db,INVENTORY_INVOICE_COL,inv.id),{partyName:newName.trim(),partyPhone:newPhone,customerName:newName.trim(),customerPhone:newPhone});}
+        for(const ph of inventoryPhones.filter(x=>normalizeDigits(x.partyPhone||x.customerPhone)===oldPhone||String(x.customerName||"").trim().toLowerCase()===oldName.toLowerCase())){await updateDoc(doc(db,INVENTORY_PHONE_COL,ph.id),{partyName:newName.trim(),partyPhone:newPhone,customerName:newName.trim(),customerPhone:newPhone});}
+        await audit("customer_edit",{section:"Inventory Party",customerName:newName.trim(),description:`Inventory party edited: ${oldName} / ${oldPhone} -> ${newName.trim()} / ${newPhone}`});
+        showSuccessToast("Party Updated","Customer name और mobile successfully updated.");
+        window.__inventoryPartyDetail={kind:"customer",phone:newPhone,name:newName.trim()};renderInventoryParties();renderInventoryPartyDetail();
+    }catch(e){console.error(e);alert(e?.message||"Party update failed.");}
+}
+
 function renderInventoryParties(){
     const box=$("inventoryPartyResults");if(!box)return;const q=val("inventoryPartySearch").toLowerCase();
     const customersDir=getLifetimeCustomerDirectory().map(x=>({...x,kind:"customer"}));
@@ -2881,7 +2936,7 @@ function renderInventoryParties(){
     const map=new Map();[...customersDir,...vendors].forEach(x=>{const key=x.kind+"|"+(x.phone||x.name.toLowerCase());if(!map.has(key))map.set(key,x);});
     const rows=[...map.values()].filter(x=>!q||[x.name,x.phone,[...x.types].join(" ")].join(" ").toLowerCase().includes(q));
     $("inventoryCustomerCount")&&($("inventoryCustomerCount").textContent=String(customersDir.length));
-    box.innerHTML=rows.length?rows.map(x=>`<article class="result inventory-party-result" data-party-kind="${x.kind}" data-phone="${esc(x.phone)}" data-name="${esc(x.name)}" data-vendor-id="${esc(x.vendorId||"")}"><div class="result-top"><div><div class="result-name">${esc(x.name)}</div><div class="result-meta">${esc(x.phone||"Phone not available")} • ${x.records||1} record${(x.records||1)===1?"":"s"}</div></div><span class="work-log-tag">${x.kind==="vendor"?"VENDOR":"CUSTOMER"}</span></div><div class="result-open-hint">Tap करके पूरा record / history देखें</div></article>`).join(""):"<div class=\"empty\">No customers / vendors found.</div>";
+    box.innerHTML=rows.length?rows.map(x=>`<article class="result inventory-party-result" data-party-kind="${x.kind}" data-phone="${esc(x.phone)}" data-name="${esc(x.name)}" data-vendor-id="${esc(x.vendorId||"")}"><div class="result-top"><div><div class="result-name">${esc(x.name)}</div><div class="result-meta">${esc(x.phone||"Phone not available")} • ${x.records||1} record${(x.records||1)===1?"":"s"}</div></div><span class="work-log-tag">${x.kind==="vendor"?"VENDOR":"CUSTOMER"}</span></div><div class="result-open-hint">Tap करके पूरा record / history देखें</div><button type="button" class="inventory-party-inline-edit" data-party-edit-phone="${esc(x.phone)}" data-party-edit-name="${esc(x.name||"")}">EDIT</button></article>`).join(""):"<div class=\"empty\">No customers / vendors found.</div>";
     box.querySelectorAll(".inventory-party-result").forEach(card=>card.addEventListener("click",()=>{
         if(card.dataset.partyKind==="vendor") showInventoryVendorDetail(card.dataset.vendorId);
         else showInventoryCustomerDetail(card.dataset.phone,card.dataset.name);
@@ -2902,6 +2957,7 @@ function renderInventoryPartyDetail(){
     const groups=getUnifiedRecords(d.phone,d.name), finance=groups.finance,repair=groups.repair,second=groups.second,acc=groups.acc;
     const inventoryCustomerRows=inventoryInvoices.filter(x=>String(x.partyPhone||x.customerPhone||"").replace(/\D/g,"")===d.phone);
     title.textContent=d.name||"Customer";
+    const editPartyButton=`<div class="inventory-party-edit-row"><button type="button" class="inventory-party-edit-btn" data-party-edit-phone="${esc(d.phone)}" data-party-edit-name="${esc(d.name||"")}">EDIT PARTY</button></div>`;
     const rows=[];
     finance.forEach(x=>rows.push(`<article class="history-row"><b>💳 Finance / Phone</b><small>${esc(formatDateTime(x))}</small><span>${esc(`${x.brand||""} ${x.model||""}`)} • IMEI ${esc(x.imei||"—")} • ₹${Number(x.phoneAmount||0).toLocaleString("en-IN")}</span></article>`));
     repair.forEach(x=>rows.push(`<article class="history-row"><b>🛠 Repairing</b><small>${esc(formatDateTime(x))}</small><span>${esc(x.device||"")} • ${esc(x.problem||"")} • Total ₹${Number(x.total ?? x.payment ?? 0).toLocaleString("en-IN")} • Parts ₹${Number(x.partsPrice||0).toLocaleString("en-IN")} • Profit ₹${Number(x.profit??(Number(x.total ?? x.payment ?? 0)-Number(x.partsPrice||0))).toLocaleString("en-IN")}</span></article>`));
@@ -2909,7 +2965,7 @@ function renderInventoryPartyDetail(){
     acc.forEach(x=>rows.push(`<article class="history-row"><b>🎧 Accessories</b><small>${esc(formatDateTime(x))}</small><span>${esc(x.name||"")} • SN ${esc(x.sn||"—")} • Profit ₹${Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))).toLocaleString("en-IN")}</span></article>`));
     inventoryCustomerRows.forEach(x=>{const it=(x.items||[])[0]||{};rows.push(`<article class="history-row"><b>🧾 Inventory Sale</b><small>${esc(invDate(invDateValue(x)))}</small><span>${esc(`${it.brand||""} ${it.model||""}`)} • IMEI ${esc(it.imei||"—")} • Sale ₹${Number(x.total||0).toLocaleString("en-IN")}</span></article>`)});
     const total=finance.length+repair.length+second.length+acc.length+inventoryCustomerRows.length;
-    body.innerHTML=`<div class="detail-grid">${detailItem("Customer",d.name||"Customer")}${detailItem("Mobile",d.phone||"—")}${detailItem("Total Records",total)}${detailItem("Finance",finance.length)}${detailItem("Repairing",repair.length)}${detailItem("Second Hand",second.length)}${detailItem("Accessories",acc.length)}${detailItem("Inventory Records",inventoryCustomerRows.length)}</div><div class="history-list">${rows.join("")||'<div class="empty">इस customer का कोई history record नहीं मिला.</div>'}</div>`;
+    body.innerHTML=editPartyButton+`<div class="detail-grid">${detailItem("Customer",d.name||"Customer")}${detailItem("Mobile",d.phone||"—")}${detailItem("Total Records",total)}${detailItem("Finance",finance.length)}${detailItem("Repairing",repair.length)}${detailItem("Second Hand",second.length)}${detailItem("Accessories",acc.length)}${detailItem("Inventory Records",inventoryCustomerRows.length)}</div><div class="history-list">${rows.join("")||'<div class="empty">इस customer का कोई history record नहीं मिला.</div>'}</div>`;
 }
 function renderInventoryStock(){
     const box=$("inventoryStockResults");if(!box)return;
@@ -2979,10 +3035,25 @@ function inventoryColourOptions(brand,model){
     const list=[...new Set(colours.length?colours:fallback)];
     return '<option value="">Select colour</option>'+list.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join("");
 }
+const INVENTORY_MODEL_STORAGE_OVERRIDES={
+    "Apple|iPhone 17":["256 GB","512 GB","1 TB"],
+    "Apple|iPhone 17 Pro":["256 GB","512 GB","1 TB"],
+    "Apple|iPhone 17 Pro Max":["256 GB","512 GB","1 TB"],
+    "Apple|iPhone Air":["256 GB","512 GB","1 TB"],
+    "Apple|iPhone 16":["128 GB","256 GB","512 GB"],
+    "Apple|iPhone 16 Plus":["128 GB","256 GB","512 GB"],
+    "Apple|iPhone 16 Pro":["128 GB","256 GB","512 GB","1 TB"],
+    "Apple|iPhone 16 Pro Max":["256 GB","512 GB","1 TB"]
+};
+function inventoryStorageForModel(brand,model){
+    return INVENTORY_MODEL_STORAGE_OVERRIDES[`${brand}|${model}`] || BRANDS?.[brand]?.models?.[model]?.storage || BRANDS?.[brand]?.storage || ["64 GB","128 GB","256 GB","512 GB","1 TB"];
+}
 function inventoryRamStorageOptions(brand,model){
-    const storage=BRANDS?.[brand]?.storage||["64 GB","128 GB","256 GB","512 GB","1 TB"];
+    const storage=inventoryStorageForModel(brand,model);
+    // Apple/iPhone में user ने model-specific storage मांगा है; RAM को fixed/hidden रखते हुए केवल storage दिखाएं.
+    if(String(brand).toLowerCase()==="apple" && /^iphone\b/i.test(String(model||""))) return '<option value="">Select Storage</option>'+storage.map(st=>`<option value="${esc(st)}">${esc(st)}</option>`).join("");
     const rams=["4 GB","6 GB","8 GB","12 GB","16 GB"];
-    return '<option value="">Select RAM / Storage</option>'+rams.flatMap(r=>storage.map(s=>{const v=`${r} / ${s}`;return `<option value="${esc(v)}">${esc(v)}</option>`;})).join("");
+    return '<option value="">Select RAM / Storage</option>'+rams.flatMap(r=>storage.map(st=>{const v=`${r} / ${st}`;return `<option value="${esc(v)}">${esc(v)}</option>`;})).join("");
 }
 function inventoryRefreshPurchaseSelectors(){
     const brand=$("invPurchaseBrand"),model=$("invPurchaseModel"),ramStorage=$("invPurchaseRamStorage"),colour=$("invPurchaseColour");
@@ -3004,19 +3075,25 @@ function renderInventoryTransactionForm(mode){
     if(!mode)mode=box.dataset.mode||"purchase";
     box.dataset.mode=mode;
     if(mode==="purchase"){
-        box.innerHTML=`<form id="inventoryPurchaseForm"><div class="inventory-form-title">📥 Purchase Phone</div><label>Customer Name<input id="invPurchaseCustomerName" required placeholder="Customer name"></label><label>Mobile Number<input id="invPurchaseCustomerPhone" required type="tel" inputmode="tel" maxlength="10" placeholder="10 digit mobile number"></label><label>Used / New<select id="invPurchaseType" required><option value="used">Used</option><option value="new">New</option></select></label><label id="invPurchaseConditionWrap">Condition<select id="invPurchaseCondition"><option value="Excellent">Excellent</option><option value="Good" selected>Good</option><option value="Fair">Fair</option><option value="Damaged">Damaged</option></select></label><label>Brand<select id="invPurchaseBrand" required>${inventoryBrandOptions()}</select></label><label>Model<select id="invPurchaseModel" required>${inventoryModelOptions("")}</select></label><label>IMEI<div class="with-button"><input id="invPurchaseImei" inputmode="numeric" maxlength="15" required placeholder="15 digit IMEI"><button class="inventory-scan-button" data-scan-target="invPurchaseImei" type="button">▣ Scan</button></div></label><label>RAM / Storage<select id="invPurchaseRamStorage" required>${inventoryRamStorageOptions("","")}</select></label><label>Colour<select id="invPurchaseColour" required>${inventoryColourOptions("","")}</select></label><label>Purchase Price<input id="invPurchasePrice" type="number" min="0" inputmode="decimal" required placeholder="Purchase price"></label><label>Selling Price<input id="invPurchaseSellingPrice" type="number" min="0" inputmode="decimal" required placeholder="Selling price"></label><div id="inventoryMarginBox" class="bill-box"><span><strong>Margin</strong><small>Selling Price − Purchase Price</small></span><em id="invPurchaseMargin">₹0</em></div><button class="save" type="submit">SAVE PURCHASE</button><p id="inventoryTransactionMessage" class="message"></p></form>`;
+        box.innerHTML=`<form id="inventoryPurchaseForm"><div class="inventory-form-title">📥 Purchase Phone</div><label>Customer Name<input id="invPurchaseCustomerName" required placeholder="Customer name"></label><label>Mobile Number<input id="invPurchaseCustomerPhone" required type="tel" inputmode="tel" maxlength="10" placeholder="10 digit mobile number"></label><label>Used / New<select id="invPurchaseType" required><option value="used">Used</option><option value="new">New</option></select></label><label id="invPurchaseConditionWrap">Condition<select id="invPurchaseCondition"><option value="Excellent">Excellent</option><option value="Good" selected>Good</option><option value="Fair">Fair</option><option value="Damaged">Damaged</option></select></label><label>Brand<select id="invPurchaseBrand" required>${inventoryBrandOptions()}</select></label><label>Model<select id="invPurchaseModel" required>${inventoryModelOptions("")}</select></label><label>IMEI<div class="with-button"><input id="invPurchaseImei" inputmode="numeric" maxlength="15" required placeholder="15 digit IMEI"><button class="inventory-scan-button" data-scan-target="invPurchaseImei" type="button">▣ Scan</button></div><small id="invPurchaseImeiError" class="imei-error hidden"></small></label><label>RAM / Storage<select id="invPurchaseRamStorage" required>${inventoryRamStorageOptions("","")}</select></label><label>Colour<select id="invPurchaseColour" required>${inventoryColourOptions("","")}</select></label><label>Purchase Price<input id="invPurchasePrice" type="number" min="0" inputmode="decimal" required placeholder="Purchase price"></label><label>Selling Price<input id="invPurchaseSellingPrice" type="number" min="0" inputmode="decimal" required placeholder="Selling price"></label><div id="inventoryMarginBox" class="bill-box"><span><strong>Margin</strong><small>Selling Price − Purchase Price</small></span><em id="invPurchaseMargin">₹0</em></div><button class="save" type="submit">SAVE PURCHASE</button><p id="inventoryTransactionMessage" class="message"></p></form>`;
         inventoryRefreshPurchaseSelectors();inventorySetPurchaseConditionVisibility();
         loadAllPhoneModels().then(inventoryRefreshPurchaseSelectors);
         $("invPurchaseType")?.addEventListener("change",inventorySetPurchaseConditionVisibility);
         $("invPurchaseBrand")?.addEventListener("change",()=>{inventoryRefreshPurchaseSelectors();});
         $("invPurchaseModel")?.addEventListener("change",()=>{inventoryRefreshPurchaseSelectors();});
+        $("invPurchaseImei")?.addEventListener("input",()=>setInventoryImeiState("invPurchaseImei","invPurchaseImeiError"));
+        $("invPurchaseCustomerPhone")?.addEventListener("input",()=>syncCustomerFields("invPurchaseCustomerName","invPurchaseCustomerPhone"));
+        $("invPurchaseCustomerName")?.addEventListener("input",()=>syncCustomerFields("invPurchaseCustomerName","invPurchaseCustomerPhone"));
         const calc=()=>{const p=Number(val("invPurchasePrice")||0),s=Number(val("invPurchaseSellingPrice")||0),m=s-p;$("invPurchaseMargin")&&($("invPurchaseMargin").textContent=`${invMoney(m)} (${p>0?((m/p)*100).toFixed(1):"0.0"}%)`);};
         $("invPurchasePrice")?.addEventListener("input",calc);$("invPurchaseSellingPrice")?.addEventListener("input",calc);
         $("inventoryPurchaseForm")?.addEventListener("submit",saveInventoryPurchase);
     }else{
         const available=inventoryPhones.filter(x=>x.status!=="sold");
         box.innerHTML=`<form id="inventorySellForm"><div class="inventory-form-title">📤 Sell Phone</div><label>Select Available Phone<select id="invSellPhone" required><option value="">Tap करके available stock select करें</option>${available.map(x=>`<option value="${esc(x.id)}">${esc(`${x.brand||""} ${x.model||"Phone"}`)} • IMEI ${esc(x.imei||"—")} • ${esc(String(x.conditionType||x.phoneType||"USED").toUpperCase())} • ${invMoney(x.salePrice||x.sellingPrice||x.purchasePrice)}</option>`).join("")}</select></label><div id="inventorySellPhonePreview" class="inventory-selected-phone">Available stock select करने पर पूरा phone detail यहाँ दिखेगा.</div><label>Customer Name<input id="invSellCustomerName" required placeholder="Customer name"></label><label>Mobile Number<input id="invSellCustomerPhone" required type="tel" inputmode="tel" maxlength="10" placeholder="10 digit mobile number"></label><label>Sell Amount<input id="invSellPrice" type="number" min="0" inputmode="decimal" required placeholder="Sale amount"></label><label>Invoice Date<input id="invSellDate" type="date" value="${invDateISO(new Date())}"></label><button class="save" type="submit">SAVE SALE + CREATE INVOICE</button><p id="inventoryTransactionMessage" class="message"></p></form>`;
-        $("invSellPhone")?.addEventListener("change",inventorySellPreview);$("inventorySellForm")?.addEventListener("submit",saveInventorySale);
+        $("invSellPhone")?.addEventListener("change",inventorySellPreview);
+        $("invSellCustomerPhone")?.addEventListener("input",()=>syncCustomerFields("invSellCustomerName","invSellCustomerPhone"));
+        $("invSellCustomerName")?.addEventListener("input",()=>syncCustomerFields("invSellCustomerName","invSellCustomerPhone"));
+        $("inventorySellForm")?.addEventListener("submit",saveInventorySale);
     }
 }
 function inventorySellPreview(){
@@ -3024,7 +3101,7 @@ function inventorySellPreview(){
     box.innerHTML=x?`<b>${esc(`${x.brand||""} ${x.model||"Phone"}`)}</b><small>IMEI ${esc(x.imei||"—")} • ${esc(x.ram||"—")} / ${esc(x.storage||"—")} • ${esc(x.colour||"—")} • ${esc(String(x.conditionType||x.phoneType||"USED").toUpperCase())}</small><small>Purchase ₹${Number(x.purchasePrice||0).toLocaleString("en-IN")} • Suggested Sell ₹${Number(x.salePrice||x.sellingPrice||x.purchasePrice||0).toLocaleString("en-IN")}</small>`:"";
     if(x&&$("invSellPrice"))$("invSellPrice").value=x.salePrice||x.sellingPrice||x.purchasePrice||"";
 }
-function parseInventoryRamStorage(v){const parts=String(v||"").split("/");return {ram:(parts[0]||"").trim(),storage:(parts.slice(1).join("/")||"").trim()};}
+function parseInventoryRamStorage(v){const raw=String(v||"").trim();if(/^\d+\s*GB$|^\d+\s*TB$/i.test(raw))return {ram:"",storage:raw};const parts=raw.split("/");return {ram:(parts[0]||"").trim(),storage:(parts.slice(1).join("/")||"").trim()};}
 function inventoryDateKey(dateLike){
     const d=dateLike instanceof Date?new Date(dateLike):new Date(dateLike||Date.now());
     if(Number.isNaN(d.getTime()))return todayISO().replace(/-/g,"/");
@@ -3074,12 +3151,24 @@ async function restockInventoryPhone(id){
         renderInventoryStock();
     }catch(err){console.error(err);alert(err?.message||"Restock failed.");}
 }
+function normalizeDigits(v){return String(v||"").replace(/\D/g,"");}
+function inventoryImeiExists(imei,excludeInventoryId="",excludeCustomerId="",excludeSecondHandId=""){
+    const n=normalizeDigits(imei);if(!n)return false;
+    return inventoryPhones.some(x=>x.id!==excludeInventoryId&&normalizeDigits(x.imei)===n) || customers.some(x=>x.id!==excludeCustomerId&&normalizeDigits(x.imei)===n) || secondHand.some(x=>x.id!==excludeSecondHandId&&normalizeDigits(x.imei)===n);
+}
+function setInventoryImeiState(inputId,messageId){
+    const el=$(inputId),msgEl=$(messageId);if(!el)return true;const duplicate=inventoryImeiExists(el.value);
+    el.classList.toggle("imei-duplicate",duplicate);
+    if(msgEl){msgEl.textContent=duplicate?"THIS IMEI ALREADY IN STOCK":"";msgEl.classList.toggle("hidden",!duplicate);}
+    return !duplicate;
+}
 async function saveInventoryPurchase(e){
     e.preventDefault();if(enforceWriteLock("inventoryTransactionMessage"))return;
     const phone=val("invPurchaseCustomerPhone").replace(/\D/g,""),rs=parseInventoryRamStorage(val("invPurchaseRamStorage"));
     const purchase=Number(val("invPurchasePrice")||0),selling=Number(val("invPurchaseSellingPrice")||0);
     const data={partyId:null,partyName:val("invPurchaseCustomerName"),partyPhone:phone,customerName:val("invPurchaseCustomerName"),customerPhone:phone,partyType:"customer",phoneType:val("invPurchaseType"),conditionType:val("invPurchaseType"),condition:val("invPurchaseCondition"),brand:val("invPurchaseBrand"),model:val("invPurchaseModel"),imei:val("invPurchaseImei").replace(/\D/g,""),ram:rs.ram,storage:rs.storage,colour:val("invPurchaseColour"),purchasePrice:purchase,salePrice:selling,sellingPrice:selling,margin:selling-purchase,status:"in_stock",createdAt:serverTimestamp(),createdBy:user?.uid||null};
     if(!data.partyName||!/^[0-9]{10}$/.test(phone)||!data.brand||!data.model||!/^[0-9]{15}$/.test(data.imei)||purchase<0||selling<0){msg("inventoryTransactionMessage","Customer name, 10 digit mobile, brand, model, 15 digit IMEI और prices सही भरें.");return;}
+    if(inventoryImeiExists(data.imei)){setInventoryImeiState("invPurchaseImei","invPurchaseImeiError");msg("inventoryTransactionMessage","THIS IMEI ALREADY IN STOCK");return;}
     try{
         const added=await addDoc(collection(db,INVENTORY_PHONE_COL),data);
         const invoice={invoiceNo:nextInventoryInvoiceNo(new Date()),type:"purchase",date:new Date().toISOString(),partyId:null,partyName:data.partyName,partyPhone:phone,customerName:data.customerName,customerPhone:phone,items:[{inventoryId:added.id,brand:data.brand,model:data.model,imei:data.imei,ram:data.ram,storage:data.storage,colour:data.colour,quantity:1,rate:purchase,amount:purchase,sn:""}],total:purchase,amountWords:invAmountWords(purchase),createdAt:serverTimestamp(),createdBy:user?.uid||null};
@@ -3192,6 +3281,7 @@ function setupInventoryUI(){
         });
     }
     document.querySelectorAll("[data-invoice-range]").forEach(b=>b.addEventListener("click",()=>{inventoryInvoiceRange=b.dataset.invoiceRange;document.querySelectorAll("[data-invoice-range]").forEach(x=>x.classList.toggle("active",x===b));renderInventoryInvoices();}));
+    if(!window.__inventoryPartyEditDelegated){window.__inventoryPartyEditDelegated=true;document.addEventListener("click",e=>{const b=e.target.closest("[data-party-edit-phone]");if(!b)return;e.preventDefault();e.stopPropagation();editInventoryPartyCustomer(b.dataset.partyEditPhone,b.dataset.partyEditName);});}
     $("inventoryAddPartyButton")?.addEventListener("click",()=>{$("inventoryPartyModal")?.classList.remove("hidden");});
     $("inventoryPartyForm")?.addEventListener("submit",saveInventoryParty);
     $("inventorySellPurchaseButton")?.addEventListener("click",()=>{$("inventorySellPurchaseModal")?.classList.remove("hidden");renderInventoryTransactionForm("purchase");});
@@ -3271,6 +3361,8 @@ async function init(){
             "submit",
             save
         );
+    $("phone")?.addEventListener("input",applyCustomerDuplicateState);
+    $("customerName")?.addEventListener("input",applyCustomerDuplicateState);
 }
 
 
