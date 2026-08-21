@@ -470,68 +470,37 @@ function renderWorkHistory(){
       <div class="work-log-tags"><span class="work-log-tag">#${i+1}</span>${x.customerCode?`<span class="work-log-tag">${esc(x.customerCode)}</span>`:""}${x.customerName?`<span class="work-log-tag">${esc(x.customerName)}</span>`:""}<span class="work-log-tag">${esc(x.action||"work")}</span></div>
     </article>`).join("");
 }
-function renderTraffic(){
-    const total=auditLogs.length;
-    const today=new Date().toLocaleDateString('en-CA');
-    const todayRows=auditLogs.filter(x=>auditDay(x)===today);
-    const count=a=>auditLogs.filter(x=>x.action===a).length;
-    const users=new Set(auditLogs.map(x=>x.userUid).filter(Boolean));
-    $('trafficTotal')&&($('trafficTotal').textContent=String(total));
-    $('trafficToday')&&($('trafficToday').textContent=String(todayRows.length));
-    $('trafficAdds')&&($('trafficAdds').textContent=String(count('customer_add')));
-    $('trafficEdits')&&($('trafficEdits').textContent=String(count('customer_edit')));
-    $('trafficDeletes')&&($('trafficDeletes').textContent=String(count('customer_delete')));
-    $('trafficRepairs')&&($('trafficRepairs').textContent=String(count('repairing_add')));
-    $('trafficUsers')&&($('trafficUsers').textContent=String(users.size));
-    const hours=Array.from({length:24},(_,h)=>auditLogs.filter(x=>auditHour(x)===h).length);
-    const peak=Math.max(...hours,0),peakHour=peak?hours.indexOf(peak):-1;
-    $('trafficPeak')&&($('trafficPeak').textContent=peakHour<0?'—':`${String(peakHour).padStart(2,'0')}:00 (${peak})`);
-    const hb=$('trafficHours');
-    if(hb){
-        const max=Math.max(...hours,1);
-        hb.innerHTML=hours.map((n,h)=>`<div class="traffic-hour"><span>${String(h).padStart(2,'0')}</span><div><i style="width:${Math.round(n/max*100)}%"></i></div><b>${n}</b></div>`).join('');
-    }
-    const types={};
-    auditLogs.forEach(x=>types[x.action||'other']=(types[x.action||'other']||0)+1);
-    const tb=$('trafficTypes');
-    if(tb){
-        const list=Object.entries(types).sort((a,b)=>b[1]-a[1]);
-        const max=Math.max(list[0]?.[1]||1,1);
-        tb.innerHTML=list.slice(0,15).map(([a,n])=>`<div class="traffic-type"><span>${esc(auditLabel(a))}</span><div><i style="width:${Math.round(n/max*100)}%"></i></div><b>${n}</b></div>`).join('')||'<div class="empty">No traffic data.</div>';
-    }
-    renderCustomerDateGraph();
-}
-function renderCustomerDateGraph(){
-    const box=$("customerDateGraph"); if(!box)return;
-    const range=Number($("customerGraphRange")?.value||30);
-    const now=new Date(); now.setHours(0,0,0,0);
-    const rows=[];
-    for(let i=range-1;i>=0;i--){
-        const d=new Date(now); d.setDate(now.getDate()-i);
-        const key=d.toLocaleDateString("en-CA");
-        rows.push({d,key,count:customers.filter(c=>recordDay(c)===key).length});
-    }
-    const max=Math.max(...rows.map(x=>x.count),1);
-    box.innerHTML=rows.map(x=>`<div class="customer-bar" title="${x.key}: ${x.count} customer"><div class="customer-bar-value">${x.count||""}</div><i style="height:${Math.max(4,Math.round(x.count/max*100))}%"></i><span>${x.d.getDate()} ${x.d.toLocaleString("en-IN",{month:"short"})}</span></div>`).join("");
+function trafficDayKey(row){return recordDay(row)||auditDay(row);}
+function trafficRowsToday(rows){const today=new Date().toLocaleDateString("en-CA");return rows.filter(x=>trafficDayKey(x)===today);}
+function sumRepairProfit(rows){return rows.reduce((s,x)=>s+Number(x.profit ?? (Number(x.total ?? x.payment ?? 0)-Number(x.partsPrice||0)) || 0),0);}
+function renderTraffic(view="overview"){
+    const box=$("trafficContent");if(!box)return;
+    const todayCustomers=trafficRowsToday(customers).length;
+    const todayRepair=trafficRowsToday(repairing);
+    const totalProfit=sumRepairProfit(repairing);
+    const todayProfit=sumRepairProfit(todayRepair);
+    const monthKey=new Date().toLocaleDateString("en-CA").slice(0,7);
+    const monthProfit=sumRepairProfit(repairing.filter(x=>trafficDayKey(x).startsWith(monthKey)));
+    const totalRecords=customers.length+repairing.length;
+    const todayRecords=todayCustomers+todayRepair.length;
+    const totalDevices=customers.reduce((s,x)=>s+Number(x.deviceCount||1),0);
+    if(view==="statistics"){box.innerHTML=`<div class="traffic-stat-grid"><div class="traffic-stat"><small>Total Customers</small><b>${customers.length}</b></div><div class="traffic-stat"><small>Total Devices</small><b>${totalDevices}</b></div><div class="traffic-stat"><small>Today Customers</small><b>${todayCustomers}</b></div><div class="traffic-stat"><small>Total Records</small><b>${totalRecords}</b></div></div>`;}
+    else if(view==="performance"){const total=Math.max(totalRecords,1);box.innerHTML=`<div class="traffic-performance"><div><span>Customers</span><b>${customers.length}</b><i style="width:${Math.round(customers.length/total*100)}%"></i></div><div><span>Repairing</span><b>${repairing.length}</b><i style="width:${Math.round(repairing.length/total*100)}%"></i></div><div><span>Today's Work</span><b>${todayRecords}</b><i style="width:${Math.min(100,Math.round(todayRecords/total*100))}%"></i></div></div>`;}
+    else if(view==="repairing-profit"){box.innerHTML=`<div class="traffic-stat-grid"><div class="traffic-stat"><small>Total Repairing Profit</small><b>₹${totalProfit.toLocaleString("en-IN")}</b></div><div class="traffic-stat"><small>Today's Repairing Profit</small><b>₹${todayProfit.toLocaleString("en-IN")}</b></div><div class="traffic-stat"><small>This Month Profit</small><b>₹${monthProfit.toLocaleString("en-IN")}</b></div><div class="traffic-stat"><small>Repairing Jobs</small><b>${repairing.length}</b></div></div>`;}
+    else{box.innerHTML=`<div class="traffic-stat-grid"><div class="traffic-stat"><small>Total Customers</small><b>${customers.length}</b></div><div class="traffic-stat"><small>Today's Customers</small><b>${todayCustomers}</b></div><div class="traffic-stat"><small>Total Repairing</small><b>${repairing.length}</b></div><div class="traffic-stat"><small>Today's Work</small><b>${todayRecords}</b></div></div>`;}
 }
 function adminAnalytics(){
     const open=id=>{document.querySelectorAll("[data-admin-page]").forEach(x=>x.classList.add("hidden"));$(id)?.classList.remove("hidden");$(id)?.scrollIntoView({behavior:"smooth",block:"start"});};
     $("pinSettingsButton")?.addEventListener("click",()=>open("pinPage"));
-    $("workHistoryButton")?.addEventListener("click",()=>{open("workHistorySection");renderWorkHistory();});
-    $("trafficButton")?.addEventListener("click",()=>{open("trafficSection");renderTraffic();});
+    $("trafficButton")?.addEventListener("click",()=>{open("trafficSection");renderTraffic("overview");});
     document.querySelectorAll("[data-admin-back]").forEach(b=>b.addEventListener("click",()=>open(b.dataset.adminBack)));
-    $("refreshWorkButton")?.addEventListener("click",renderWorkHistory);$("refreshTrafficButton")?.addEventListener("click",renderTraffic);$("workSearchInput")?.addEventListener("input",renderWorkHistory);$("customerGraphRange")?.addEventListener("change",renderCustomerDateGraph);
-    document.querySelectorAll("[data-management]").forEach(b=>b.addEventListener("click",()=>renderManagementData(b.dataset.management)));
+    document.querySelectorAll("[data-traffic-view]").forEach(b=>b.addEventListener("click",()=>renderTraffic(b.dataset.trafficView)));
     subscribeAuditLogs();
 }
-function renderManagementData(type){
-    const box=$("trafficManagementDetail");if(!box)return;
-    let title="",rows=[];
-    if(type==="finance"){title="Finance Management";rows=customers.map(x=>[x.customerName,x.phone,`${x.brand||""} ${x.model||""}`,x.imei,`₹${x.phoneAmount||0}`]);}
-    if(type==="repairing"){title="Repairing Management";rows=repairing.map(x=>[x.customerName,x.phone,x.device,x.problem,`₹${x.total??x.payment??0}`,`₹${x.partsPrice||0}`,`₹${x.profit??(Number(x.total ?? x.payment ?? 0)-Number(x.partsPrice||0))}`]);}
-    if(type==="secondHand"){title="Second Hand Management";rows=secondHand.map(x=>[x.customerName,`${x.brand||""} ${x.model||x.device||""}`,x.imei,x.condition,`₹${x.price||0}`,`₹${x.salePrice||0}`,`₹${x.profit??(Number(x.salePrice||0)-Number(x.price||0))}`]);}
-    if(type==="accessories"){title="Accessories Management";rows=accessories.map(x=>[x.name,x.category,x.sn,x.quantity,`₹${x.price||0}`,`₹${x.salePrice||0}`,`₹${x.profit??(Number(x.salePrice||0)-Number(x.price||0))}`]);}
-    box.innerHTML=`<div class="section-head"><div><div class="eyebrow">SELECTED MANAGEMENT</div><h3>${esc(title)}</h3></div><b>${rows.length} Records</b></div>`+(rows.length?`<div class="admin-data-table">${rows.slice(0,500).map(r=>`<div class="admin-data-row">${r.map(v=>`<span>${esc(v)}</span>`).join("")}</div>`).join("")}</div>`:'<div class="empty">No data found.</div>');
+function subscribeAuditLogs(){
+    if(auditListenerStarted)return;
+    auditListenerStarted=true;
+    onSnapshot(collection(db,AUDIT_COL),snap=>{auditLogs=snap.docs.map(d=>({id:d.id,...d.data()}));sortAudit();renderTraffic(document.querySelector("[data-traffic-view].selected")?.dataset.trafficView||"overview");},e=>console.error("Audit listener:",e));
 }
 
 
@@ -1553,7 +1522,9 @@ function showCustomerDetail(c){
       ${detailItem("Bill",c.billYes?"YES":"NO")}
     </div>`;
     $("customerDetailModal")?.classList.remove("hidden");
-    $("editCustomerButton")?.removeAttribute("disabled");
+    const canEdit=customerEditAllowed(c);
+    const eb=$("editCustomerButton");
+    if(eb){eb.disabled=!canEdit;eb.title=canEdit?"Edit available for 24 hours after adding":"24 घंटे पूरे — Edit locked";}
     $("deleteCustomerButton")?.removeAttribute("disabled");
 }
 function closeCustomerDetail(){activeCustomerId=null;$("customerDetailModal")?.classList.add("hidden")}
@@ -1617,10 +1588,16 @@ async function deleteCustomer(){
         showSuccessToast("Customer Deleted","Customer record deleted successfully");
     }catch(e){console.error(e);alert("Customer delete नहीं हुआ. Firebase Rules check करें.")}
 }
+function customerEditAllowed(c){
+    const d=c?.createdAt?.toDate?.();
+    if(!d)return true;
+    return (Date.now()-d.getTime()) <= 24*60*60*1000;
+}
 function editCustomer(){
     if(enforceWriteLock("formMessage"))return;
     const c=customers.find(x=>x.id===activeCustomerId);
     if(!c){alert("यह customer Finance/Customer database में नहीं है, इसलिए Customer Edit उपलब्ध नहीं है।");return;}
+    if(!customerEditAllowed(c)){alert("इस customer की 24 घंटे की Edit अवधि पूरी हो चुकी है। अब इसे edit नहीं किया जा सकता।");return;}
     closeCustomerDetail();
     show("addSection");
     const map={customerName:"customerName",address:"address",pincode:"pincode",city:"city",state:"state",phone:"phone",
@@ -1858,8 +1835,9 @@ function showUnifiedCustomerHistory(phone,name){
     activeCustomerId=finance[0]?.id||null;
     window.activeUnifiedCustomer={phone:p,name:title,financeId:finance[0]?.id||null,repairId:repair[0]?.id||null,secondId:second[0]?.id||null,accessoryId:acc[0]?.id||null};
     const editBtn=$("editCustomerButton"),deleteBtn=$("deleteCustomerButton");
-    const financeEditable=!!activeCustomerId;
-    if(editBtn){editBtn.disabled=false;editBtn.title=financeEditable?"Edit Finance customer":"This customer has no Finance record";}
+    const financeRecord=finance[0]||null;
+    const financeEditable=!!activeCustomerId && !!financeRecord && customerEditAllowed(financeRecord);
+    if(editBtn){editBtn.disabled=!financeEditable;editBtn.title=financeEditable?"Edit available for 24 hours after adding":(activeCustomerId?"24 घंटे पूरे — Edit locked":"This customer has no Finance record");}
     if(deleteBtn){deleteBtn.disabled=false;deleteBtn.title=financeEditable?"Delete Finance customer":"Delete available customer record";}
     const rows=[];finance.forEach(x=>rows.push(`<article class="history-row"><b>💳 Finance / Phone</b><small>${esc(formatDateTime(x))}</small><span>${esc(`${x.brand||""} ${x.model||""}`)} • IMEI ${esc(x.imei||"—")} • ₹${Number(x.phoneAmount||0).toLocaleString("en-IN")}</span></article>`));repair.forEach(x=>rows.push(`<article class="history-row"><b>🛠 Repairing</b><small>${esc(formatDateTime(x))}</small><span>${esc(x.device||"")} • ${esc(x.problem||"")} • Total ₹${Number(x.total ?? x.payment ?? 0).toLocaleString("en-IN")} • Parts ₹${Number(x.partsPrice||0).toLocaleString("en-IN")} • Profit ₹${Number(x.profit??(Number(x.total ?? x.payment ?? 0)-Number(x.partsPrice||0))).toLocaleString("en-IN")}</span></article>`));second.forEach(x=>rows.push(`<article class="history-row"><b>📱 Second Hand</b><small>${esc(formatDateTime(x))}</small><span>${esc(`${x.brand||""} ${x.model||x.device||""}`)} • IMEI ${esc(x.imei||"—")} • Profit ₹${Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))).toLocaleString("en-IN")}</span></article>`));acc.forEach(x=>rows.push(`<article class="history-row"><b>🎧 Accessories</b><small>${esc(formatDateTime(x))}</small><span>${esc(x.name||"")} • SN ${esc(x.sn||"—")} • Profit ₹${Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))).toLocaleString("en-IN")}</span></article>`));
     $("customerDetailBody").innerHTML=`<div class="detail-grid">${detailItem("Customer",title)}${detailItem("Phone",p||finance[0]?.phone||repair[0]?.phone||second[0]?.phone||acc[0]?.customerPhone||"—")}${detailItem("Finance Records",finance.length)}${detailItem("Repairing Records",repair.length)}${detailItem("Second Hand Records",second.length)}${detailItem("Accessories Records",acc.length)}</div><div class="history-list">${rows.join("")||'<div class="empty">इस customer का कोई history record नहीं मिला.</div>'}</div>`;$("customerDetailModal")?.classList.remove("hidden");
@@ -2398,6 +2376,36 @@ document.addEventListener("click",e=>{
 });
 
 /* =========================================================
+   CUSTOMER AUTOFILL
+========================================================= */
+function findExistingCustomerByNameOrPhone(value){
+    const raw=String(value||"").trim();
+    if(!raw)return null;
+    const digits=raw.replace(/\D/g,"");
+    if(digits.length>=10)return customers.find(x=>String(x.phone||"").replace(/\D/g,"")===digits)||null;
+    if(raw.length<3)return null;
+    const n=raw.toLowerCase();
+    return customers.find(x=>String(x.customerName||"").trim().toLowerCase()===n)||null;
+}
+function fillCustomerFormFromExisting(c){
+    if(!c)return;
+    const map={customerName:"customerName",phone:"phone",address:"address",pincode:"pincode",city:"city",state:"state",brand:"brand",model:"model",imei:"imei",colour:"colour",storage:"storage",financeCompany:"financeCompany",phoneAmount:"phoneAmount",downPayment:"downPayment",emiAmount:"emiAmount",emiMonths:"emiMonths",lockName:"lockName",stock:"stock",counter:"counter",financerName:"financerName"};
+    Object.entries(map).forEach(([k,id])=>{if($(id)&&c[k]!=null)$(id).value=c[k];});
+    if($("customerCode"))$("customerCode").value=c.customerCode||"";
+    if($("brand")&&c.brand){$("brand").dispatchEvent(new Event("change"));setTimeout(()=>{if($("model")&&c.model){$("model").value=c.model;$("model").dispatchEvent(new Event("change"));}setTimeout(()=>{if($("colour"))$("colour").value=c.colour||"";if($("storage"))$("storage").value=c.storage||"";},50);},50);}
+}
+function fillRepairFormFromExisting(c){
+    if(!c)return;
+    if($("repairCustomerName"))$("repairCustomerName").value=c.customerName||"";
+    if($("repairPhone"))$("repairPhone").value=c.phone||"";
+    if($("repairDevice")&&!val("repairDevice"))$("repairDevice").value=[c.brand,c.model].filter(Boolean).join(" ");
+}
+function setupCustomerAutofill(){
+    const bind=(id,fn)=>{const e=$(id);if(!e||e.dataset.autofillBound)return;e.dataset.autofillBound="1";["change","blur"].forEach(ev=>e.addEventListener(ev,()=>{const c=findExistingCustomerByNameOrPhone(e.value);if(c)fn(c);}));};
+    bind("customerName",fillCustomerFormFromExisting);bind("phone",fillCustomerFormFromExisting);bind("repairCustomerName",fillRepairFormFromExisting);bind("repairPhone",fillRepairFormFromExisting);
+}
+
+/* =========================================================
    INITIALIZE
 ========================================================= */
 
@@ -2421,6 +2429,7 @@ async function init(){
     setupFinanceCompany();
     setupRepairFields();
     setupEntryDateFields();
+    setupCustomerAutofill();
 
     pincode();
 
