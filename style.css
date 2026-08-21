@@ -530,3 +530,16 @@ input[type="date"]{width:100%!important;max-width:100%!important;min-width:0!imp
   .traffic-stat-grid{gap:9px!important}
   .traffic-stat-card{padding:13px!important}
 }
+
+/* Mathematics answers inside Smart Search */
+.smart-answer-math{
+  margin-top:10px;
+  padding:10px 12px;
+  border:1px solid var(--border);
+  border-radius:14px;
+  background:rgba(255,255,255,.045);
+  color:var(--text);
+  font-size:14px;
+  overflow-wrap:anywhere;
+}
+.smart-answer-math b{font-size:18px}
