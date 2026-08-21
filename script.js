@@ -3097,8 +3097,30 @@ function setupInventoryUI(){
         if(target==="inventoryStockPage")renderInventoryStock();
         if(target==="inventoryInvoicePage")renderInventoryInvoices();
     }));
-    document.querySelectorAll("[data-stock-condition]").forEach(b=>b.addEventListener("click",()=>{inventoryStockFilter=b.dataset.stockCondition;document.querySelectorAll("[data-stock-condition]").forEach(x=>x.classList.toggle("active",x===b));renderInventoryStock();}));
-    document.querySelectorAll("[data-stock-status]").forEach(b=>b.addEventListener("click",()=>{inventoryStockStatus=b.dataset.stockStatus;document.querySelectorAll("[data-stock-status]").forEach(x=>x.classList.toggle("active",x===b));renderInventoryStock();}));
+    // Stock switches: delegated click handler so they keep working even if the
+    // stock page/cards are re-rendered or the page is opened more than once.
+    if(!window.__inventoryStockSwitchDelegated){
+        window.__inventoryStockSwitchDelegated=true;
+        document.addEventListener("click",e=>{
+            const conditionBtn=e.target.closest("[data-stock-condition]");
+            if(conditionBtn){
+                e.preventDefault();
+                e.stopPropagation();
+                inventoryStockFilter=conditionBtn.dataset.stockCondition||"used";
+                document.querySelectorAll("[data-stock-condition]").forEach(x=>x.classList.toggle("active",x===conditionBtn));
+                renderInventoryStock();
+                return;
+            }
+            const statusBtn=e.target.closest("[data-stock-status]");
+            if(statusBtn){
+                e.preventDefault();
+                e.stopPropagation();
+                inventoryStockStatus=statusBtn.dataset.stockStatus||"sell";
+                document.querySelectorAll("[data-stock-status]").forEach(x=>x.classList.toggle("active",x===statusBtn));
+                renderInventoryStock();
+            }
+        });
+    }
     document.querySelectorAll("[data-invoice-range]").forEach(b=>b.addEventListener("click",()=>{inventoryInvoiceRange=b.dataset.invoiceRange;document.querySelectorAll("[data-invoice-range]").forEach(x=>x.classList.toggle("active",x===b));renderInventoryInvoices();}));
     $("inventoryAddPartyButton")?.addEventListener("click",()=>{$("inventoryPartyModal")?.classList.remove("hidden");});
     $("inventoryPartyForm")?.addEventListener("submit",saveInventoryParty);
