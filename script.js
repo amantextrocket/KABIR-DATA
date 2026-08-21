@@ -19,7 +19,6 @@ const db=getFirestore(app);
 
 const PIN_KEY="kabir_mobile_pin";
 const DEFAULT_PIN="0000";
-const VERIFIED_PIN_CACHE_KEY="kabir_verified_pin_cache";
 const COL="customers";
 const REPAIR_COL="repairing";
 const SECOND_COL="secondHand";
@@ -44,9 +43,7 @@ let auditListenerStarted=false;
 let inventoryPhones=[];
 let inventoryParties=[];
 let inventoryInvoices=[];
-let inventoryStockFilter="available";
-let inventoryStockType="used";
-let inventoryStockStatus="available";
+let inventoryStockFilter="all";
 let inventoryInvoiceRange="all";
 let inventoryInvoicePreviewId=null;
 let scanStream=null;
@@ -355,7 +352,6 @@ async function loadSharedPin(){
         }catch(e){
             console.error("Shared PIN load failed:",e);
             pinLoaded=false;
-            pinLoadPromise=null;
             throw Error("PIN load नहीं हुआ. Firebase connection check करें.");
         }
     })();
@@ -720,21 +716,10 @@ function setupPin(){
             if(e.value!==entered)return;
             // Never unlock from a cached/local PIN. Wait for live Firebase PIN.
             try{
-                const connectedUser=await authReady;
-                let livePin=null;
-                if(connectedUser){
-                    try{ livePin=await loadSharedPin(); }catch(_){ livePin=null; }
-                }
-                // If Firebase is temporarily unavailable, use only a PIN that was
-                // previously verified successfully online. Firebase will continue
-                // retrying in the background and refresh the live PIN when online.
-                if(!livePin){
-                    const cached=localStorage.getItem(VERIFIED_PIN_CACHE_KEY)||"";
-                    if(/^\d{4}$/.test(cached)) livePin=cached;
-                }
+                await authReady;
+                const livePin=await loadSharedPin();
                 if(e.value!==entered)return;
                 if(entered===livePin){
-                    localStorage.setItem(VERIFIED_PIN_CACHE_KEY,entered);
                     audit("login_success",{section:$('appScreen')?.classList.contains('admin')?'Admin Panel':'Kabir Mobile Data',description:'PIN login successful',deviceBrand:deviceInfo().brand,deviceModel:deviceInfo().model});
                     unlock();
                     msg("pinMessage","");
@@ -766,35 +751,15 @@ function setupPin(){
 let authReadyResolve;
 let authReadyReject;
 let authStarted=false;
-let authRetryTimer=null;
-let dataSyncStarted=false;
-let lastAuthError=null;
 const authReady=new Promise((resolve,reject)=>{
     authReadyResolve=resolve;
     authReadyReject=reject;
 });
 
-function startDataSync(){
-    if(dataSyncStarted || !user)return;
-    dataSyncStarted=true;
-    purgeExpiredDeleted();
-    subscribe();
-    subscribeRepairing();
-    subscribeSecondaryAndAccessories();
-    subscribeInventory();
-}
-
-function scheduleAuthRetry(){
-    if(authRetryTimer)return;
-    authRetryTimer=setTimeout(()=>{
-        authRetryTimer=null;
-        authInit(true).catch(()=>{});
-    },3000);
-}
-
-async function authInit(isRetry=false){
-    if(authStarted && !isRetry)return authReady;
+async function authInit(){
+    if(authStarted)return authReady;
     authStarted=true;
+    let settled=false;
 
     const setStatus=(text,isError=false)=>{
         if($("connectionStatus")){
@@ -807,70 +772,46 @@ async function authInit(isRetry=false){
         }
     };
 
-    const resolveUser=(u)=>{
-        if(!u)return false;
+    onAuthStateChanged(auth,u=>{
+        // Firebase emits null while restoring auth state. Never treat null as ready.
+        if(!u){
+            user=null;
+            updateAdmin();
+            setStatus("Firebase connecting…");
+            return;
+        }
         user=u;
-        lastAuthError=null;
         updateAdmin();
         setStatus("Firebase connected ✓");
-        if(!authReadyResolved){
-            authReadyResolved=true;
+        if(!settled){
+            settled=true;
             authReadyResolve(u);
         }
-        startDataSync();
-        // Refresh the live PIN in the background after Firebase reconnects.
-        loadSharedPin().catch(()=>{});
-        return true;
-    };
-
-    const rejectAuth=(e)=>{
-        console.error("Firebase authentication error:",e);
+    },e=>{
+        console.error("Firebase auth state error:",e);
         user=null;
-        lastAuthError=e;
         updateAdmin();
-        const code=e?.code||"";
-        let text="Firebase offline — app will retry automatically.";
-        if(code.includes("operation-not-allowed")){
-            text="Firebase Auth unavailable — Anonymous Sign-in check करें.";
-        }else if(code.includes("unauthorized-domain")){
-            text="Firebase domain authorization issue — retrying…";
-        }else if(code.includes("network-request-failed")){
-            text="Firebase offline — background sync retrying…";
+        setStatus("Firebase authentication failed. Anonymous Sign-in ON करें.",true);
+        if(!settled){
+            settled=true;
+            authReadyReject(e);
         }
-        setStatus(text,true);
-        scheduleAuthRetry();
-        // Do NOT reject authReady: the UI must never remain locked on a
-        // permanent “Firebase connecting…” state.
-        if(!authReadyResolved){
-            authReadyResolved=true;
-            authReadyResolve(null);
-        }
-    };
-
-    if(!window.__kabirAuthObserver){
-        window.__kabirAuthObserver=true;
-        onAuthStateChanged(auth,u=>{
-            if(u) resolveUser(u);
-            else if(!auth.currentUser) setStatus("Firebase offline — retrying in background…",true);
-        },rejectAuth);
-    }
+    });
 
     try{
-        if(auth.currentUser){
-            resolveUser(auth.currentUser);
-            return authReady;
-        }
-        const credential=await signInAnonymously(auth);
-        if(!resolveUser(credential?.user||auth.currentUser)){
-            throw new Error("Anonymous sign-in succeeded but Firebase user was not returned.");
+        if(!auth.currentUser){
+            await signInAnonymously(auth);
         }
     }catch(e){
-        rejectAuth(e);
+        console.error("Firebase anonymous sign-in failed:",e);
+        setStatus("Firebase authentication failed. Anonymous Sign-in ON करें.",true);
+        if(!settled){
+            settled=true;
+            authReadyReject(e);
+        }
     }
     return authReady;
 }
-
-let authReadyResolved=false;
 
 /* =========================================================
    FIRESTORE CUSTOMER LISTENER
@@ -957,9 +898,9 @@ function updateAdmin(){
             );
 
     if($("adminFirebaseStatus"))
-        $("adminFirebaseStatus").textContent=user?"Firebase connected":"Firebase offline — retrying…";
+        $("adminFirebaseStatus").textContent=user?"Firebase connected":"Connecting to Firebase…";
     if($("connectionStatus"))
-        $("connectionStatus").textContent=user?"Firebase connected ✓":"Firebase offline — retrying…";
+        $("connectionStatus").textContent=user?"Firebase connected ✓":"Firebase connecting…";
 }
 
 
@@ -991,7 +932,7 @@ function nav(){
 
 
     $("customerModule")?.addEventListener("click",()=>{open("customerPage");renderAllCustomers();});
-    $("inventoryModule")?.addEventListener("click",()=>{open("inventoryPage");inventoryShowTab("inventoryHome");renderInventoryHome();});
+    $("inventoryModule")?.addEventListener("click",()=>open("inventoryPage"));
     document.querySelectorAll("[data-page-back]").forEach(b=>b.addEventListener("click",()=>{if(b.dataset.pageBack==="homeView")show("homeView",{back:true});else open(b.dataset.pageBack);}));
     document.querySelectorAll("[data-close]").forEach(b=>b.addEventListener("click",()=>{
         const target=b.dataset.close;
@@ -2885,18 +2826,27 @@ function invAmountWords(n){
     let out=[];if(n>=10000000){out.push(under1000(Math.floor(n/10000000))+" Crore");n%=10000000;}if(n>=100000){out.push(under1000(Math.floor(n/100000))+" Lakh");n%=100000;}if(n>=1000){out.push(under1000(Math.floor(n/1000))+" Thousand");n%=1000;}if(n)out.push(under1000(n));return out.join(" ")+" Rupees";
 }
 function inventoryShowTab(id){
-    document.querySelectorAll("#inventoryPage > .inventory-tab").forEach(x=>x.classList.add("hidden"));
-    const target=$(id);if(target)target.classList.remove("hidden");
-    const isHome=id==="inventoryHome";
-    const isParty=id==="inventoryPartySection"||id==="inventoryPartyDetailSection";
-    $("inventoryPage")?.querySelector(".inventory-nav-grid")?.classList.toggle("hidden",!isHome);
-    const sticky=$("inventoryStickyActions");
-    sticky?.classList.remove("hidden");
-    $("inventoryAddPartyButton")?.classList.toggle("hidden",!isParty);
-    document.querySelectorAll("[data-inventory-tab]").forEach(b=>b.classList.toggle("active",b.dataset.inventoryTab===id));
+    const pageMap={
+        inventoryHome:"inventoryHomePage",
+        inventoryPartySection:"inventoryPartyPage",
+        inventoryStockSection:"inventoryStockPage",
+        inventoryInvoiceSection:"inventoryInvoicePage"
+    };
+    if(id==="inventoryPartyDetailSection"){
+        show("inventoryPartyPage");
+        $("inventoryPartySection")?.classList.add("hidden");
+        $("inventoryPartyDetailSection")?.classList.remove("hidden");
+        renderInventoryPartyDetail();
+        return;
+    }
+    const page=pageMap[id]||id;
+    show(page);
     if(id==="inventoryHome")renderInventoryHome();
-    if(id==="inventoryPartySection")renderInventoryParties();
-    if(id==="inventoryPartyDetailSection")renderInventoryPartyDetail();
+    if(id==="inventoryPartySection"){
+        $("inventoryPartySection")?.classList.remove("hidden");
+        $("inventoryPartyDetailSection")?.classList.add("hidden");
+        renderInventoryParties();
+    }
     if(id==="inventoryStockSection")renderInventoryStock();
     if(id==="inventoryInvoiceSection")renderInventoryInvoices();
 }
@@ -2914,7 +2864,8 @@ function renderInventoryHome(){
     const purchases=inventoryInvoices.filter(x=>x.type==="purchase").reduce((n,x)=>n+Number(x.total||0),0);
     const customerCount=getLifetimeCustomerDirectory().length;
     $("homeCustomerCount")&&($("homeCustomerCount").textContent=`${customerCount} Customers`);$("inventoryCustomerCount")&&($("inventoryCustomerCount").textContent=String(customerCount));$("invStockCount")&&($("invStockCount").textContent=String(total));
-    // Main Inventory page intentionally contains only the four navigation cards.
+    const body=$("inventoryDashboardBody");if(!body)return;
+    body.innerHTML=`<div class="inventory-summary-grid"><div><span>Total Phones</span><b>${total}</b></div><div><span>Available</span><b>${available}</b></div><div><span>Sold</span><b>${sold}</b></div><div><span>Customers</span><b>${customerCount}</b></div><div><span>Vendors</span><b>${inventoryParties.filter(x=>x.type==="vendor").length}</b></div><div><span>Purchase</span><b>${invMoney(purchases)}</b></div><div><span>Sales</span><b>${invMoney(sales)}</b></div><div><span>Invoices</span><b>${inventoryInvoices.length}</b></div></div>`;
 }
 function renderInventoryParties(){
     const box=$("inventoryPartyResults");if(!box)return;const q=val("inventoryPartySearch").toLowerCase();
@@ -2957,31 +2908,16 @@ function renderInventoryStock(){
     const box=$("inventoryStockResults");if(!box)return;
     const total=inventoryPhones.length;$("invStockCount")&&($("invStockCount").textContent=String(total));
     const q=val("inventoryStockSearch").toLowerCase();
-    let rows=inventoryPhones.filter(x=>{
-        const type=String(x.conditionType||x.phoneType||"used").toLowerCase();
-        const status=x.status==="sold"?"sold":"available";
-        return type===inventoryStockType && status===inventoryStockStatus;
-    });
+    let rows=inventoryPhones.filter(x=>inventoryStockFilter==="all"||(inventoryStockFilter==="sold"?x.status==="sold":String(x.conditionType||x.phoneType||"").toLowerCase()===inventoryStockFilter));
     rows=rows.filter(x=>!q||[x.brand,x.model,x.imei,x.ram,x.storage,x.colour,x.partyName,x.partyPhone,x.customerName,x.customerPhone,x.conditionType,x.status].join(" ").toLowerCase().includes(q));
-    box.innerHTML=rows.length?rows.map(x=>{
-        const available=x.status!=="sold";
-        return `<article class="result inventory-stock-card"><div class="result-top"><div><div class="result-name">${esc(`${x.brand||""} ${x.model||"Phone"}`.trim())}</div><div class="result-meta">${esc(String(x.conditionType||x.phoneType||"Used").toUpperCase())} • ${x.status==="sold"?"SOLD":"AVAILABLE FOR SELL"}</div></div><span class="work-log-tag">${x.status==="sold"?"SOLD":"SELL"}</span></div><div class="result-grid">${item("IMEI",x.imei||"—")}${item("RAM / Storage",`${x.ram||"—"} / ${x.storage||"—"}`)}${item("Colour",x.colour||"—")}${item("Customer",x.customerName||x.partyName||"—")}${item("Mobile",x.customerPhone||x.partyPhone||"—")}${item("Purchase",invMoney(x.purchasePrice))}${item("Sale",x.salePrice?invMoney(x.salePrice):"—")}${item("Margin",x.salePrice?invMoney(Number(x.salePrice)-Number(x.purchasePrice||0)):"—")}</div>${available?`<div class="inventory-stock-actions"><button type="button" class="inventory-stock-sell-btn" data-stock-sell="${esc(x.id)}">SELL</button><button type="button" class="inventory-stock-delete-btn" data-stock-delete="${esc(x.id)}">DELETE</button></div>`:""}</article>`;
-    }).join(""):"<div class="empty">इस filter में कोई phone नहीं मिला.</div>";
-}
-function inventoryPhoneBrandNames(){
-    return Object.keys(BRANDS||{}).filter(Boolean).sort((a,b)=>a.localeCompare(b));
-}
-function isPhoneOrTabletModel(name){
-    const s=String(name||"").toLowerCase();if(!s)return false;
-    const nonPhone=/(watch|band|buds|earbuds|headphone|laptop|notebook|chromebook|desktop|pc|monitor|tv|television|camera|printer|router|speaker|console|projector|refrigerator|washing|air conditioner)/i;
-    return !nonPhone.test(s);
+    box.innerHTML=rows.length?rows.map(x=>`<article class="result inventory-stock-card"><div class="result-top"><div><div class="result-name">${esc(`${x.brand||""} ${x.model||"Phone"}`.trim())}</div><div class="result-meta">${esc(String(x.conditionType||x.phoneType||"Used").toUpperCase())} • ${x.status==="sold"?"SOLD":"IN STOCK"}</div></div><span class="work-log-tag">${x.status==="sold"?"SOLD":"AVAILABLE"}</span></div><div class="result-grid">${item("IMEI",x.imei||"—")}${item("RAM / Storage",`${x.ram||"—"} / ${x.storage||"—"}`)}${item("Colour",x.colour||"—")}${item("Customer",x.customerName||x.partyName||"—")}${item("Mobile",x.customerPhone||x.partyPhone||"—")}${item("Purchase",invMoney(x.purchasePrice))}${item("Sale",x.salePrice?invMoney(x.salePrice):"—")}${item("Margin",x.salePrice?invMoney(Number(x.salePrice)-Number(x.purchasePrice||0)):"—")}</div></article>`).join(""):"<div class=\"empty\">No inventory phones found.</div>";
 }
 function inventoryBrandOptions(){
-    const brands=inventoryPhoneBrandNames();
+    const brands=[...new Set([...Object.keys(BRANDS||{}),...Object.keys(remoteModelsByBrand||{})])].sort((a,b)=>a.localeCompare(b));
     return '<option value="">Select brand</option>'+brands.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join("");
 }
 function inventoryModelOptions(brand){
-    const models=modelListForBrand(brand||"").filter(isPhoneOrTabletModel);
+    const models=modelListForBrand(brand||"");
     return '<option value="">Select model</option>'+models.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join("");
 }
 function inventoryColourOptions(brand,model){
@@ -3010,7 +2946,7 @@ function inventoryPartyOptions(type,includeBlank=true){
 function inventorySetPurchaseConditionVisibility(){
     const type=val("invPurchaseType"),wrap=$("invPurchaseConditionWrap");if(wrap)wrap.classList.toggle("hidden",type!=="used");
 }
-function renderInventoryTransactionForm(mode,preselectId=""){
+function renderInventoryTransactionForm(mode){
     const box=$("inventoryTransactionFormBox");if(!box)return;
     if(!mode)mode=box.dataset.mode||"purchase";
     box.dataset.mode=mode;
@@ -3028,7 +2964,6 @@ function renderInventoryTransactionForm(mode,preselectId=""){
         const available=inventoryPhones.filter(x=>x.status!=="sold");
         box.innerHTML=`<form id="inventorySellForm"><div class="inventory-form-title">📤 Sell Phone</div><label>Select Available Phone<select id="invSellPhone" required><option value="">Tap करके available stock select करें</option>${available.map(x=>`<option value="${esc(x.id)}">${esc(`${x.brand||""} ${x.model||"Phone"}`)} • IMEI ${esc(x.imei||"—")} • ${esc(String(x.conditionType||x.phoneType||"USED").toUpperCase())} • ${invMoney(x.salePrice||x.sellingPrice||x.purchasePrice)}</option>`).join("")}</select></label><div id="inventorySellPhonePreview" class="inventory-selected-phone">Available stock select करने पर पूरा phone detail यहाँ दिखेगा.</div><label>Customer Name<input id="invSellCustomerName" required placeholder="Customer name"></label><label>Mobile Number<input id="invSellCustomerPhone" required type="tel" inputmode="tel" maxlength="10" placeholder="10 digit mobile number"></label><label>Sell Amount<input id="invSellPrice" type="number" min="0" inputmode="decimal" required placeholder="Sale amount"></label><label>Invoice Date<input id="invSellDate" type="date" value="${invDateISO(new Date())}"></label><button class="save" type="submit">SAVE SALE + CREATE INVOICE</button><p id="inventoryTransactionMessage" class="message"></p></form>`;
         $("invSellPhone")?.addEventListener("change",inventorySellPreview);$("inventorySellForm")?.addEventListener("submit",saveInventorySale);
-        if(preselectId && $("invSellPhone")){$("invSellPhone").value=preselectId;inventorySellPreview();}
     }
 }
 function inventorySellPreview(){
@@ -3037,8 +2972,6 @@ function inventorySellPreview(){
     if(x&&$("invSellPrice"))$("invSellPrice").value=x.salePrice||x.sellingPrice||x.purchasePrice||"";
 }
 function parseInventoryRamStorage(v){const parts=String(v||"").split("/");return {ram:(parts[0]||"").trim(),storage:(parts.slice(1).join("/")||"").trim()};}
-function openInventorySellForPhone(id){$("inventorySellPurchaseModal")?.classList.remove("hidden");renderInventoryTransactionForm("sell",id);}
-async function deleteInventoryPhone(id){const phone=inventoryPhones.find(x=>x.id===id);if(!phone||phone.status==="sold")return;if(!confirm(`${phone.brand||""} ${phone.model||"Phone"} को delete करें?\nDelete होने के बाद यह Recently Deleted में चला जाएगा.`))return;try{await deleteWithRecycle(INVENTORY_PHONE_COL,id,phone);await audit("inventory_phone_delete",{section:"Inventory Stock",customerName:phone.customerName||phone.partyName||"",description:`Inventory phone deleted: ${phone.brand||""} ${phone.model||""}`,extra:{imei:phone.imei}});showSuccessToast("Moved to Recently Deleted","Phone 30 days तक Recently Deleted में रहेगा.");renderInventoryStock();}catch(err){console.error(err);alert("Phone delete failed.");}}
 async function saveInventoryPurchase(e){
     e.preventDefault();if(enforceWriteLock("inventoryTransactionMessage"))return;
     const phone=val("invPurchaseCustomerPhone").replace(/\D/g,""),rs=parseInventoryRamStorage(val("invPurchaseRamStorage"));
@@ -3046,39 +2979,21 @@ async function saveInventoryPurchase(e){
     const data={partyId:null,partyName:val("invPurchaseCustomerName"),partyPhone:phone,customerName:val("invPurchaseCustomerName"),customerPhone:phone,partyType:"customer",phoneType:val("invPurchaseType"),conditionType:val("invPurchaseType"),condition:val("invPurchaseCondition"),brand:val("invPurchaseBrand"),model:val("invPurchaseModel"),imei:val("invPurchaseImei").replace(/\D/g,""),ram:rs.ram,storage:rs.storage,colour:val("invPurchaseColour"),purchasePrice:purchase,salePrice:selling,sellingPrice:selling,margin:selling-purchase,status:"in_stock",createdAt:serverTimestamp(),createdBy:user?.uid||null};
     if(!data.partyName||!/^[0-9]{10}$/.test(phone)||!data.brand||!data.model||!/^[0-9]{15}$/.test(data.imei)||purchase<0||selling<0){msg("inventoryTransactionMessage","Customer name, 10 digit mobile, brand, model, 15 digit IMEI और prices सही भरें.");return;}
     try{
-        await addDoc(collection(db,INVENTORY_PHONE_COL),data);
-        await audit("inventory_purchase",{section:"Inventory",customerName:data.partyName,description:`Phone purchased: ${data.brand} ${data.model}`,extra:{imei:data.imei,amount:purchase,customerPhone:phone,condition:data.condition}});
-        showSuccessToast("Purchase Saved","Phone सीधे Stock में add हो गया. Purchase invoice नहीं बनेगा.");
-        $("inventorySellPurchaseModal")?.classList.add("hidden");
-        inventoryShowTab("inventoryStockSection");
+        const added=await addDoc(collection(db,INVENTORY_PHONE_COL),data);
+        const invoice={invoiceNo:`INV-${new Date().toISOString().slice(0,10).replace(/-/g,"")}-${String(Date.now()).slice(-5)}`,type:"purchase",date:new Date().toISOString(),partyId:null,partyName:data.partyName,partyPhone:phone,customerName:data.customerName,customerPhone:phone,items:[{inventoryId:added.id,brand:data.brand,model:data.model,imei:data.imei,ram:data.ram,storage:data.storage,colour:data.colour,quantity:1,rate:purchase,amount:purchase,sn:""}],total:purchase,amountWords:invAmountWords(purchase),createdAt:serverTimestamp(),createdBy:user?.uid||null};
+        await addDoc(collection(db,INVENTORY_INVOICE_COL),invoice);await audit("inventory_purchase",{section:"Inventory",customerName:data.partyName,description:`Phone purchased: ${data.brand} ${data.model}`,extra:{imei:data.imei,amount:purchase,customerPhone:phone,condition:data.condition}});
+        showSuccessToast("Purchase Saved","Phone stock में add हो गया और invoice बन गया.");renderInventoryTransactionForm("purchase");
     }catch(err){console.error(err);msg("inventoryTransactionMessage",err?.message||"Purchase save failed.");}
-}
-function inventorySaleDateKey(dateValue){
-    const d=dateValue instanceof Date?dateValue:new Date(dateValue||new Date());
-    const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,"0"),day=String(d.getDate()).padStart(2,"0");
-    return `${y}/${m}/${day}`;
-}
-function nextInventoryInvoiceSequence(dateValue){
-    const key=inventorySaleDateKey(dateValue);
-    const used=inventoryInvoices.filter(x=>x.type==="sale" && String(x.invoiceNo||"").includes(`INV-${key}-`)).map(x=>Number(String(x.invoiceNo||"").split("-").pop())).filter(Number.isFinite);
-    return String((used.length?Math.max(...used):0)+1).padStart(2,"0");
-}
-function nextInventorySerial(){
-    const used=inventoryInvoices.filter(x=>x.type==="sale").map(x=>Number(String(x.serialNo||"").replace(/^KM/i,""))).filter(Number.isFinite);
-    return `KM${String((used.length?Math.max(...used):0)+1).padStart(3,"0")}`;
 }
 async function saveInventorySale(e){
     e.preventDefault();if(enforceWriteLock("inventoryTransactionMessage"))return;
     const phone=inventoryPhones.find(x=>x.id===val("invSellPhone"));const customerName=val("invSellCustomerName"),customerPhone=val("invSellCustomerPhone").replace(/\D/g,"");const sale=Number(val("invSellPrice")||0);
     if(!phone||phone.status==="sold"||!customerName||!/^[0-9]{10}$/.test(customerPhone)||sale<0){msg("inventoryTransactionMessage","Available phone, customer name, valid 10 digit mobile और sell amount सही भरें.");return;}
     try{
-        const saleDate=new Date(val("invSellDate")||new Date());
-        const invoiceNo=`INV-${inventorySaleDateKey(saleDate)}-${nextInventoryInvoiceSequence(saleDate)}`;
-        const serialNo=nextInventorySerial();
         await updateDoc(doc(db,INVENTORY_PHONE_COL,phone.id),{status:"sold",salePrice:sale,soldToPartyId:null,soldToPartyName:customerName,soldToPartyPhone:customerPhone,customerName,customerPhone,soldAt:serverTimestamp(),updatedBy:user?.uid||null});
-        const invoice={invoiceNo,type:"sale",serialNo,date:saleDate.toISOString(),partyId:null,partyName:customerName,partyPhone:customerPhone,customerName,customerPhone,items:[{inventoryId:phone.id,brand:phone.brand,model:phone.model,imei:phone.imei,ram:phone.ram,storage:phone.storage,colour:phone.colour,quantity:1,rate:sale,amount:sale,sn:serialNo}],total:sale,amountWords:invAmountWords(sale),createdAt:serverTimestamp(),createdBy:user?.uid||null};
-        const invRef=await addDoc(collection(db,INVENTORY_INVOICE_COL),invoice);await audit("inventory_sale",{section:"Inventory",customerName,description:`Phone sold: ${phone.brand||""} ${phone.model||""}`,extra:{imei:phone.imei,amount:sale,customerPhone,invoiceNo,serialNo}});
-        showSuccessToast("Sale Saved","Stock में SOLD और Sale Invoice में save हो गया.");
+        const invoice={invoiceNo:`INV-${new Date().toISOString().slice(0,10).replace(/-/g,"")}-${String(Date.now()).slice(-5)}`,type:"sale",date:new Date(val("invSellDate")||new Date()).toISOString(),partyId:null,partyName:customerName,partyPhone:customerPhone,customerName,customerPhone,items:[{inventoryId:phone.id,brand:phone.brand,model:phone.model,imei:phone.imei,ram:phone.ram,storage:phone.storage,colour:phone.colour,quantity:1,rate:sale,amount:sale,sn:""}],total:sale,amountWords:invAmountWords(sale),createdAt:serverTimestamp(),createdBy:user?.uid||null};
+        const invRef=await addDoc(collection(db,INVENTORY_INVOICE_COL),invoice);await audit("inventory_sale",{section:"Inventory",customerName,description:`Phone sold: ${phone.brand||""} ${phone.model||""}`,extra:{imei:phone.imei,amount:sale,customerPhone}});
+        showSuccessToast("Sale Saved","Stock में SOLD और Invoice में save हो गया.");
         inventoryInvoicePreviewId=invRef.id;$("inventorySellPurchaseModal")?.classList.add("hidden");renderInventoryTransactionForm("sell");openInventoryInvoicePreview(invRef.id);
     }catch(err){console.error(err);msg("inventoryTransactionMessage",err?.message||"Sale save failed.");}
 }
@@ -3086,38 +3001,21 @@ async function saveInventorySale(e){
 function renderInventoryInvoices(){
     const box=$("inventoryInvoiceResults");if(!box)return;
     const q=val("inventoryInvoiceSearch").toLowerCase();const now=new Date();now.setHours(0,0,0,0);
-    let rows=inventoryInvoices.filter(x=>x.type==="sale").filter(x=>{const d=invDateValue(x);const day=new Date(d);day.setHours(0,0,0,0);if(inventoryInvoiceRange==="today")return day.getTime()===now.getTime();if(inventoryInvoiceRange==="yesterday"){const y=new Date(now);y.setDate(y.getDate()-1);return day.getTime()===y.getTime();}if(inventoryInvoiceRange==="week"){const from=new Date(now);from.setDate(from.getDate()-6);return day>=from;}if(inventoryInvoiceRange==="month")return day.getMonth()===now.getMonth()&&day.getFullYear()===now.getFullYear();return true;});
-    rows=rows.filter(x=>!q||[x.invoiceNo,x.serialNo,x.partyName,x.partyPhone,x.type,(x.items||[]).map(i=>[i.brand,i.model,i.imei].join(" ")).join(" ")].join(" ").toLowerCase().includes(q));
+    let rows=inventoryInvoices.filter(x=>{const d=invDateValue(x);const day=new Date(d);day.setHours(0,0,0,0);if(inventoryInvoiceRange==="today")return day.getTime()===now.getTime();if(inventoryInvoiceRange==="yesterday"){const y=new Date(now);y.setDate(y.getDate()-1);return day.getTime()===y.getTime();}if(inventoryInvoiceRange==="week"){const from=new Date(now);from.setDate(from.getDate()-6);return day>=from;}if(inventoryInvoiceRange==="month")return day.getMonth()===now.getMonth()&&day.getFullYear()===now.getFullYear();return true;});
+    rows=rows.filter(x=>!q||[x.invoiceNo,x.partyName,x.partyPhone,x.type,(x.items||[]).map(i=>[i.brand,i.model,i.imei].join(" ")).join(" ")].join(" ").toLowerCase().includes(q));
     if($("inventoryInvoiceCount"))$("inventoryInvoiceCount").textContent=rows.length;
-    box.innerHTML=rows.length?rows.map(x=>{const item0=(x.items||[])[0]||{};return `<article class="inventory-invoice-card"><div class="inventory-invoice-main"><div class="inventory-invoice-device">${esc(`${item0.brand||""} ${item0.model||"Phone"}`.trim())}</div><div class="inventory-invoice-no">${esc(x.invoiceNo||"—")}</div><div class="inventory-invoice-party">👤 ${esc(x.partyName||"—")}<br>📱 ${esc(x.partyPhone||"—")}</div><b class="inventory-invoice-type">SALE INVOICE</b><div class="inventory-invoice-total">${invMoney(x.total)}</div><small class="inventory-invoice-label">Bill Total Amount</small></div><div class="inventory-invoice-footer"><button type="button" class="inventory-bill-btn" data-invoice-preview="${esc(x.id)}">⬇ Bill</button><span>${esc(x.serialNo||item0.sn||"KM---")}<br>${invDate(invDateValue(x))}</span><button type="button" class="inventory-edit-btn" data-invoice-edit="${esc(x.id)}">EDIT</button><button type="button" class="inventory-delete-btn" data-invoice-delete="${esc(x.id)}">DELETE</button></div></article>`}).join(""):"<div class="empty">अभी कोई Sale Invoice नहीं है.</div>";
+    box.innerHTML=rows.length?rows.map(x=>{const item0=(x.items||[])[0]||{};return `<article class="inventory-invoice-card"><div class="inventory-invoice-main"><div class="inventory-invoice-device">${esc(`${item0.brand||""} ${item0.model||"Phone"}`.trim())}</div><div class="inventory-invoice-no">${esc(x.invoiceNo||"—")}</div><div class="inventory-invoice-party">👤 ${esc(x.partyName||"—")}<br>📱 ${esc(x.partyPhone||"—")}</div><b class="inventory-invoice-type">${x.type==="purchase"?"Purchase Invoice":"Sale Invoice"}</b><div class="inventory-invoice-total">${invMoney(x.total)}</div><small class="inventory-invoice-label">Bill Total Amount</small></div><div class="inventory-invoice-footer"><button type="button" class="inventory-bill-btn" data-invoice-preview="${esc(x.id)}">⬇ Bill</button><span>${invDate(invDateValue(x))}</span><button type="button" class="inventory-edit-btn" data-invoice-preview="${esc(x.id)}">Edit</button></div></article>`}).join(""):"<div class=\"empty\">No invoices found.</div>";
     box.querySelectorAll("[data-invoice-preview]").forEach(b=>b.addEventListener("click",()=>openInventoryInvoicePreview(b.dataset.invoicePreview)));
-    box.querySelectorAll("[data-invoice-edit]").forEach(b=>b.addEventListener("click",()=>editInventoryInvoice(b.dataset.invoiceEdit)));
-    box.querySelectorAll("[data-invoice-delete]").forEach(b=>b.addEventListener("click",()=>deleteInventoryInvoice(b.dataset.invoiceDelete)));
-}
-async function editInventoryInvoice(id){
-    const inv=inventoryInvoices.find(x=>x.id===id);if(!inv)return;const item0=(inv.items||[])[0]||{};
-    const name=prompt("Customer Name",inv.partyName||"");if(name===null)return;
-    const phoneRaw=prompt("Mobile Number",inv.partyPhone||"");if(phoneRaw===null)return;const phone=phoneRaw.replace(/\D/g,"");if(!/^\d{10}$/.test(phone)){alert("10 digit mobile number डालें.");return;}
-    const amountRaw=prompt("Sell Amount",String(inv.total||0));if(amountRaw===null)return;const amount=Number(amountRaw);if(!Number.isFinite(amount)||amount<0){alert("Valid amount डालें.");return;}
-    try{
-        await updateDoc(doc(db,INVENTORY_INVOICE_COL,id),{partyName:name,partyPhone:phone,customerName:name,customerPhone:phone,total:amount,amountWords:invAmountWords(amount),items:[{...item0,rate:amount,amount}]});
-        if(item0.inventoryId)await updateDoc(doc(db,INVENTORY_PHONE_COL,item0.inventoryId),{salePrice:amount,soldToPartyName:name,soldToPartyPhone:phone,customerName:name,customerPhone:phone});
-        await audit("inventory_invoice_edit",{section:"Inventory Invoice",customerName:name,description:`Invoice edited: ${inv.invoiceNo}`,extra:{amount}});showSuccessToast("Invoice Updated","Sale invoice successfully updated.");renderInventoryInvoices();
-    }catch(err){console.error(err);alert("Invoice edit failed.");}
-}
-async function deleteInventoryInvoice(id){
-    const inv=inventoryInvoices.find(x=>x.id===id);if(!inv)return;if(!confirm(`Invoice ${inv.invoiceNo||""} delete करें?\nSale invoice हटेगा और phone फिर से stock में AVAILABLE हो जाएगा.`))return;
-    try{const item0=(inv.items||[])[0]||{};if(item0.inventoryId)await updateDoc(doc(db,INVENTORY_PHONE_COL,item0.inventoryId),{status:"in_stock",salePrice:null,soldToPartyId:null,soldToPartyName:null,soldToPartyPhone:null,soldAt:null,customerName:inv.partyName||"",customerPhone:inv.partyPhone||""});await deleteDoc(doc(db,INVENTORY_INVOICE_COL,id));await audit("inventory_invoice_delete",{section:"Inventory Invoice",customerName:inv.partyName||"",description:`Invoice deleted: ${inv.invoiceNo}`});showSuccessToast("Invoice Deleted","Invoice हट गया और phone वापस stock में आ गया.");renderInventoryInvoices();renderInventoryStock();}catch(err){console.error(err);alert("Invoice delete failed.");}
 }
 function openInventoryInvoicePreview(id){
     const inv=inventoryInvoices.find(x=>x.id===id);if(!inv)return;inventoryInvoicePreviewId=id;const it=(inv.items||[])[0]||{};const total=Number(inv.total||0);
     const shopPhone="7247345495",gstin="Chhattisgarh",shopAddress="Shop no EG13 rajive plaza near old Bus stand bilaspur";
     const terms=`(1). सेकंड हैंड मोबाइल में काउंटर छोड़ने के बाद किसी भी तरह की वारंटी - गारंटी नहीं होती है। कृपया चेक करके ले जाएं।   (2). बिका हुआ माल वापस नहीं होगा और न ही बदला जायेगा।   (3). अगर आप किसी भी सेकंड हैंड फोन को वापसी या बदली करवाते हैं तो आपका 30% से 40% रु. कट जायेगा।   (4). नए मोबाइल की वारंटी सर्विस सेंटर से ही मिलेगी।`;
-    $("inventoryInvoicePreview").innerHTML=`<div class="print-invoice" id="printableInventoryInvoice"><div class="invoice-border"><div class="invoice-head"><div><b>GSTIN : </b>${esc(gstin)}</div><div class="invoice-shop-title">KABIR MOBILE</div><div>${shopPhone}</div><div></div><div class="invoice-address">${esc(shopAddress)}</div></div><div class="invoice-details"><div><u>Invoice Details</u><p><b>Invoice No :</b> ${esc(inv.invoiceNo||"")}</p><p><b>Date :</b> ${invDate(invDateValue(inv))}</p></div><div><p><b>Name :</b> ${esc(inv.partyName||"")}</p><p><b>Contact :</b> ${esc(inv.partyPhone||"")}</p></div></div><table class="invoice-table"><thead><tr><th>S No.</th><th>Particulars</th><th>S.N.</th><th>Qty.</th><th>Rate</th><th>Amount</th></tr></thead><tbody><tr><td>1</td><td><b>${esc(`${it.brand||""} ${it.model||"Phone"}`.trim())}</b><br>IMEI - ${esc(it.imei||"")}<br>${esc(it.colour||"")}<br>${esc(it.storage||"")} ${it.ram?`/ ${esc(it.ram)}`:""}</td><td>${esc(it.sn||inv.serialNo||"KM001")}</td><td>1</td><td>${Number(it.rate||total)}</td><td>${Number(it.amount||total)}</td></tr></tbody><tfoot><tr><th colspan="3">Total</th><th>1</th><th></th><th>${Number(total)}</th></tr></tfoot></table><div class="invoice-words"><b>Invoice Amount In Words :</b> ${esc(inv.amountWords||invAmountWords(total))}</div><div class="invoice-terms"><div><b>Terms & Conditions:</b><p>${esc(terms)}</p></div><div class="invoice-sign"><b>For, KABIR MOBILE</b><br><br>Authorised<br>Signatory</div></div></div></div>`;
+    $("inventoryInvoicePreview").innerHTML=`<div class="print-invoice" id="printableInventoryInvoice"><div class="invoice-border"><div class="invoice-head"><div><b>GSTIN : </b>${esc(gstin)}</div><div class="invoice-shop-title">Kabir mobile</div><div>${shopPhone}</div><div></div><div class="invoice-address">${esc(shopAddress)}</div></div><div class="invoice-details"><div><u>Invoice Details</u><p><b>Invoice No :</b> ${esc(inv.invoiceNo||"")}</p><p><b>Date :</b> ${invDate(invDateValue(inv))}</p></div><div><p><b>Name :</b> ${esc(inv.partyName||"")}</p><p><b>Contact :</b> ${esc(inv.partyPhone||"")}</p></div></div><table class="invoice-table"><thead><tr><th>S No.</th><th>Particulars</th><th>S.N.</th><th>Qty.</th><th>Rate</th><th>Amount</th></tr></thead><tbody><tr><td>1</td><td><b>${esc(`${it.brand||""} ${it.model||"Phone"}`.trim())}</b><br>IMEI - ${esc(it.imei||"")}<br>${esc(it.colour||"")}<br>${esc(it.storage||"")} ${it.ram?`/ ${esc(it.ram)}`:""}</td><td>${esc(it.sn||it.imei?.slice(-5)||"")}</td><td>1</td><td>${Number(it.rate||total)}</td><td>${Number(it.amount||total)}</td></tr></tbody><tfoot><tr><th colspan="3">Total</th><th>1</th><th></th><th>${Number(total)}</th></tr></tfoot></table><div class="invoice-words"><b>Invoice Amount In Words :</b> ${esc(inv.amountWords||invAmountWords(total))}</div><div class="invoice-terms"><div><b>Terms & Conditions:</b><p>${esc(terms)}</p></div><div class="invoice-sign"><b>For, Kabir mobile</b><br><br>Authorised<br>Signatory</div></div></div></div>`;
     $("inventoryInvoicePreviewModal")?.classList.remove("hidden");
 }
 function printInventoryInvoice(){
-    const content=$("printableInventoryInvoice")?.outerHTML;if(!content)return;const w=window.open("","_blank","width=900,height=1200");if(!w){alert("Print window blocked. Browser popup allow करें.");return;}w.document.write(`<html><head><title>KABIR MOBILE Invoice</title><style>${inventoryPrintCss()}</style></head><body>${content}</body></html>`);w.document.close();w.focus();setTimeout(()=>w.print(),300);
+    const content=$("printableInventoryInvoice")?.outerHTML;if(!content)return;const w=window.open("","_blank","width=900,height=1200");if(!w){alert("Print window blocked. Browser popup allow करें.");return;}w.document.write(`<html><head><title>Kabir mobile Invoice</title><style>${inventoryPrintCss()}</style></head><body>${content}</body></html>`);w.document.close();w.focus();setTimeout(()=>w.print(),300);
 }
 async function downloadInventoryInvoicePdf(){
     const inv=inventoryInvoices.find(x=>x.id===inventoryInvoicePreviewId);if(!inv)return;
@@ -3139,21 +3037,25 @@ function setupInventoryUI(){
     $("inventoryInvoiceSearch")?.addEventListener("input",renderInventoryInvoices);
     $("inventoryNewInvoiceButton")?.addEventListener("click",()=>{$("inventorySellPurchaseModal")?.classList.remove("hidden");renderInventoryTransactionForm("sell");});
     $("inventoryInvoiceFilterButton")?.addEventListener("click",()=>{$("inventoryInvoiceSection")?.scrollTo?.({top:0,behavior:"smooth"});});
-    document.querySelectorAll("[data-inventory-tab]").forEach(b=>b.addEventListener("click",()=>inventoryShowTab(b.dataset.inventoryTab)));
-    document.querySelectorAll("[data-stock-type]").forEach(b=>b.addEventListener("click",()=>{inventoryStockType=b.dataset.stockType;document.querySelectorAll("[data-stock-type]").forEach(x=>x.classList.toggle("active",x===b));renderInventoryStock();}));
-    document.querySelectorAll("[data-stock-status]").forEach(b=>b.addEventListener("click",()=>{inventoryStockStatus=b.dataset.stockStatus;document.querySelectorAll("[data-stock-status]").forEach(x=>x.classList.toggle("active",x===b));renderInventoryStock();}));
+    document.querySelectorAll("[data-inventory-page]").forEach(b=>b.addEventListener("click",()=>{
+        const target=b.dataset.inventoryPage;
+        if(!target)return;
+        show(target);
+        if(target==="inventoryHomePage")renderInventoryHome();
+        if(target==="inventoryPartyPage")renderInventoryParties();
+        if(target==="inventoryStockPage")renderInventoryStock();
+        if(target==="inventoryInvoicePage")renderInventoryInvoices();
+    }));
+    document.querySelectorAll("[data-stock-filter]").forEach(b=>b.addEventListener("click",()=>{inventoryStockFilter=b.dataset.stockFilter;document.querySelectorAll("[data-stock-filter]").forEach(x=>x.classList.toggle("active",x===b));renderInventoryStock();}));
     document.querySelectorAll("[data-invoice-range]").forEach(b=>b.addEventListener("click",()=>{inventoryInvoiceRange=b.dataset.invoiceRange;document.querySelectorAll("[data-invoice-range]").forEach(x=>x.classList.toggle("active",x===b));renderInventoryInvoices();}));
     $("inventoryAddPartyButton")?.addEventListener("click",()=>{$("inventoryPartyModal")?.classList.remove("hidden");});
     $("inventoryPartyForm")?.addEventListener("submit",saveInventoryParty);
     $("inventorySellPurchaseButton")?.addEventListener("click",()=>{$("inventorySellPurchaseModal")?.classList.remove("hidden");renderInventoryTransactionForm("purchase");});
     $("inventoryPartyDetailBack")?.addEventListener("click",()=>inventoryShowTab("inventoryPartySection"));
-    $("inventoryPartyBack")?.addEventListener("click",()=>inventoryShowTab("inventoryHome"));
-    $("inventoryStockBack")?.addEventListener("click",()=>inventoryShowTab("inventoryHome"));
-    $("inventoryInvoiceBack")?.addEventListener("click",()=>inventoryShowTab("inventoryHome"));
     document.querySelectorAll("[data-inventory-mode]").forEach(b=>b.addEventListener("click",()=>renderInventoryTransactionForm(b.dataset.inventoryMode)));
     document.querySelectorAll("[data-inventory-close]").forEach(b=>b.addEventListener("click",()=>{const m=$(b.dataset.inventoryClose);if(m){m.classList.add("hidden");m.scrollTop=0;const card=m.querySelector(".modal-card");if(card)card.scrollTop=0;}}));
     $("inventoryPrintInvoiceButton")?.addEventListener("click",printInventoryInvoice);$("inventoryDownloadInvoiceButton")?.addEventListener("click",downloadInventoryInvoicePdf);
-    if(!window.__inventoryScanDelegated){window.__inventoryScanDelegated=true;document.addEventListener("click",e=>{const b=e.target.closest(".inventory-scan-button");if(b)startScan(b.dataset.scanTarget);});}    if(!window.__inventoryStockDelegated){window.__inventoryStockDelegated=true;document.addEventListener("click",e=>{const sell=e.target.closest("[data-stock-sell]");if(sell){e.preventDefault();openInventorySellForPhone(sell.dataset.stockSell);return;}const del=e.target.closest("[data-stock-delete]");if(del){e.preventDefault();deleteInventoryPhone(del.dataset.stockDelete);return;}});}
+    if(!window.__inventoryScanDelegated){window.__inventoryScanDelegated=true;document.addEventListener("click",e=>{const b=e.target.closest(".inventory-scan-button");if(b)startScan(b.dataset.scanTarget);});}
     if(!window.__inventoryDashboardDelegated){window.__inventoryDashboardDelegated=true;document.querySelectorAll("[data-inventory-dashboard]").forEach(b=>b.addEventListener("click",()=>{const title={statistics:"Statistics",performance:"Performance",stockValue:"Stock Value",overview:"Overview"}[b.dataset.inventoryDashboard]||"Overview";const body=$("inventoryDashboardBody");if(!body)return;const sales=inventoryInvoices.filter(x=>x.type==="sale").reduce((n,x)=>n+Number(x.total||0),0),purchases=inventoryInvoices.filter(x=>x.type==="purchase").reduce((n,x)=>n+Number(x.total||0),0),profit=inventoryInvoices.filter(x=>x.type==="sale").reduce((n,x)=>{const it=(x.items||[])[0]||{};const ph=inventoryPhones.find(p=>p.id===it.inventoryId);return n+(Number(x.total||0)-Number(ph?.purchasePrice||0));},0);body.innerHTML=`<h3>${title}</h3><div class="inventory-summary-grid"><div><span>Total Phones</span><b>${inventoryPhones.length}</b></div><div><span>Available</span><b>${inventoryPhones.filter(x=>x.status!=="sold").length}</b></div><div><span>Sold</span><b>${inventoryPhones.filter(x=>x.status==="sold").length}</b></div><div><span>Parties</span><b>${inventoryParties.length}</b></div><div><span>Purchase Value</span><b>${invMoney(purchases)}</b></div><div><span>Sales Value</span><b>${invMoney(sales)}</b></div><div><span>Estimated Profit</span><b>${invMoney(profit)}</b></div><div><span>Invoices</span><b>${inventoryInvoices.length}</b></div></div>`;}));}
 }
 async function saveInventoryParty(e){
@@ -3210,11 +3112,15 @@ async function init(){
     adminAnalytics();
     if($('appScreen')?.classList.contains('admin')) audit('page_open',{section:'Admin Panel',description:'Admin Panel opened'});
 
-    // Firebase is non-blocking: data sync starts as soon as auth succeeds.
-    // The UI never waits forever for Firebase.
     authReady.then(()=>{
-        if(user) startDataSync();
-    }).catch(()=>{});
+        purgeExpiredDeleted();
+        subscribe();
+        subscribeRepairing();
+        subscribeSecondaryAndAccessories();
+        subscribeInventory();
+    }).catch(e=>{
+        console.error("Firebase data initialization blocked:",e);
+    });
 
     $("customerForm")
         ?.addEventListener(
