@@ -62,7 +62,6 @@
   <section id="inventoryPartySection" class="inventory-tab hidden">
     <div class="inventory-section-toolbar"><div><b class="inventory-count-title">CUSTOMERS <span id="inventoryCustomerCount">0</span></b><small class="muted inventory-count-subtitle">Lifetime customer records</small></div><div class="search inventory-long-search"><span>⌕</span><input id="inventoryPartySearch" type="search" placeholder="Search customer / vendor name or mobile…"></div></div>
     <div id="inventoryPartyResults" class="results inventory-results"></div>
-    <button id="inventoryAddPartyButton" class="inventory-sticky-add" type="button">＋ ADD PARTY</button>
   </section>
   <section id="inventoryPartyDetailSection" class="inventory-tab hidden inventory-detail-page">
     <div class="section-head"><div><div class="eyebrow">PARTY DETAILS</div><h2 id="inventoryPartyDetailTitle">Customer</h2><small class="section-subtitle">Complete lifetime history</small></div><button id="inventoryPartyDetailBack" class="close" type="button">‹</button></div>
@@ -80,7 +79,7 @@
     <div class="inventory-invoice-heading"><b>INVOICES <span id="inventoryInvoiceCount">0</span></b><button id="inventoryNewInvoiceButton" class="glass" type="button">INVOICE <span>PDF</span></button></div>
     <div id="inventoryInvoiceResults" class="inventory-invoice-list"></div>
   </section>
-  <button id="inventorySellPurchaseButton" class="inventory-sticky-sell" type="button">SELL / PURCHASE</button>
+  <div id="inventoryStickyActions" class="inventory-sticky-actions hidden"><button id="inventorySellPurchaseButton" class="inventory-sticky-sell" type="button">SELL / PURCHASE</button><button id="inventoryAddPartyButton" class="inventory-sticky-add" type="button">＋ ADD PARTY</button></div>
 </section>
 
 <div id="inventoryPartyModal" class="modal hidden"><div class="glass modal-card inventory-form-card"><div class="section-head"><div><div class="eyebrow">PARTY</div><h2>Add Party</h2></div><button class="close" data-inventory-close="inventoryPartyModal">×</button></div><form id="inventoryPartyForm"><label>Party Type<select id="inventoryPartyType" required><option value="customer">Customer</option><option value="vendor">Vendor</option></select></label><label>Name<input id="inventoryPartyName" required placeholder="Party name"></label><label>Mobile Number<input id="inventoryPartyPhone" required type="tel" inputmode="tel" maxlength="10" placeholder="10 digit mobile"></label><button class="save" type="submit">SAVE PARTY</button><p id="inventoryPartyMessage" class="message"></p></form></div></div>
@@ -206,8 +205,7 @@
     <div id="pdfChoices" class="pdf-choice-grid">
       <button type="button" data-pdf-section="finance"><span>💳</span><b>Finance</b><small>Customer + finance records</small></button>
       <button type="button" data-pdf-section="repairing"><span>🛠️</span><b>Repairing</b><small>Complete repairing records</small></button>
-      <button type="button" data-pdf-section="secondHand"><span>📱</span><b>Second Hand</b><small>Complete second-hand stock</small></button>
-      <button type="button" data-pdf-section="accessories"><span>🎧</span><b>Accessories</b><small>Complete accessory stock</small></button>
+      <button type="button" data-pdf-section="inventory"><span>📦</span><b>Inventory</b><small>Phone stock, sold & invoices</small></button>
       <button type="button" data-pdf-section="customers"><span>👥</span><b>Customers</b><small>Complete customer directory</small></button>
     </div>
   </div>
