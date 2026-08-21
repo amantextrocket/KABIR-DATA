@@ -606,3 +606,16 @@ input[type="date"]{width:100%!important;max-width:100%!important;min-width:0!imp
   .inventory-transaction-modal .modal-card{width:100%!important;min-height:calc(100svh - 8px)!important;border-radius:22px!important;padding:14px!important}
   .inventory-transaction-modal .section-head{top:-14px!important;margin:-14px -14px 14px!important;padding:14px!important}
 }
+
+/* Inventory V6: stock type/status switches + quick sell/delete */
+.inventory-stock-switches{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0}
+.inventory-toggle-group{padding:10px;border:1px solid var(--glass-border,var(--border));border-radius:18px;background:rgba(255,255,255,.035)}
+.inventory-toggle-group>small{display:block;font-size:9px;color:var(--muted);letter-spacing:.09em;margin:0 0 7px 2px}
+.inventory-stock-switches .inventory-toggle-row{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:0}
+.inventory-stock-switches .inventory-toggle{width:100%;min-height:36px;padding:7px 8px;border-radius:12px;border:1px solid var(--border);background:rgba(255,255,255,.045);color:var(--text);font-size:10px;font-weight:800;letter-spacing:.06em}
+.inventory-stock-switches .inventory-toggle.active{background:rgba(50,210,180,.18);border-color:rgba(70,220,190,.55);box-shadow:0 8px 20px rgba(0,0,0,.12)}
+.inventory-stock-actions{display:flex;gap:7px;margin-top:10px}
+.inventory-stock-actions button{flex:1;min-height:34px;border-radius:11px;font-size:10px;font-weight:900;letter-spacing:.07em;border:1px solid rgba(255,255,255,.12);color:#fff}
+.inventory-stock-sell-btn{background:linear-gradient(135deg,#e53935,#b71c1c)!important;box-shadow:0 7px 18px rgba(180,20,20,.25)}
+.inventory-stock-delete-btn{background:rgba(255,255,255,.07)!important}
+@media(max-width:520px){.inventory-stock-switches{gap:7px}.inventory-toggle-group{padding:8px}.inventory-toggle-group>small{font-size:8px}.inventory-stock-switches .inventory-toggle{font-size:9px}}
