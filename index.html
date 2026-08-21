@@ -35,10 +35,60 @@
     <button id="financeModule" class="glass module-card" type="button"><span class="module-icon">💳</span><span><b>FINANCE</b><small>Customer finance & mobile data</small></span><em>›</em></button>
     <button id="repairingModule" class="glass module-card" type="button"><span class="module-icon">🛠️</span><span><b>REPAIRING</b><small>Repairing customer & device data</small></span><em>›</em></button>
     <button id="customerModule" class="glass module-card" type="button"><span class="module-icon">👤</span><span><b>CUSTOMER</b><small>All customers & complete history</small></span><em>›</em></button>
+    <button id="inventoryModule" class="glass module-card inventory-home-button" type="button"><span class="module-icon">📦</span><span><b>INVENTORY</b><small>New / Used phone stock, parties & invoices</small></span><em>›</em></button>
   </section>
   <div class="home-bottom-actions"><button id="homeSearchButton" class="home-search-fab" type="button" title="Smart Search"><span>⌕</span><b>SEARCH</b></button><button id="recentDeletedButton" class="home-search-fab recently-deleted-fab" type="button" title="Recently Deleted"><span>♻</span><b>RECENTLY DELETED</b></button></div>
 </section>
 
+
+
+<section id="inventoryPage" data-page class="glass panel hidden app-page inventory-page">
+  <div class="section-head"><div><div class="eyebrow">PHONE INVENTORY</div><h2>Inventory</h2><small class="section-subtitle">Stock, parties, invoices & purchase / sale</small></div><button class="close" data-page-back="homeView">×</button></div>
+  <div class="inventory-nav-grid">
+    <button class="glass inventory-nav-card" data-inventory-tab="inventoryHome"><span>⌂</span><b>HOME</b><small>Statistics & overview</small></button>
+    <button class="glass inventory-nav-card" data-inventory-tab="inventoryPartySection"><span>👥</span><b>PARTY</b><small>Customers / Vendors</small></button>
+    <button class="glass inventory-nav-card" data-inventory-tab="inventoryStockSection"><span>📱</span><b>STOCK</b><small>Used / New phones</small></button>
+    <button class="glass inventory-nav-card" data-inventory-tab="inventoryInvoiceSection"><span>🧾</span><b>INVOICE</b><small>Bills & PDF</small></button>
+  </div>
+  <div id="inventoryHome" class="inventory-tab">
+    <div class="inventory-stats-grid">
+      <button class="glass inventory-mini-card" data-inventory-stat="records"><span>📦</span><small>Total Phones</small><strong id="invTotalPhones">0</strong></button>
+      <button class="glass inventory-mini-card" data-inventory-stat="available"><span>📲</span><small>Available Stock</small><strong id="invAvailablePhones">0</strong></button>
+      <button class="glass inventory-mini-card" data-inventory-stat="sold"><span>💰</span><small>Sold Phones</small><strong id="invSoldPhones">0</strong></button>
+      <button class="glass inventory-mini-card" data-inventory-stat="value"><span>💎</span><small>Stock Value</small><strong id="invStockValue">₹0</strong></button>
+    </div>
+    <div class="inventory-action-grid">
+      <button class="glass action inventory-square-action" data-inventory-dashboard="statistics"><span class="icon">📊</span><strong>Statistics</strong><small>Stock & sales record</small></button>
+      <button class="glass action inventory-square-action" data-inventory-dashboard="performance"><span class="icon">⚡</span><strong>Performance</strong><small>Purchase / sale activity</small></button>
+      <button class="glass action inventory-square-action" data-inventory-dashboard="stockValue"><span class="icon">💎</span><strong>Stock Value</strong><small>Current phone value</small></button>
+      <button class="glass action inventory-square-action" data-inventory-dashboard="overview"><span class="icon">🔎</span><strong>Overview</strong><small>Complete inventory summary</small></button>
+    </div>
+    <div id="inventoryDashboard" class="glass inventory-dashboard-card"><h3>Overview</h3><p class="muted">Inventory का पूरा summary यहाँ दिखाई देगा.</p><div id="inventoryDashboardBody" class="inventory-dashboard-body"></div></div>
+  </div>
+  <section id="inventoryPartySection" class="inventory-tab hidden">
+    <div class="inventory-section-toolbar"><div class="search inventory-long-search"><span>⌕</span><input id="inventoryPartySearch" type="search" placeholder="Search customer / vendor name or mobile…"></div></div>
+    <div id="inventoryPartyResults" class="results inventory-results"></div>
+    <button id="inventoryAddPartyButton" class="inventory-sticky-add" type="button">＋ ADD PARTY</button>
+  </section>
+  <section id="inventoryStockSection" class="inventory-tab hidden">
+    <div class="inventory-toggle-row"><button class="inventory-toggle active" data-stock-filter="all">ALL</button><button class="inventory-toggle" data-stock-filter="used">USED</button><button class="inventory-toggle" data-stock-filter="new">NEW</button><button class="inventory-toggle" data-stock-filter="sold">SOLD</button></div>
+    <div class="search inventory-long-search"><span>⌕</span><input id="inventoryStockSearch" type="search" placeholder="Search IMEI, model, RAM, storage, colour, party…"></div>
+    <div id="inventoryStockResults" class="results inventory-results"></div>
+  </section>
+  <section id="inventoryInvoiceSection" class="inventory-tab hidden">
+    <div class="inventory-invoice-top"><div class="search inventory-long-search"><span>⌕</span><input id="inventoryInvoiceSearch" type="search" placeholder="Search invoice, customer, mobile, phone…"></div><button id="inventoryInvoiceFilterButton" class="glass inventory-filter-button" type="button">☰</button></div>
+    <div class="inventory-invoice-filters"><button data-invoice-range="month">This Month</button><button data-invoice-range="all" class="active">All</button><button data-invoice-range="today">Today</button><button data-invoice-range="yesterday">Yesterday</button><button data-invoice-range="week">This Week</button></div>
+    <div class="inventory-invoice-heading"><b>INVOICES <span id="inventoryInvoiceCount">0</span></b><button id="inventoryNewInvoiceButton" class="glass" type="button">INVOICE <span>PDF</span></button></div>
+    <div id="inventoryInvoiceResults" class="inventory-invoice-list"></div>
+  </section>
+  <button id="inventorySellPurchaseButton" class="inventory-sticky-sell" type="button">SELL / PURCHASE</button>
+</section>
+
+<div id="inventoryPartyModal" class="modal hidden"><div class="glass modal-card inventory-form-card"><div class="section-head"><div><div class="eyebrow">PARTY</div><h2>Add Party</h2></div><button class="close" data-inventory-close="inventoryPartyModal">×</button></div><form id="inventoryPartyForm"><label>Party Type<select id="inventoryPartyType" required><option value="customer">Customer</option><option value="vendor">Vendor</option></select></label><label>Name<input id="inventoryPartyName" required placeholder="Party name"></label><label>Mobile Number<input id="inventoryPartyPhone" required type="tel" inputmode="tel" maxlength="10" placeholder="10 digit mobile"></label><button class="save" type="submit">SAVE PARTY</button><p id="inventoryPartyMessage" class="message"></p></form></div></div>
+
+<div id="inventorySellPurchaseModal" class="modal hidden"><div class="glass modal-card inventory-form-card"><div class="section-head"><div><div class="eyebrow">INVENTORY</div><h2>Sell / Purchase</h2></div><button class="close" data-inventory-close="inventorySellPurchaseModal">×</button></div><div class="inventory-choice-grid"><button class="glass inventory-choice" data-inventory-mode="purchase"><span>📥</span><b>PURCHASE</b><small>New phone stock में add करें</small></button><button class="glass inventory-choice" data-inventory-mode="sell"><span>📤</span><b>SELL</b><small>Available used / new phone बेचें</small></button></div><div id="inventoryTransactionFormBox" class="inventory-transaction-box"></div></div></div>
+
+<div id="inventoryInvoicePreviewModal" class="modal hidden"><div class="glass modal-card inventory-preview-modal"><div class="section-head no-print"><div><div class="eyebrow">INVOICE PREVIEW</div><h2>Invoice</h2></div><button class="close" data-inventory-close="inventoryInvoicePreviewModal">×</button></div><div id="inventoryInvoicePreview"></div><div class="inventory-print-actions no-print"><button id="inventoryPrintInvoiceButton" class="save" type="button">🖨 PRINT</button><button id="inventoryDownloadInvoiceButton" class="save secondary" type="button">⬇ DOWNLOAD PDF</button></div></div></div>
 
 <section id="smartSearchSection" data-page class="glass panel hidden app-page smart-search-page"><div class="section-head"><div><div class="eyebrow">SMART DATABASE SEARCH</div><h2>Search Everything</h2><small class="section-subtitle">Hindi • English • Hinglish — data se direct answer</small></div><button class="close" data-page-back="homeView">×</button></div><div class="smart-search-box"><span>⌕</span><input id="universalSearchInput" type="search" placeholder="पूछें: आज कितने customer हैं? / Aman ka phone / 3000x30%…" autocomplete="off"></div><div id="smartSearchAnswer" class="smart-answer"><div class="empty">Apna question, business query या mathematics calculation यहाँ type करें.</div></div><div id="smartSearchResults" class="results"></div></section>
 
