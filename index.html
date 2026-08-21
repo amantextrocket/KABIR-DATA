@@ -86,7 +86,7 @@
   <div class="section-head"><div><div class="eyebrow">NEW RECORD</div><h2>Add Customer</h2></div><button class="close" data-close="addSection">×</button></div>
   <form id="customerForm">
     <div class="block"><b>Customer Details</b>
-      <label>1. Entry Date<input id="entryDate" type="date" required><small>जिस तारीख की entry बनानी है, वह date चुनें.</small></label>
+      <label class="entry-date-label">1. Entry Date<input id="entryDate" class="entry-date-field" type="date" required></label>
       <label>2. Customer Name<input id="customerName" required autocomplete="name"></label>
       <label>Customer Code<input id="customerCode" readonly placeholder="Automatic KM1234"></label>
       <label>3. Address<textarea id="address" rows="3" required></textarea></label>
@@ -119,13 +119,14 @@
 <section id="repairAddSection" data-page class="glass panel hidden app-page">
   <div class="section-head"><div><div class="eyebrow">NEW REPAIRING</div><h2>Add Repairing</h2></div><button class="close" data-close="repairAddSection">×</button></div>
   <form id="repairForm">
-    <label>1. Customer Name<input id="repairCustomerName" required></label>
-    <label>2. Customer Phone Number<input id="repairPhone" type="tel" inputmode="tel" maxlength="10" required></label>
-    <label>3. Brand or Model<input id="repairDevice" required></label>
-    <label>4. Problem<input id="repairProblem" required placeholder="Problem manually type करें"></label>
-    <label>5. Repairing By<input id="repairBy" required></label>
-    <label>6. Total<input id="repairTotal" type="number" inputmode="decimal" min="0" required placeholder="₹"></label>
-    <label>7. Parts Price<input id="repairPartsPrice" type="number" inputmode="decimal" min="0" required placeholder="₹"></label>
+    <label class="entry-date-label">1. Entry Date<input id="repairEntryDate" class="entry-date-field" type="date" required></label>
+    <label>2. Customer Name<input id="repairCustomerName" required></label>
+    <label>3. Customer Phone Number<input id="repairPhone" type="tel" inputmode="tel" maxlength="10" required></label>
+    <label>4. Brand or Model<input id="repairDevice" required></label>
+    <label>5. Problem<input id="repairProblem" required placeholder="Problem manually type करें"></label>
+    <label>6. Repairing By<input id="repairBy" required></label>
+    <label>7. Total<input id="repairTotal" type="number" inputmode="decimal" min="0" required placeholder="₹"></label>
+    <label>8. Parts Price<input id="repairPartsPrice" type="number" inputmode="decimal" min="0" required placeholder="₹"></label>
     <div id="repairProfitBox" class="bill-box"><span><strong>Profit</strong><small>Total − Parts Price</small></span><em id="repairProfit">₹0</em></div>
     <button class="save" type="submit">SAVE REPAIRING</button><p id="repairMessage" class="message"></p>
   </form>
