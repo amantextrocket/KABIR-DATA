@@ -637,3 +637,10 @@ input[type="date"]{width:100%!important;max-width:100%!important;min-width:0!imp
 
 /* Inventory #10 - iPhone style RESTOCK action */
 .inventory-stock-restock-btn{border:1px solid rgba(70,220,120,.45)!important;background:linear-gradient(135deg,rgba(45,220,125,.28),rgba(15,120,70,.18))!important;color:#b9ffd0!important;border-radius:14px!important;padding:7px 12px!important;min-height:34px!important;font-size:10px!important;font-weight:800!important;letter-spacing:.08em!important;box-shadow:0 8px 20px rgba(0,0,0,.18),inset 0 1px 0 rgba(255,255,255,.14)!important;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);transition:transform .18s ease,filter .18s ease!important}.inventory-stock-restock-btn:active{transform:scale(.94)!important;filter:brightness(1.15)}
+
+/* IMEI duplicate + Inventory Party editing */
+.imei-duplicate{border-color:#ff3b30!important;box-shadow:0 0 0 2px rgba(255,59,48,.14),0 0 18px rgba(255,59,48,.18)!important;color:#ff3b30!important}
+.imei-error{display:block;color:#ff3b30;font-size:10px;font-weight:900;letter-spacing:.04em;margin-top:5px}
+.inventory-party-edit-row{display:flex;justify-content:flex-end;margin:10px 0}
+.inventory-party-edit-btn,.inventory-party-inline-edit{border:1px solid rgba(70,220,190,.35);background:rgba(50,210,180,.12);color:var(--text);border-radius:12px;padding:8px 12px;font-size:10px;font-weight:900;letter-spacing:.06em}
+.inventory-party-inline-edit{margin-top:8px;width:100%}
