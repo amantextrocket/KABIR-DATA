@@ -439,85 +439,57 @@ function sortAudit(){
     });
 }
 function subscribeAuditLogs(){
-    if(auditListenerStarted || !$('workHistoryResults')) return;
+    if(auditListenerStarted || !$('analyticsSection')) return;
     auditListenerStarted=true;
     onSnapshot(collection(db,AUDIT_COL),snap=>{
         auditLogs=snap.docs.map(d=>({id:d.id,...d.data()}));
         sortAudit();
-        renderWorkHistory();
-        renderTraffic();
+        renderAnalytics();
     },e=>{
         console.error("Audit listener:",e);
         if($('workHistoryResults'))$('workHistoryResults').innerHTML='<div class="empty">Work History load नहीं हुआ. Firebase Rules में auditLogs read permission check करें.</div>';
     });
 }
-function renderWorkHistory(){
-    const box=$("workHistoryResults"); if(!box)return;
-    const q=val("workSearchInput").toLowerCase();
-    const rows=auditLogs.filter(x=>!q||[x.label,x.action,x.userName,x.userUid,x.section,x.customerCode,x.customerName,x.description,auditTime(x)].join(" ").toLowerCase().includes(q));
-    if(!rows.length){box.innerHTML='<div class="empty">अभी कोई work history उपलब्ध नहीं है.</div>';return;}
-    const iconMap={customer_add:"👤",customer_edit:"✏️",customer_delete:"🗑️",customer_bill_update:"🧾",repairing_add:"🛠️",customer_search:"🔎",repairing_search:"🔎",customer_export:"📥",repairing_export:"📥",customer_pdf:"📄",pin_change:"🔐",login_success:"🟢",login_failed:"🔴",page_open:"🟡",pdf_download:"🔵",second_hand_add:"📱",accessory_add:"🎧"};
-    box.innerHTML=rows.slice(0,300).map((x,i)=>`<article class="result work-log">
-      <div class="work-log-head"><div class="work-log-icon">${iconMap[x.action]||"⚡"}</div><div class="work-log-title"><b>${esc(x.label||auditLabel(x.action))}</b><small>${esc(x.section||"Kabir Mobile Data")} • ${esc(x.userName||x.userUid||"Kabir User")}</small></div><time class="work-log-time">${esc(auditTime(x))}</time></div>
-      <div class="work-log-desc">${esc(x.description||auditLabel(x.action))}</div><div class="work-log-tags"><span class="work-log-tag">Device: ${esc(x.deviceBrand||"—")} ${esc(x.deviceModel||"")}</span></div>
-      <div class="work-log-tags"><span class="work-log-tag">#${i+1}</span>${x.customerCode?`<span class="work-log-tag">${esc(x.customerCode)}</span>`:""}${x.customerName?`<span class="work-log-tag">${esc(x.customerName)}</span>`:""}<span class="work-log-tag">${esc(x.action||"work")}</span></div>
-    </article>`).join("");
+function renderWorkHistory(){ }
+function renderTraffic(){ }
+function renderCustomerDateGraph(){ }
+function analyticsDateRows(range,filterFn){
+    const now=new Date();now.setHours(0,0,0,0);const out=[];
+    for(let i=range-1;i>=0;i--){const d=new Date(now);d.setDate(now.getDate()-i);const key=d.toLocaleDateString("en-CA");out.push({d,key,count:auditLogs.filter(x=>auditDay(x)===key&&filterFn(x)).length});}
+    return out;
 }
-function renderTraffic(){
-    const total=auditLogs.length;
-    const today=new Date().toLocaleDateString('en-CA');
-    const todayRows=auditLogs.filter(x=>auditDay(x)===today);
-    const count=a=>auditLogs.filter(x=>x.action===a).length;
-    const users=new Set(auditLogs.map(x=>x.userUid).filter(Boolean));
-    $('trafficTotal')&&($('trafficTotal').textContent=String(total));
-    $('trafficToday')&&($('trafficToday').textContent=String(todayRows.length));
-    $('trafficAdds')&&($('trafficAdds').textContent=String(count('customer_add')));
-    $('trafficEdits')&&($('trafficEdits').textContent=String(count('customer_edit')));
-    $('trafficDeletes')&&($('trafficDeletes').textContent=String(count('customer_delete')));
-    $('trafficRepairs')&&($('trafficRepairs').textContent=String(count('repairing_add')));
-    $('trafficUsers')&&($('trafficUsers').textContent=String(users.size));
-    const hours=Array.from({length:24},(_,h)=>auditLogs.filter(x=>auditHour(x)===h).length);
-    const peak=Math.max(...hours,0),peakHour=peak?hours.indexOf(peak):-1;
-    $('trafficPeak')&&($('trafficPeak').textContent=peakHour<0?'—':`${String(peakHour).padStart(2,'0')}:00 (${peak})`);
-    const hb=$('trafficHours');
-    if(hb){
-        const max=Math.max(...hours,1);
-        hb.innerHTML=hours.map((n,h)=>`<div class="traffic-hour"><span>${String(h).padStart(2,'0')}</span><div><i style="width:${Math.round(n/max*100)}%"></i></div><b>${n}</b></div>`).join('');
-    }
-    const types={};
-    auditLogs.forEach(x=>types[x.action||'other']=(types[x.action||'other']||0)+1);
-    const tb=$('trafficTypes');
-    if(tb){
-        const list=Object.entries(types).sort((a,b)=>b[1]-a[1]);
-        const max=Math.max(list[0]?.[1]||1,1);
-        tb.innerHTML=list.slice(0,15).map(([a,n])=>`<div class="traffic-type"><span>${esc(auditLabel(a))}</span><div><i style="width:${Math.round(n/max*100)}%"></i></div><b>${n}</b></div>`).join('')||'<div class="empty">No traffic data.</div>';
-    }
-    renderCustomerDateGraph();
+function renderStockLineChart(id,rows,label){
+    const box=$(id);if(!box)return;
+    if(!rows.length){box.innerHTML='<div class="empty">No analytics data.</div>';return;}
+    const w=720,h=230,p=28,max=Math.max(...rows.map(x=>x.count),1),min=Math.min(...rows.map(x=>x.count),0),span=Math.max(max-min,1);
+    const pts=rows.map((x,i)=>{const X=p+(i*(w-p*2))/Math.max(rows.length-1,1);const Y=h-p-((x.count-min)/span)*(h-p*2);return {X,Y,...x};});
+    const poly=pts.map(x=>`${x.X.toFixed(1)},${x.Y.toFixed(1)}`).join(" ");
+    const dots=pts.map(x=>`<circle cx="${x.X}" cy="${x.Y}" r="3"/><title>${x.key}: ${x.count}</title>`).join("");
+    const labels=pts.filter((_,i)=>i===0||i===pts.length-1||i%Math.ceil(pts.length/6)===0).map(x=>`<text x="${x.X}" y="${h-7}" text-anchor="middle">${x.d.getDate()} ${x.d.toLocaleString("en-IN",{month:"short"})}</text>`).join("");
+    box.innerHTML=`<div class="analytics-chart-title"><b>${esc(label)}</b><strong>${Math.max(...rows.map(x=>x.count))}</strong></div><svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" class="stock-line-svg"><defs><linearGradient id="g-${id}" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-opacity=".28"/><stop offset="1" stop-opacity="0"/></linearGradient></defs><polyline points="${poly}" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><polyline points="${p},${h-p} ${poly} ${w-p},${h-p}" fill="url(#g-${id})" stroke="none" opacity=".18"/>${dots}${labels}</svg>`;
 }
-function renderCustomerDateGraph(){
-    const box=$("customerDateGraph"); if(!box)return;
-    const range=Number($("customerGraphRange")?.value||30);
-    const now=new Date(); now.setHours(0,0,0,0);
-    const rows=[];
-    for(let i=range-1;i>=0;i--){
-        const d=new Date(now); d.setDate(now.getDate()-i);
-        const key=d.toLocaleDateString("en-CA");
-        rows.push({d,key,count:customers.filter(c=>recordDay(c)===key).length});
-    }
-    const max=Math.max(...rows.map(x=>x.count),1);
-    box.innerHTML=rows.map(x=>`<div class="customer-bar" title="${x.key}: ${x.count} customer"><div class="customer-bar-value">${x.count||""}</div><i style="height:${Math.max(4,Math.round(x.count/max*100))}%"></i><span>${x.d.getDate()} ${x.d.toLocaleString("en-IN",{month:"short"})}</span></div>`).join("");
+function renderAnalytics(){
+    const range=Number($("analyticsRange")?.value||30);
+    const workRows=analyticsDateRows(range,x=>x.action!=="page_open");
+    const openRows=analyticsDateRows(range,x=>x.action==="page_open"&&x.section!=="Admin Panel");
+    const hours=Array.from({length:24},(_,h)=>({d:new Date(2000,0,1,h),key:`${String(h).padStart(2,"0")}:00`,count:auditLogs.filter(x=>auditHour(x)===h&&x.action!=="page_open").length}));
+    renderStockLineChart("analyticsWorkGraph",workRows,"Work — date wise");
+    renderStockLineChart("analyticsOpenGraph",openRows,"Main website opens — date wise");
+    renderStockLineChart("analyticsTimeGraph",hours,"Work — time wise (24 hour)");
+    const totalWork=auditLogs.filter(x=>x.action!=="page_open").length,opens=auditLogs.filter(x=>x.action==="page_open"&&x.section!=="Admin Panel").length;
+    $("analyticsTotalWork")&&($("analyticsTotalWork").textContent=String(totalWork));$("analyticsWebsiteOpens")&&($("analyticsWebsiteOpens").textContent=String(opens));
+    $("analyticsToday")&&($("analyticsToday").textContent=String(auditLogs.filter(x=>auditDay(x)===new Date().toLocaleDateString("en-CA")&&x.action!=="page_open").length));
 }
 function adminAnalytics(){
-    if(!$("workHistoryButton")||!$("trafficButton"))return;
+    if(!$('analyticsButton'))return;
     const open=id=>{document.querySelectorAll("[data-admin-page]").forEach(x=>x.classList.add("hidden"));$(id)?.classList.remove("hidden");$(id)?.scrollIntoView({behavior:"smooth",block:"start"});};
     $("pinSettingsButton")?.addEventListener("click",()=>open("pinPage"));
-    $("workHistoryButton").addEventListener("click",()=>{open("workHistorySection");renderWorkHistory();});
-    $("trafficButton").addEventListener("click",()=>{open("trafficSection");renderTraffic();});
+    $("analyticsButton")?.addEventListener("click",()=>{open("analyticsSection");renderAnalytics();});
     document.querySelectorAll("[data-admin-back]").forEach(b=>b.addEventListener("click",()=>open(b.dataset.adminBack)));
-    $("refreshWorkButton")?.addEventListener("click",renderWorkHistory);$("refreshTrafficButton")?.addEventListener("click",renderTraffic);$("workSearchInput")?.addEventListener("input",renderWorkHistory);$("customerGraphRange")?.addEventListener("change",renderCustomerDateGraph);
-    document.querySelectorAll("[data-management]").forEach(b=>b.addEventListener("click",()=>renderManagementData(b.dataset.management)));
+    $("analyticsRange")?.addEventListener("change",renderAnalytics);
     subscribeAuditLogs();
 }
+
 function renderManagementData(type){
     const box=$("trafficManagementDetail");if(!box)return;
     let title="",rows=[];
@@ -2149,17 +2121,57 @@ function allDataRows(){return [
 ];}
 function smartAnswerLanguage(q){const n=normalizeText(q);if(/[\u0900-\u097f]/.test(q))return "hi";if(/\b(kya|kitne|kaun|dikhao|batao|hai|hain|aaj|kal|naam|customer|data)\b/i.test(n))return "hinglish";return "en";}
 function smartSearch(){
- const q=val("universalSearchInput");const a=$("smartSearchAnswer"),r=$("smartSearchResults");if(!a||!r)return;const n=normalizeText(q);if(!n){a.innerHTML='<div class="empty">पूछें: “आज कितने customer हैं?”, “Aman ka phone dikhao”, “show repairing data”, “profit कितना है?”</div>';r.innerHTML="";return;}
- const lang=smartAnswerLanguage(q), rows=allDataRows();let answer="", filtered=[];
- const total=customers.length, repairs=repairing.length, second=secondHand.length, acc=accessories.length;
- if(/(total|kitne|how many|count|कितने|कितनी|कितना).*(customer|customers|ग्राहक)/i.test(q)) answer=lang==="hi"?`कुल ${total} customer हैं।`:lang==="hinglish"?`Total ${total} customers hain.`:`There are ${total} customers in the database.`;
- else if(/(repair|repairing|रिपेयर)/i.test(q)&&/(total|kitne|count|कितने)/i.test(q)) answer=lang==="hi"?`Repairing में ${repairs} records हैं।`:lang==="hinglish"?`Repairing mein ${repairs} records hain.`:`There are ${repairs} repairing records.`;
- else if(/(second|second hand)/i.test(q)&&/(total|kitne|count|कितने)/i.test(q)) answer=`Second Hand mein ${second} records hain.`;
- else if(/(accessor|accessories)/i.test(q)&&/(total|kitne|count|कितने)/i.test(q)) answer=`Accessories mein ${acc} records hain.`;
- else if(/(profit|munafa|मुनाफा)/i.test(q)){const prof=repairing.reduce((s,x)=>s+Number(x.profit??(Number(x.total ?? x.payment ?? 0)-Number(x.partsPrice||0))),0)+secondHand.reduce((s,x)=>s+Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))),0)+accessories.reduce((s,x)=>s+Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))),0);answer=lang==="hi"?`कुल ज्ञात profit ₹${prof.toLocaleString("en-IN")} है।`:`Total known profit is ₹${prof.toLocaleString("en-IN")}.`;}
- else {filtered=rows.filter(x=>normalizeText([x.customerName,x.customerCode,x.phone,x.customerPhone,x.imei,x.brand,x.model,x.device,x.problem,x.name,x.category,x.sn,x.financeCompany,x.__section,formatDateTime(x)].join(" ")).includes(n));answer=filtered.length?(lang==="hi"?`${filtered.length} matching records मिले।`:lang==="hinglish"?`${filtered.length} matching records mile.`:`Found ${filtered.length} matching records.`):(lang==="hi"?"कोई matching record नहीं मिला।":"No matching record found.");}
- a.innerHTML=`<div class="smart-answer-text">${esc(answer)}</div>`;r.innerHTML=filtered.slice(0,50).map(x=>`<article class="result"><div class="result-name">${esc(x.customerName||x.name||"Record")}</div><div class="result-meta">${esc(x.__section||"")} • ${esc(x.phone||x.customerPhone||"")} • ${esc(formatDateTime(x))}</div><div class="result-grid">${item("Device",x.device||`${x.brand||""} ${x.model||""}`)}${item("IMEI / SN",x.imei||x.sn||"—")}${item("Amount",x.phoneAmount!=null?`₹${Number(x.phoneAmount).toLocaleString("en-IN")}`:x.total!=null?`₹${Number(x.total).toLocaleString("en-IN")}`:x.salePrice!=null?`₹${Number(x.salePrice).toLocaleString("en-IN")}`:"—")}${item("Customer",x.customerName||x.name||"—")}</div></article>`).join("");
+    const q=val("universalSearchInput"), a=$("smartSearchAnswer"), r=$("smartSearchResults");
+    if(!a||!r)return;
+    const raw=q.trim(), n=normalizeText(raw);
+    if(!n){
+        a.innerHTML='<div class="empty">Aap unlimited questions pooch sakte hain — Hindi, English ya Hinglish mein. Example: “Aaj kitne customer?”, “Aman ka iPhone dikhao”, “is month ka work?”, “website kitni baar open hui?”</div>'; r.innerHTML=""; return;
+    }
+    const lang=smartAnswerLanguage(raw), rows=allDataRows();
+    const money=v=>`₹${Number(v||0).toLocaleString("en-IN")}`;
+    const total=customers.length, repairs=repairing.length, second=secondHand.length, acc=accessories.length;
+    const profit=repairing.reduce((s,x)=>s+Number(x.profit??(Number(x.total??x.payment??0)-Number(x.partsPrice||0))),0)
+      +secondHand.reduce((s,x)=>s+Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))),0)
+      +accessories.reduce((s,x)=>s+Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))),0);
+    const isCount=/(total|count|how many|kitne|kitni|kitna|कितने|कितनी|कितना|number|संख्या)/i.test(raw);
+    const isToday=/(today|aaj|आज)/i.test(raw), isYesterday=/(yesterday|kal|कल)/i.test(raw);
+    const dayKey=offset=>{const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()+offset);return d.toLocaleDateString("en-CA")};
+    let answer="", filtered=[];
+    const sectionRows=(section)=>rows.filter(x=>String(x.__section||"").toLowerCase().includes(section));
+    const financeRows=sectionRows("finance"), repairRows=sectionRows("repair"), secondRows=sectionRows("second"), accessoryRows=sectionRows("access");
+    if(/website|site|main website|open|खुली|खुला/i.test(raw)&&/(how many|kitni|kitne|count|baar|बार|open|opened|खुल)/i.test(raw)){
+        const opens=auditLogs.filter(x=>x.action==="page_open"&&x.section!=="Admin Panel").length;
+        answer=lang==="hi"?`Main website अब तक ${opens} बार open हुई है।`:lang==="hinglish"?`Main website ab tak ${opens} baar open hui hai.`:`The main website has been opened ${opens} times.`;
+    }else if(/(customer|customers|ग्राहक)/i.test(raw)&&isCount){
+        const list=(isToday||isYesterday)?customers.filter(x=>recordDay(x)===dayKey(isToday?0:-1)):customers;
+        answer=lang==="hi"?`कुल ${list.length} customer हैं।`:lang==="hinglish"?`Total ${list.length} customers hain.`:`There are ${list.length} customers.`;
+    }else if(/(repair|repairing|रिपेयर)/i.test(raw)&&isCount){answer=lang==="hi"?`Repairing में ${repairs} records हैं।`:`Repairing mein ${repairs} records hain.`;
+    }else if(/(second hand|second-hand|used phone|second)/i.test(raw)&&isCount){answer=`Second Hand में ${second} records हैं।`;
+    }else if(/(accessor|accessories|सामान)/i.test(raw)&&isCount){answer=`Accessories में ${acc} records हैं।`;
+    }else if(/(profit|profit कितना|munafa|मुनाफा|कमाई)/i.test(raw)){answer=lang==="hi"?`कुल ज्ञात profit ${money(profit)} है।`:`Total known profit is ${money(profit)}.`;
+    }else if(/(finance|financer|फाइनेंस)/i.test(raw)&&isCount){answer=`Finance data में ${financeRows.length||customers.length} records मिले।`;
+    }else if(/(stock|inventory|स्टॉक)/i.test(raw)){const stock=second+acc;answer=`Current second-hand + accessories stock records: ${stock}.`;
+    }else if(/(today|aaj|आज)/i.test(raw)&&/(work|काम|activity|activity|activity|entries|entry)/i.test(raw)){
+        const c=auditLogs.filter(x=>auditDay(x)===dayKey(0)&&x.action!=="page_open").length; answer=`Aaj ${c} work activities record hui hain.`;
+    }else if(/(yesterday|kal|कल)/i.test(raw)&&/(work|काम|activity|entries|entry)/i.test(raw)){
+        const c=auditLogs.filter(x=>auditDay(x)===dayKey(-1)&&x.action!=="page_open").length; answer=`Kal ${c} work activities record hui thi.`;
+    }else if(/(date|date wise|दिन|तारीख)/i.test(raw)&&/(customer|ग्राहक)/i.test(raw)){
+        const groups={};customers.forEach(x=>{const d=recordDay(x)||"Unknown";groups[d]=(groups[d]||0)+1});
+        filtered=[]; answer=Object.entries(groups).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,15).map(([d,c])=>`${d}: ${c}`).join(" • ")||"No customer date data.";
+    }else{
+        // Natural-language database search: every word/phrase is matched across all useful fields.
+        const tokens=n.split(/\s+/).filter(x=>x.length>1);
+        filtered=rows.filter(x=>{
+            const hay=normalizeText([x.customerName,x.customerCode,x.phone,x.customerPhone,x.imei,x.brand,x.model,x.device,x.problem,x.name,x.category,x.sn,x.financeCompany,x.address,x.city,x.state,x.pincode,x.lockName,x.stock,x.counter,x.financerName,x.__section,formatDateTime(x)].join(" "));
+            return tokens.every(t=>hay.includes(t));
+        });
+        if(filtered.length) answer=lang==="hi"?`${filtered.length} matching records मिले। नीचे पूरा relevant data दिखाया गया है।`:lang==="hinglish"?`${filtered.length} matching records mile. Neeche relevant data hai.`:`Found ${filtered.length} matching records. Relevant data is shown below.`;
+        else answer=lang==="hi"?`इस सवाल का exact answer database में नहीं मिला। आप नाम, मोबाइल, IMEI, customer code, model, finance, repairing, date या किसी भी field के साथ दोबारा पूछ सकते हैं।`:lang==="hinglish"?`Exact answer nahi mila. Aap name, mobile, IMEI, customer code, model, finance, repairing, date ya kisi bhi field ke saath unlimited questions pooch sakte hain.`:`I couldn't find an exact database answer. You can ask unlimited questions using name, mobile, IMEI, customer code, model, finance, repairing, date, or any available field.`;
+    }
+    a.innerHTML=`<div class="smart-answer-text">${esc(answer)}</div>`;
+    r.innerHTML=filtered.slice(0,100).map(x=>`<article class="result"><div class="result-name">${esc(x.customerName||x.name||"Record")}</div><div class="result-meta">${esc(x.__section||"")} • ${esc(x.phone||x.customerPhone||"")} • ${esc(formatDateTime(x))}</div><div class="result-grid">${item("Customer Code",x.customerCode||"—")}${item("Device",x.device||`${x.brand||""} ${x.model||""}`)}${item("IMEI / SN",x.imei||x.sn||"—")}${item("Amount",x.phoneAmount!=null?money(x.phoneAmount):x.total!=null?money(x.total):x.salePrice!=null?money(x.salePrice):"—")}${item("Finance",x.financeCompany||"—")}${item("Location",[x.city,x.state].filter(Boolean).join(", ")||"—")}</div></article>`).join("");
 }
+
 
 function applyTheme(theme){
     const allowed=["dark","light","midnight","silver","glass","sunset","emerald","rose"];
