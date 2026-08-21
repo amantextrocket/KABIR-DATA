@@ -43,6 +43,13 @@ let scanTimer=null;
 const $=id=>document.getElementById(id);
 const val=id=>($(id)?.value||"").trim();
 
+function todayISO(){ return new Date().toLocaleDateString("en-CA"); }
+function setupEntryDateFields(){
+    const c=$("entryDate"), r=$("repairEntryDate");
+    if(c){ c.max=todayISO(); if(!c.value)c.value=todayISO(); }
+    if(r){ r.max=todayISO(); if(!r.value)r.value=todayISO(); }
+}
+
 const FINANCE_COMPANIES=[
     "Bajaj Finance","HDB Financial Services","TVS Credit","Home Credit India",
     "IDFC FIRST Bank","Tata Capital","L&T Finance","Mahindra Finance",
@@ -508,9 +515,25 @@ function renderCustomerDateGraph(){
     box.innerHTML=rows.map(x=>`<div class="customer-bar" title="${x.key}: ${x.count} customer"><div class="customer-bar-value">${x.count||""}</div><i style="height:${Math.max(4,Math.round(x.count/max*100))}%"></i><span>${x.d.getDate()} ${x.d.toLocaleString("en-IN",{month:"short"})}</span></div>`).join("");
 }
 function adminAnalytics(){
-    // Work History and Traffic Analysis UI intentionally removed from Admin Panel.
-    // Existing audit records are left untouched in Firebase.
+    const open=id=>{document.querySelectorAll("[data-admin-page]").forEach(x=>x.classList.add("hidden"));$(id)?.classList.remove("hidden");$(id)?.scrollIntoView({behavior:"smooth",block:"start"});};
+    $("pinSettingsButton")?.addEventListener("click",()=>open("pinPage"));
+    $("workHistoryButton")?.addEventListener("click",()=>{open("workHistorySection");renderWorkHistory();});
+    $("trafficButton")?.addEventListener("click",()=>{open("trafficSection");renderTraffic();});
+    document.querySelectorAll("[data-admin-back]").forEach(b=>b.addEventListener("click",()=>open(b.dataset.adminBack)));
+    $("refreshWorkButton")?.addEventListener("click",renderWorkHistory);$("refreshTrafficButton")?.addEventListener("click",renderTraffic);$("workSearchInput")?.addEventListener("input",renderWorkHistory);$("customerGraphRange")?.addEventListener("change",renderCustomerDateGraph);
+    document.querySelectorAll("[data-management]").forEach(b=>b.addEventListener("click",()=>renderManagementData(b.dataset.management)));
+    subscribeAuditLogs();
 }
+function renderManagementData(type){
+    const box=$("trafficManagementDetail");if(!box)return;
+    let title="",rows=[];
+    if(type==="finance"){title="Finance Management";rows=customers.map(x=>[x.customerName,x.phone,`${x.brand||""} ${x.model||""}`,x.imei,`₹${x.phoneAmount||0}`]);}
+    if(type==="repairing"){title="Repairing Management";rows=repairing.map(x=>[x.customerName,x.phone,x.device,x.problem,`₹${x.total??x.payment??0}`,`₹${x.partsPrice||0}`,`₹${x.profit??(Number(x.total ?? x.payment ?? 0)-Number(x.partsPrice||0))}`]);}
+    if(type==="secondHand"){title="Second Hand Management";rows=secondHand.map(x=>[x.customerName,`${x.brand||""} ${x.model||x.device||""}`,x.imei,x.condition,`₹${x.price||0}`,`₹${x.salePrice||0}`,`₹${x.profit??(Number(x.salePrice||0)-Number(x.price||0))}`]);}
+    if(type==="accessories"){title="Accessories Management";rows=accessories.map(x=>[x.name,x.category,x.sn,x.quantity,`₹${x.price||0}`,`₹${x.salePrice||0}`,`₹${x.profit??(Number(x.salePrice||0)-Number(x.price||0))}`]);}
+    box.innerHTML=`<div class="section-head"><div><div class="eyebrow">SELECTED MANAGEMENT</div><h3>${esc(title)}</h3></div><b>${rows.length} Records</b></div>`+(rows.length?`<div class="admin-data-table">${rows.slice(0,500).map(r=>`<div class="admin-data-row">${r.map(v=>`<span>${esc(v)}</span>`).join("")}</div>`).join("")}</div>`:'<div class="empty">No data found.</div>');
+}
+
 
 function msg(id,t,ok=false){
     let e=$(id);
@@ -1132,36 +1155,6 @@ function formatDateTime(c){
     return d?new Intl.DateTimeFormat("en-IN",{dateStyle:"medium",timeStyle:"short"}).format(d):"Date pending";
 }
 
-function localDateISO(d=new Date()){
-    const x=new Date(d);
-    const y=x.getFullYear();
-    const m=String(x.getMonth()+1).padStart(2,"0");
-    const day=String(x.getDate()).padStart(2,"0");
-    return `${y}-${m}-${day}`;
-}
-function customerCreatedMillis(c){
-    const d=c?.createdAt?.toDate?.() || (c?.createdAt?new Date(c.createdAt):null);
-    return d&&!Number.isNaN(d.getTime())?d.getTime():0;
-}
-function customerEditRemaining(c){
-    const created=customerCreatedMillis(c);
-    if(!created)return 0;
-    return Math.max(0,created+24*60*60*1000-Date.now());
-}
-function customerCanEdit(c){return customerEditRemaining(c)>0;}
-function editCountdown(c){
-    const ms=customerEditRemaining(c);
-    if(ms<=0)return "Edit locked • 24h complete";
-    const total=Math.floor(ms/1000),h=Math.floor(total/3600),m=Math.floor((total%3600)/60);
-    return `Edit available • ${h}h ${String(m).padStart(2,"0")}m left`;
-}
-function setupEntryDate(){
-    const input=$("entryDate");
-    if(!input)return;
-    if(!input.value)input.value=localDateISO();
-    input.max=localDateISO();
-}
-
 async function save(e){
 
     e.preventDefault();
@@ -1177,13 +1170,6 @@ async function save(e){
         return;
     }
 
-
-    /* Entry date */
-    const entryDate=val("entryDate");
-    if(!/^\d{4}-\d{2}-\d{2}$/.test(entryDate)||entryDate>localDateISO()){
-        msg("formMessage","Valid past/today Entry Date चुनें.");
-        return;
-    }
 
     /* Required fields */
 
@@ -1282,14 +1268,10 @@ async function save(e){
 
         const editId=$("customerForm").dataset.editId;
         const existing=editId?customers.find(c=>c.id===editId):null;
-        if(editId && (!existing || !customerCanEdit(existing))){
-            msg("formMessage","इस customer की 24 घंटे की Edit limit पूरी हो चुकी है.");
-            return;
-        }
         let customerData={
 
-            entryDate:existing?.entryDate || val("entryDate") || localDateISO(),
             customerCode:existing?.customerCode || await uniqueCustomerCode(),
+            entryDate:val("entryDate") || todayISO(),
             customerName:
                 val("customerName"),
 
@@ -1389,7 +1371,6 @@ async function save(e){
          */
 
         if(editId){
-            delete customerData.entryDate;
             delete customerData.customerCode;
             delete customerData.createdAt;
             delete customerData.createdBy;
@@ -1406,7 +1387,7 @@ async function save(e){
          */
 
         $("customerForm").reset();
-        setupEntryDate();
+        if($("entryDate"))$("entryDate").value=todayISO();
         delete $("customerForm").dataset.editId;
         if($("customerCode")) $("customerCode").value="";
         if($("saveCustomerButton")) $("saveCustomerButton").textContent="22. SAVE CUSTOMER";
@@ -1518,7 +1499,7 @@ function renderSearch(){
     const s=val("searchInput").toLowerCase();
     const arr=customers.filter(c=>!s||[
         c.customerCode,c.customerName,c.phone,c.imei,c.pincode,c.city,c.state,c.brand,c.model,
-        c.colour,c.storage,c.financeCompany,c.lockName,c.stock,c.counter,c.financerName,c.entryDate,formatDateTime(c)
+        c.colour,c.storage,c.financeCompany,c.lockName,c.stock,c.counter,c.financerName,formatDateTime(c)
     ].filter(Boolean).join(" ").toLowerCase().includes(s));
 
     if(!arr.length){box.innerHTML=`<div class="empty">${s?"No customer found.":"No customer records yet."}</div>`;return;}
@@ -1527,8 +1508,7 @@ function renderSearch(){
       <article class="result customer-result" data-customer="${esc(c.id)}">
         <div class="result-top">
           <div><div class="result-name">${esc(c.customerName||"Unnamed")}</div>
-          <div class="result-meta">${esc(c.customerCode||"KM----")} • ${esc(c.phone||"")} • Entry ${esc(c.entryDate||"—")} • ${esc(formatDateTime(c))}</div></div>
-          <span class="edit-window-badge ${customerCanEdit(c)?"edit-open":"edit-locked"}">${esc(editCountdown(c))}</span>
+          <div class="result-meta">${esc(c.customerCode||"KM----")} • ${esc(c.phone||"")} • ${esc(formatDateTime(c))}</div></div>
           <div class="bill"><span>BILL</span><label class="switch"><input type="checkbox" data-bill="${esc(c.id)}" ${c.billYes?"checked":""}><span class="slider"></span></label></div>
         </div>
         <div class="result-grid">
@@ -1559,7 +1539,7 @@ function showCustomerDetail(c){
     activeCustomerId=c.id;
     $("detailTitle").textContent=`${c.customerName||"Customer"} • ${c.customerCode||""}`;
     $("customerDetailBody").innerHTML=`<div class="detail-grid">
-      ${detailItem("Customer Code",c.customerCode)}${detailItem("Entry Date",c.entryDate||"—")}${detailItem("Added At",formatDateTime(c))}${detailItem("Edit Status",editCountdown(c))}
+      ${detailItem("Customer Code",c.customerCode)}${detailItem("Date & Time",formatDateTime(c))}
       ${detailItem("Name",c.customerName)}${detailItem("Phone",c.phone)}
       ${detailItem("Address",c.address)}${detailItem("PIN Code",c.pincode)}
       ${detailItem("City / State",`${c.city||""}, ${c.state||""}`)}
@@ -1573,13 +1553,7 @@ function showCustomerDetail(c){
       ${detailItem("Bill",c.billYes?"YES":"NO")}
     </div>`;
     $("customerDetailModal")?.classList.remove("hidden");
-    const canEdit=customerCanEdit(c);
-    const editBtn=$("editCustomerButton");
-    if(editBtn){
-        editBtn.disabled=!canEdit;
-        editBtn.textContent=canEdit?"EDIT CUSTOMER":"EDIT LOCKED 🔒";
-        editBtn.title=canEdit?editCountdown(c):"24 घंटे की Edit limit पूरी हो चुकी है";
-    }
+    $("editCustomerButton")?.removeAttribute("disabled");
     $("deleteCustomerButton")?.removeAttribute("disabled");
 }
 function closeCustomerDetail(){activeCustomerId=null;$("customerDetailModal")?.classList.add("hidden")}
@@ -1647,14 +1621,8 @@ function editCustomer(){
     if(enforceWriteLock("formMessage"))return;
     const c=customers.find(x=>x.id===activeCustomerId);
     if(!c){alert("यह customer Finance/Customer database में नहीं है, इसलिए Customer Edit उपलब्ध नहीं है।");return;}
-    if(!customerCanEdit(c)){
-        alert("इस customer की 24 घंटे की Edit limit पूरी हो चुकी है। अब यह record edit नहीं किया जा सकता।");
-        showCustomerDetail(c);
-        return;
-    }
     closeCustomerDetail();
     show("addSection");
-    if($("entryDate"))$("entryDate").value=c.entryDate||localDateISO();
     const map={customerName:"customerName",address:"address",pincode:"pincode",city:"city",state:"state",phone:"phone",
       brand:"brand",model:"model",imei:"imei",colour:"colour",storage:"storage",financeCompany:"financeCompany",
       phoneAmount:"phoneAmount",downPayment:"downPayment",emiAmount:"emiAmount",emiMonths:"emiMonths",
@@ -1688,7 +1656,6 @@ function search(){
    HOME DATE FILTER / DAILY WORK VIEW
 ========================================================= */
 function recordDay(row){
-    if(row?.entryDate && /^\d{4}-\d{2}-\d{2}$/.test(String(row.entryDate)))return String(row.entryDate);
     const d=row?.createdAt?.toDate?.() || (row?.createdAt?new Date(row.createdAt):null);
     return d&&!Number.isNaN(d.getTime())?d.toLocaleDateString("en-CA"):"";
 }
@@ -1955,6 +1922,7 @@ async function saveRepair(e){
 
     try{
         const repairRef=await addDoc(collection(db,REPAIR_COL),{
+            entryDate:val("repairEntryDate") || todayISO(),
             customerName:val("repairCustomerName"),
             phone,
             device:val("repairDevice"),
@@ -1969,6 +1937,7 @@ async function saveRepair(e){
         await audit("repairing_add",{section:"Kabir Repairing Data",customerId:repairRef.id,customerName:val("repairCustomerName"),description:`Repairing added: ${val("repairProblem")||"Problem"}`,extra:{phone,device:val("repairDevice"),problem:val("repairProblem"),total,partsPrice,profit}});
 
         $("repairForm").reset();
+        if($("repairEntryDate"))$("repairEntryDate").value=todayISO();
         updateRepairProfit();
         msg("repairMessage","");
         showSuccessToast("Successfully Saved","Repairing data saved successfully");
@@ -2446,12 +2415,12 @@ async function init(){
     });
 
     nav();
-    setupEntryDate();
 
     brands();
 
     setupFinanceCompany();
     setupRepairFields();
+    setupEntryDateFields();
 
     pincode();
 
