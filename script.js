@@ -774,14 +774,8 @@ async function authInit(){
         }
     };
 
-    onAuthStateChanged(auth,u=>{
-        // Firebase emits null while restoring auth state. Never treat null as ready.
-        if(!u){
-            user=null;
-            updateAdmin();
-            setStatus("Firebase connecting…");
-            return;
-        }
+    const resolveUser=(u)=>{
+        if(!u)return false;
         user=u;
         updateAdmin();
         setStatus("Firebase connected ✓");
@@ -789,28 +783,50 @@ async function authInit(){
             settled=true;
             authReadyResolve(u);
         }
-    },e=>{
-        console.error("Firebase auth state error:",e);
+        return true;
+    };
+
+    const rejectAuth=(e)=>{
+        console.error("Firebase authentication error:",e);
         user=null;
         updateAdmin();
-        setStatus("Firebase authentication failed. Anonymous Sign-in ON करें.",true);
+        const code=e?.code||"";
+        let text="Firebase authentication failed.";
+        if(code.includes("operation-not-allowed")){
+            text="Firebase Auth में Anonymous Sign-in OFF है. Firebase Console → Authentication → Sign-in method → Anonymous ON करें.";
+        }else if(code.includes("unauthorized-domain")){
+            text="इस website domain को Firebase Authentication → Settings → Authorized domains में add करें.";
+        }else if(code.includes("network-request-failed")){
+            text="Firebase network connection failed. Internet connection check करें.";
+        }else if(e?.message){
+            text=`Firebase authentication failed: ${e.message}`;
+        }
+        setStatus(text,true);
         if(!settled){
             settled=true;
             authReadyReject(e);
         }
-    });
+    };
+
+    onAuthStateChanged(auth,u=>{
+        if(u) resolveUser(u);
+        else if(!auth.currentUser) setStatus("Firebase connecting…");
+    },rejectAuth);
 
     try{
-        if(!auth.currentUser){
-            await signInAnonymously(auth);
+        if(auth.currentUser){
+            resolveUser(auth.currentUser);
+            return authReady;
+        }
+
+        // Resolve directly from signInAnonymously's returned credential too.
+        // This avoids waiting indefinitely for a delayed auth-state callback.
+        const credential=await signInAnonymously(auth);
+        if(!resolveUser(credential?.user||auth.currentUser)){
+            throw new Error("Anonymous sign-in succeeded but Firebase user was not returned.");
         }
     }catch(e){
-        console.error("Firebase anonymous sign-in failed:",e);
-        setStatus("Firebase authentication failed. Anonymous Sign-in ON करें.",true);
-        if(!settled){
-            settled=true;
-            authReadyReject(e);
-        }
+        rejectAuth(e);
     }
     return authReady;
 }
