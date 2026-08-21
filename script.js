@@ -2550,9 +2550,77 @@ function smartEntityQuery(q){
 function smartRowsForSection(section){const rows=smartRows();return section?rows.filter(x=>x.__section===section):rows;}
 function smartRenderRows(r,filtered){r.innerHTML=filtered.slice(0,100).map(x=>`<article class="result"><div class="result-name">${esc(x.customerName||x.name||`${x.brand||""} ${x.model||x.device||"Record"}`.trim())}</div><div class="result-meta">${esc(x.__section||"")} • ${esc(x.phone||x.customerPhone||"")} • ${esc(formatDateTime(x))}</div><div class="result-grid">${item("Device",x.device||`${x.brand||""} ${x.model||""}`)}${item("IMEI / SN",x.imei||x.sn||"—")}${item("Amount",smartMoney(smartSale(x)))}${item("Profit",smartMoney(smartProfit(x)))}</div></article>`).join("");}
 function smartAnswerText(lang,hi,hinglish,en){return lang==="hi"?hi:lang==="hinglish"?hinglish:en;}
+/* =========================================================
+   SMART SEARCH — MATHEMATICS / CALCULATOR ENGINE
+   Supports examples like:
+   3000x30% = 900
+   30% of 3000 = 900
+   3000 का 30% = 900
+   (2500+500)*20% = 600
+   2^10 = 1024
+   ========================================================= */
+function smartMathExpression(q){
+    let s=String(q||'').trim();
+    const hasMathMarker=/\d\s*(?:[+\-*/×÷xX^%]|\b(?:percent|percentage|प्रतिशत)\b)|(?:√|sqrt\s*\(|\b(?:percent|percentage|प्रतिशत)\b)|\d\s+(?:of|का|के|की)\s+\d/i.test(s);
+    if(!hasMathMarker)return null;
+
+    s=s.replace(/[×xX]/g,'*').replace(/÷/g,'/').replace(/−/g,'-').replace(/–/g,'-').replace(/√\s*(\d+(?:\.\d+)?)/g,'sqrt($1)');
+    s=s.replace(/\b(percent|percentage|प्रतिशत)\b/gi,'%');
+    // Natural-language percentage forms: "30% of 3000" and "3000 का 30%".
+    s=s.replace(/(\d+(?:\.\d+)?\s*%)\s*(?:of|का|के|की)\s*(?=\d)/gi,'$1*');
+    s=s.replace(/(\d+(?:\.\d+)?)\s*(?:of|का|के|की)\s*(\d+(?:\.\d+)?\s*%?)/gi,'$1*$2');
+
+    // Remove common question words while keeping a safe mathematical alphabet.
+    s=s.replace(/\b(?:what|what's|calculate|calculation|solve|answer|tell|me|please|how|much|is|equals|equal|find|result|kitna|kitne|kitni|hai|batao|nikalo|hoga|hogi|karo|kar|ka|ke|ki|mein|me|mujhe|do|bhai|hisaab|hisab|kya)\b/gi,' ');
+    s=s.replace(/\s+/g,'');
+    if(!s || !/[0-9]/.test(s))return null;
+    // Only allow mathematical characters/functions. This prevents arbitrary code from ever reaching the parser.
+    if(!/^(?:[0-9.+\-*/%^()]+|sqrt\()/i.test(s))return null;
+    if(/[^0-9.+\-*/%^()a-z]/i.test(s) || /[a-z](?!sqrt)/i.test(s.replace(/sqrt/g,'')))return null;
+    if(/(?:sqrt){2,}/i.test(s))return null;
+
+    try{
+        let i=0;
+        const peek=()=>s[i]||'';
+        const eat=c=>{if(s.slice(i,i+c.length).toLowerCase()===c.toLowerCase()){i+=c.length;return true}return false};
+        const number=()=>{
+            const start=i;while(/[0-9.]/.test(peek()))i++;
+            const raw=s.slice(start,i);if(!raw||raw.split('.').length>2)throw new Error('number');
+            const n=Number(raw);if(!Number.isFinite(n))throw new Error('number');return n;
+        };
+        const primary=()=>{
+            if(eat('+'))return primary();
+            if(eat('-'))return -primary();
+            if(eat('(')){const v=additive();if(!eat(')'))throw new Error('paren');return v;}
+            if(eat('sqrt')){if(!eat('('))throw new Error('sqrt');const v=additive();if(!eat(')')||v<0)throw new Error('sqrt');return Math.sqrt(v);}
+            return number();
+        };
+        const power=()=>{let a=primary();if(eat('^')){const b=power();a=Math.pow(a,b);}return a;};
+        const percent=()=>{let a=power();while(eat('%'))a/=100;return a;};
+        const multiplicative=()=>{let a=percent();for(;;){if(eat('*'))a*=percent();else if(eat('/')){const b=percent();if(b===0)throw new Error('zero');a/=b;}else break;}return a;};
+        const additive=()=>{let a=multiplicative();for(;;){if(eat('+'))a+=multiplicative();else if(eat('-'))a-=multiplicative();else break;}return a;};
+        const result=additive();
+        if(i!==s.length||!Number.isFinite(result))throw new Error('invalid');
+        return {value:result,expression:s};
+    }catch(e){return null;}
+}
+function smartMathFormat(n){
+    const rounded=Math.abs(n-Math.round(n))<1e-10?Math.round(n):Number(n.toFixed(10));
+    return Number(rounded).toLocaleString('en-IN',{maximumFractionDigits:10});
+}
+
 function smartSearch(){
     const q=val("universalSearchInput"),a=$("smartSearchAnswer"),r=$("smartSearchResults");if(!a||!r)return;
-    const n=normalizeText(q);if(!n){a.innerHTML='<div class="empty">आप Hindi, Hinglish या English में कोई भी business question पूछ सकते हैं। जैसे: “आज का पूरा हिसाब बताओ”, “Aman की history दिखाओ”, “इस महीने profit कितना हुआ?”</div>';r.innerHTML="";return;}
+    const n=normalizeText(q);if(!n){a.innerHTML='<div class="empty">आप Hindi, Hinglish या English में कोई भी business question या mathematics calculation पूछ सकते हैं। जैसे: “आज का पूरा हिसाब बताओ”, “Aman की history दिखाओ”, “इस महीने profit कितना हुआ?”, “3000x30%”</div>';r.innerHTML="";return;}
+    const math=smartMathExpression(q);
+    if(math){
+        const formatted=smartMathFormat(math.value);
+        const lang=smartLang(q);
+        const answer=smartAnswerText(lang,`उत्तर: ${formatted}`,`Answer: ${formatted}`,`Answer: ${formatted}`);
+        a.innerHTML=`<div class="smart-answer-text">${esc(answer)}</div><div class="smart-answer-math">${esc(q.trim())} = <b>${esc(formatted)}</b></div>`;
+        r.innerHTML="";
+        return;
+    }
     const lang=smartLang(q), rows=smartRows(), intent=smartIntent(q), range=smartRangeFromQuery(q), [start,end,label]=range||[null,null,""];
     let pool=start?rows.filter(x=>smartInRange(x,start,end)):rows, filtered=[], answer="";
     const today=smartToday(), yesterday=new Date(today);yesterday.setDate(yesterday.getDate()-1);
