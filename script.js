@@ -43,7 +43,8 @@ let auditListenerStarted=false;
 let inventoryPhones=[];
 let inventoryParties=[];
 let inventoryInvoices=[];
-let inventoryStockFilter="all";
+let inventoryStockFilter="used";
+let inventoryStockStatus="sell";
 let inventoryInvoiceRange="all";
 let inventoryInvoicePreviewId=null;
 let scanStream=null;
@@ -2913,10 +2914,41 @@ function renderInventoryStock(){
     const box=$("inventoryStockResults");if(!box)return;
     const total=inventoryPhones.length;$("invStockCount")&&($("invStockCount").textContent=String(total));
     const q=val("inventoryStockSearch").toLowerCase();
-    let rows=inventoryPhones.filter(x=>inventoryStockFilter==="all"||(inventoryStockFilter==="sold"?x.status==="sold":String(x.conditionType||x.phoneType||"").toLowerCase()===inventoryStockFilter));
+    let rows=inventoryPhones.filter(x=>{
+        const condition=String(x.conditionType||x.phoneType||"used").toLowerCase()==="new"?"new":"used";
+        const status=x.status==="sold"?"sold":"sell";
+        return condition===inventoryStockFilter&&status===inventoryStockStatus;
+    });
     rows=rows.filter(x=>!q||[x.brand,x.model,x.imei,x.ram,x.storage,x.colour,x.partyName,x.partyPhone,x.customerName,x.customerPhone,x.conditionType,x.status].join(" ").toLowerCase().includes(q));
-    box.innerHTML=rows.length?rows.map(x=>`<article class="result inventory-stock-card"><div class="result-top"><div><div class="result-name">${esc(`${x.brand||""} ${x.model||"Phone"}`.trim())}</div><div class="result-meta">${esc(String(x.conditionType||x.phoneType||"Used").toUpperCase())} • ${x.status==="sold"?"SOLD":"IN STOCK"}</div></div><span class="work-log-tag">${x.status==="sold"?"SOLD":"AVAILABLE"}</span></div><div class="result-grid">${item("IMEI",x.imei||"—")}${item("RAM / Storage",`${x.ram||"—"} / ${x.storage||"—"}`)}${item("Colour",x.colour||"—")}${item("Customer",x.customerName||x.partyName||"—")}${item("Mobile",x.customerPhone||x.partyPhone||"—")}${item("Purchase",invMoney(x.purchasePrice))}${item("Sale",x.salePrice?invMoney(x.salePrice):"—")}${item("Margin",x.salePrice?invMoney(Number(x.salePrice)-Number(x.purchasePrice||0)):"—")}</div></article>`).join(""):"<div class=\"empty\">No inventory phones found.</div>";
+    box.innerHTML=rows.length?rows.map(x=>{
+        const sold=x.status==="sold";
+        const actions=sold?"":`<div class="inventory-stock-actions"><button type="button" class="inventory-stock-sell-btn" data-stock-sell="${esc(x.id)}">SELL</button><button type="button" class="inventory-stock-delete-btn" data-stock-delete="${esc(x.id)}">DELETE</button></div>`;
+        return `<article class="result inventory-stock-card"><div class="result-top"><div><div class="result-name">${esc(`${x.brand||""} ${x.model||"Phone"}`.trim())}</div><div class="result-meta">${esc(String(x.conditionType||x.phoneType||"Used").toUpperCase())} • ${sold?"SOLD":"AVAILABLE"}</div></div><span class="work-log-tag">${sold?"SOLD":"SELL"}</span></div><div class="result-grid">${item("IMEI",x.imei||"—")}${item("RAM / Storage",`${x.ram||"—"} / ${x.storage||"—"}`)}${item("Colour",x.colour||"—")}${item("Customer",x.customerName||x.partyName||"—")}${item("Mobile",x.customerPhone||x.partyPhone||"—")}${item("Purchase",invMoney(x.purchasePrice))}${item("Sale",x.salePrice?invMoney(x.salePrice):"—")}${item("Margin",x.salePrice?invMoney(Number(x.salePrice)-Number(x.purchasePrice||0)):"—")}</div>${actions}</article>`;
+    }).join(""):"<div class=\"empty\">No inventory phones found.</div>";
+    box.querySelectorAll("[data-stock-sell]").forEach(b=>b.addEventListener("click",()=>inventoryOpenSellForPhone(b.dataset.stockSell)));
+    box.querySelectorAll("[data-stock-delete]").forEach(b=>b.addEventListener("click",()=>deleteInventoryPhone(b.dataset.stockDelete)));
 }
+async function deleteInventoryPhone(id){
+    if(enforceWriteLock())return;
+    const phone=inventoryPhones.find(x=>x.id===id);if(!phone)return;
+    const name=`${phone.brand||""} ${phone.model||"Phone"}`.trim();
+    if(!confirm(`\"${name}\" को delete करें?\nयह Recently Deleted में चला जाएगा और 30 दिनों तक recover किया जा सकेगा.`))return;
+    try{
+        await deleteWithRecycle(INVENTORY_PHONE_COL,id,phone);
+        await audit("inventory_phone_delete",{section:"Inventory Stock",customerName:phone.customerName||phone.partyName||"",description:`Inventory phone deleted: ${name}`,extra:{imei:phone.imei||"",inventoryId:id}});
+        showSuccessToast("Deleted","Phone Recently Deleted में चला गया.");
+        renderInventoryStock();
+    }catch(err){console.error(err);alert(err?.message||"Phone delete नहीं हो पाया.");}
+}
+function inventoryOpenSellForPhone(id){
+    const modal=$("inventorySellPurchaseModal");if(!modal)return;
+    modal.classList.remove("hidden");
+    renderInventoryTransactionForm("sell");
+    setTimeout(()=>{
+        const select=$("invSellPhone");if(select){select.value=id;inventorySellPreview();}
+    },0);
+}
+
 function inventoryBrandOptions(){
     // Inventory में केवल phone/tablet brands रखें; remote catalog के
     // laptop/PC/other device brands यहाँ नहीं आएँगे.
@@ -3065,7 +3097,8 @@ function setupInventoryUI(){
         if(target==="inventoryStockPage")renderInventoryStock();
         if(target==="inventoryInvoicePage")renderInventoryInvoices();
     }));
-    document.querySelectorAll("[data-stock-filter]").forEach(b=>b.addEventListener("click",()=>{inventoryStockFilter=b.dataset.stockFilter;document.querySelectorAll("[data-stock-filter]").forEach(x=>x.classList.toggle("active",x===b));renderInventoryStock();}));
+    document.querySelectorAll("[data-stock-condition]").forEach(b=>b.addEventListener("click",()=>{inventoryStockFilter=b.dataset.stockCondition;document.querySelectorAll("[data-stock-condition]").forEach(x=>x.classList.toggle("active",x===b));renderInventoryStock();}));
+    document.querySelectorAll("[data-stock-status]").forEach(b=>b.addEventListener("click",()=>{inventoryStockStatus=b.dataset.stockStatus;document.querySelectorAll("[data-stock-status]").forEach(x=>x.classList.toggle("active",x===b));renderInventoryStock();}));
     document.querySelectorAll("[data-invoice-range]").forEach(b=>b.addEventListener("click",()=>{inventoryInvoiceRange=b.dataset.invoiceRange;document.querySelectorAll("[data-invoice-range]").forEach(x=>x.classList.toggle("active",x===b));renderInventoryInvoices();}));
     $("inventoryAddPartyButton")?.addEventListener("click",()=>{$("inventoryPartyModal")?.classList.remove("hidden");});
     $("inventoryPartyForm")?.addEventListener("submit",saveInventoryParty);
