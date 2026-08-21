@@ -619,3 +619,18 @@ input[type="date"]{width:100%!important;max-width:100%!important;min-width:0!imp
 .inventory-stock-sell-btn{background:linear-gradient(135deg,#e53935,#b71c1c)!important;box-shadow:0 7px 18px rgba(180,20,20,.25)}
 .inventory-stock-delete-btn{background:rgba(255,255,255,.07)!important}
 @media(max-width:520px){.inventory-stock-switches{gap:7px}.inventory-toggle-group{padding:8px}.inventory-toggle-group>small{font-size:8px}.inventory-stock-switches .inventory-toggle{font-size:9px}}
+/* Inventory #6 + #7 refinements */
+.inventory-sticky-actions .inventory-add-party-hidden{display:none!important}
+.inventory-sticky-actions .inventory-sticky-add.hidden{display:none!important}
+.inventory-invoice-list{gap:8px!important}
+.inventory-invoice-card{border-radius:18px!important;box-shadow:0 8px 22px rgba(0,0,0,.12)!important}
+.inventory-invoice-main{padding:12px 13px 10px!important;min-height:132px!important}
+.inventory-invoice-device{font-size:16px!important;margin-bottom:3px!important}
+.inventory-invoice-no{font-size:12px!important}
+.inventory-invoice-party{margin-top:13px!important;font-size:11px!important;line-height:1.45!important}
+.inventory-invoice-type{right:13px!important;top:54px!important;font-size:9px!important}
+.inventory-invoice-total{font-size:19px!important;margin-top:5px!important}
+.inventory-invoice-label{font-size:9px!important}
+.inventory-invoice-footer{min-height:42px!important;grid-template-columns:1fr 1fr 1fr!important}
+.inventory-invoice-footer button{font-size:10px!important;padding:0 5px!important}
+.inventory-delete-btn{background:#8d2525!important;color:#fff!important;border:0!important}
