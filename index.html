@@ -86,32 +86,33 @@
   <div class="section-head"><div><div class="eyebrow">NEW RECORD</div><h2>Add Customer</h2></div><button class="close" data-close="addSection">×</button></div>
   <form id="customerForm">
     <div class="block"><b>Customer Details</b>
-      <label>1. Customer Name<input id="customerName" required autocomplete="name"></label>
+      <label>1. Entry Date<input id="entryDate" type="date" required><small>जिस तारीख की entry बनानी है, वह date चुनें.</small></label>
+      <label>2. Customer Name<input id="customerName" required autocomplete="name"></label>
       <label>Customer Code<input id="customerCode" readonly placeholder="Automatic KM1234"></label>
-      <label>2. Address<textarea id="address" rows="3" required></textarea></label>
-      <label>3. PIN Code<input id="pincode" inputmode="numeric" maxlength="6" required placeholder="6 digit PIN code"><small id="pincodeStatus"></small></label>
-      <div class="cols"><label>4. City / Village<input id="city" required placeholder="Auto from PIN"></label><label>State<input id="state" required placeholder="Auto from PIN"></label></div>
+      <label>3. Address<textarea id="address" rows="3" required></textarea></label>
+      <label>4. PIN Code<input id="pincode" inputmode="numeric" maxlength="6" required placeholder="6 digit PIN code"><small id="pincodeStatus"></small></label>
+      <div class="cols"><label>5. City / Village<input id="city" required placeholder="Auto from PIN"></label><label>State<input id="state" required placeholder="Auto from PIN"></label></div>
       <label>Mobile Number<input id="phone" type="tel" inputmode="tel" maxlength="10" required></label>
     </div>
     <div class="block"><b>Device Details</b>
-      <label>5. Phone Brand<select id="brand" required><option value="">Select brand</option></select></label>
-      <label>6. Phone Model<select id="model" required disabled><option value="">Select brand first</option></select></label>
-      <label>7. IMEI<div class="with-button"><input id="imei" inputmode="numeric" maxlength="15" required><button id="scanImeiButton" type="button">▣ Scan</button></div><small>QR/barcode scan uses the phone camera when supported.</small></label>
-      <label>8. Colour<select id="colour" required disabled><option value="">Select model first</option></select></label>
-      <label>9. RAM + Storage<select id="storage" required disabled><option value="">Select model first</option></select></label>
-      <label>10. Finance Company<select id="financeCompany"><option value="">Select Finance Company</option></select></label>
-      <div class="cols"><label>11. Phone Amount<input id="phoneAmount" type="number" inputmode="decimal" min="0" required placeholder="₹"></label><label>12. Down Payment (DP)<input id="downPayment" type="number" inputmode="decimal" min="0" required placeholder="₹"></label></div>
-      <div class="cols"><label>13. EMI Amount<input id="emiAmount" type="number" inputmode="decimal" min="0" placeholder="₹"></label><label>EMI Months<input id="emiMonths" type="number" inputmode="numeric" min="0" placeholder="Months"></label></div>
-      <div class="cols"><label>14. Lock<input id="lockName" placeholder="Lock name"></label><label>15. Stock<input id="stock" placeholder="Purchase source"></label></div>
-      <div class="cols"><label>16. Counter<input id="counter"></label><label>17. Financer Name<input id="financerName"></label></div>
+      <label>6. Phone Brand<select id="brand" required><option value="">Select brand</option></select></label>
+      <label>7. Phone Model<select id="model" required disabled><option value="">Select brand first</option></select></label>
+      <label>8. IMEI<div class="with-button"><input id="imei" inputmode="numeric" maxlength="15" required><button id="scanImeiButton" type="button">▣ Scan</button></div><small>QR/barcode scan uses the phone camera when supported.</small></label>
+      <label>9. Colour<select id="colour" required disabled><option value="">Select model first</option></select></label>
+      <label>10. RAM + Storage<select id="storage" required disabled><option value="">Select model first</option></select></label>
+      <label>11. Finance Company<select id="financeCompany"><option value="">Select Finance Company</option></select></label>
+      <div class="cols"><label>12. Phone Amount<input id="phoneAmount" type="number" inputmode="decimal" min="0" required placeholder="₹"></label><label>13. Down Payment (DP)<input id="downPayment" type="number" inputmode="decimal" min="0" required placeholder="₹"></label></div>
+      <div class="cols"><label>14. EMI Amount<input id="emiAmount" type="number" inputmode="decimal" min="0" placeholder="₹"></label><label>EMI Months<input id="emiMonths" type="number" inputmode="numeric" min="0" placeholder="Months"></label></div>
+      <div class="cols"><label>15. Lock<input id="lockName" placeholder="Lock name"></label><label>16. Stock<input id="stock" placeholder="Purchase source"></label></div>
+      <div class="cols"><label>17. Counter<input id="counter"></label><label>18. Financer Name<input id="financerName"></label></div>
     </div>
     <div class="block"><b>Bill & Documents</b>
-      <label>18. Bill (After 3 Months)<div class="bill-box"><span><strong>Bill</strong><small id="billDueText"></small></span><em>NO</em></div></label>
-      <label>19. Aadhaar Card<input id="aadhaarFile" type="file" accept="image/*,.pdf" capture="environment"><small>Camera or photo/library.</small></label>
-      <label>20. PAN Card<input id="panFile" type="file" accept="image/*,.pdf" capture="environment"><small>Camera or photo/library.</small></label>
-      <label>21. Customer Photo<input id="customerPhoto" type="file" accept="image/*" capture="user"><small>Direct front camera on supported phones.</small></label>
+      <label>19. Bill (After 3 Months)<div class="bill-box"><span><strong>Bill</strong><small id="billDueText"></small></span><em>NO</em></div></label>
+      <label>20. Aadhaar Card<input id="aadhaarFile" type="file" accept="image/*,.pdf" capture="environment"><small>Camera or photo/library.</small></label>
+      <label>21. PAN Card<input id="panFile" type="file" accept="image/*,.pdf" capture="environment"><small>Camera or photo/library.</small></label>
+      <label>22. Customer Photo<input id="customerPhoto" type="file" accept="image/*" capture="user"><small>Direct front camera on supported phones.</small></label>
     </div>
-    <button id="saveCustomerButton" class="save" type="submit">22. SAVE CUSTOMER <span id="saveSpinner" class="spinner hidden"></span></button>
+    <button id="saveCustomerButton" class="save" type="submit">23. SAVE CUSTOMER <span id="saveSpinner" class="spinner hidden"></span></button>
     <p id="formMessage" class="message"></p>
   </form>
 </section>
