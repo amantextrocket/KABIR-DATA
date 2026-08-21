@@ -50,16 +50,9 @@
     <button class="glass inventory-nav-card" data-inventory-tab="inventoryStockSection"><span>📱</span><b>STOCK</b><small>Used / New phones</small></button>
     <button class="glass inventory-nav-card" data-inventory-tab="inventoryInvoiceSection"><span>🧾</span><b>INVOICE</b><small>Bills & PDF</small></button>
   </div>
-  <div id="inventoryHome" class="inventory-tab">
-    <div class="inventory-home-summary glass">
-      <div><span>📦</span><small>Total Phones</small><strong id="invTotalPhones">0</strong></div>
-      <div><span>📲</span><small>Available Stock</small><strong id="invAvailablePhones">0</strong></div>
-      <div><span>💰</span><small>Sold Phones</small><strong id="invSoldPhones">0</strong></div>
-      <div><span>💎</span><small>Stock Value</small><strong id="invStockValue">₹0</strong></div>
-    </div>
-    <div id="inventoryDashboard" class="glass inventory-dashboard-card"><h3>Inventory Overview</h3><p class="muted">Inventory का summary यहाँ दिखाई देगा.</p><div id="inventoryDashboardBody" class="inventory-dashboard-body"></div></div>
-  </div>
+  <div id="inventoryHome" class="inventory-tab inventory-home-empty"></div>
   <section id="inventoryPartySection" class="inventory-tab hidden">
+    <div class="section-head inventory-subpage-head"><div><div class="eyebrow">INVENTORY • PARTY</div><h2>Party</h2><small class="section-subtitle">Lifetime customers & vendors</small></div><button id="inventoryPartyBack" class="close" type="button">‹</button></div>
     <div class="inventory-section-toolbar"><div><b class="inventory-count-title">CUSTOMERS <span id="inventoryCustomerCount">0</span></b><small class="muted inventory-count-subtitle">Lifetime customer records</small></div><div class="search inventory-long-search"><span>⌕</span><input id="inventoryPartySearch" type="search" placeholder="Search customer / vendor name or mobile…"></div></div>
     <div id="inventoryPartyResults" class="results inventory-results"></div>
   </section>
@@ -68,12 +61,17 @@
     <div id="inventoryPartyDetailBody"></div>
   </section>
   <section id="inventoryStockSection" class="inventory-tab hidden">
+    <div class="section-head inventory-subpage-head"><div><div class="eyebrow">INVENTORY • STOCK</div><h2>Stock</h2><small class="section-subtitle">Used / New • Sell / Sold</small></div><button id="inventoryStockBack" class="close" type="button">‹</button></div>
     <div class="inventory-stock-heading"><div><b>Total Stock</b><strong id="invStockCount">0</strong></div><small class="muted">Used + New + Sold</small></div>
-    <div class="inventory-toggle-row"><button class="inventory-toggle active" data-stock-filter="all">ALL</button><button class="inventory-toggle" data-stock-filter="used">USED</button><button class="inventory-toggle" data-stock-filter="new">NEW</button><button class="inventory-toggle" data-stock-filter="sold">SOLD</button></div>
+    <div class="inventory-switches">
+      <div class="inventory-switch-group" aria-label="Phone type"><span>TYPE</span><button class="inventory-toggle active" data-stock-type="used">USED</button><button class="inventory-toggle" data-stock-type="new">NEW</button></div>
+      <div class="inventory-switch-group" aria-label="Stock status"><span>STATUS</span><button class="inventory-toggle active" data-stock-status="available">SELL</button><button class="inventory-toggle" data-stock-status="sold">SOLD</button></div>
+    </div>
     <div class="search inventory-long-search"><span>⌕</span><input id="inventoryStockSearch" type="search" placeholder="Search IMEI, model, RAM, storage, colour, party…"></div>
     <div id="inventoryStockResults" class="results inventory-results"></div>
   </section>
   <section id="inventoryInvoiceSection" class="inventory-tab hidden">
+    <div class="section-head inventory-subpage-head"><div><div class="eyebrow">INVENTORY • INVOICE</div><h2>Invoice</h2><small class="section-subtitle">Only completed sales invoices</small></div><button id="inventoryInvoiceBack" class="close" type="button">‹</button></div>
     <div class="inventory-invoice-top"><div class="search inventory-long-search"><span>⌕</span><input id="inventoryInvoiceSearch" type="search" placeholder="Search invoice, customer, mobile, phone…"></div><button id="inventoryInvoiceFilterButton" class="glass inventory-filter-button" type="button">☰</button></div>
     <div class="inventory-invoice-filters"><button data-invoice-range="month">This Month</button><button data-invoice-range="all" class="active">All</button><button data-invoice-range="today">Today</button><button data-invoice-range="yesterday">Yesterday</button><button data-invoice-range="week">This Week</button></div>
     <div class="inventory-invoice-heading"><b>INVOICES <span id="inventoryInvoiceCount">0</span></b><button id="inventoryNewInvoiceButton" class="glass" type="button">INVOICE <span>PDF</span></button></div>
