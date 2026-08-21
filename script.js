@@ -1268,6 +1268,7 @@ async function save(e){
 
         const editId=$("customerForm").dataset.editId;
         const existing=editId?customers.find(c=>c.id===editId):null;
+        if(editId && (!existing || !canEditRecord(existing))){throw Error(editLockMessage(existing));}
         let customerData={
 
             customerCode:existing?.customerCode || await uniqueCustomerCode(),
@@ -1390,7 +1391,7 @@ async function save(e){
         if($("entryDate"))$("entryDate").value=todayISO();
         delete $("customerForm").dataset.editId;
         if($("customerCode")) $("customerCode").value="";
-        if($("saveCustomerButton")) $("saveCustomerButton").textContent="22. SAVE CUSTOMER";
+        if($("saveCustomerButton")) $("saveCustomerButton").textContent="23. SAVE CUSTOMER";
 
         if($("financeCompany"))
             $("financeCompany").value="";
@@ -1594,33 +1595,57 @@ async function restoreDeleted(id){
 
 async function deleteCustomer(){
     if(enforceWriteLock("pinMessage"))return;
-    let c=customers.find(x=>x.id===activeCustomerId);
-    if(!c && window.activeUnifiedCustomer){
-        const u=window.activeUnifiedCustomer;
-        c=customers.find(x=>u.financeId&&x.id===u.financeId);
-        if(!c){
-            const p=u.phone;
-            const match=x=>p&&String(x.phone||x.customerPhone||"").replace(/\D/g,"")===p;
-            const r=repairing.find(match), sh=secondHand.find(match), ac=accessories.find(match);
-            if(r){if(!confirm(`Delete ${r.customerName||"this customer"} repairing record permanently?`))return;return deleteWithRecycle(REPAIR_COL,r.id,r).then(()=>{closeCustomerDetail();renderAllCustomers();showSuccessToast("Deleted","Repairing customer record deleted");}).catch(e=>{console.error(e);alert("Delete failed. Firebase Rules check करें.");});}
-            if(sh){if(!confirm(`Delete ${sh.customerName||"this customer"} second-hand record permanently?`))return;return deleteWithRecycle(SECOND_COL,sh.id,sh).then(()=>{closeCustomerDetail();renderAllCustomers();showSuccessToast("Deleted","Second-hand customer record deleted");}).catch(e=>{console.error(e);alert("Delete failed. Firebase Rules check करें.");});}
-            if(ac){if(!confirm(`Delete ${ac.customerName||"this customer"} accessory record permanently?`))return;return deleteWithRecycle(ACCESSORY_COL,ac.id,ac).then(()=>{closeCustomerDetail();renderAllCustomers();showSuccessToast("Deleted","Accessory customer record deleted");}).catch(e=>{console.error(e);alert("Delete failed. Firebase Rules check करें.");});}
-        }
+    const u=window.activeUnifiedCustomer;
+    let source=u?.actionSource||null;
+    let id=u?.actionId||null;
+    let row=null;
+
+    if(source==="finance")row=customers.find(x=>x.id===id);
+    else if(source==="repair")row=repairing.find(x=>x.id===id);
+    else if(source==="second")row=secondHand.find(x=>x.id===id);
+    else if(source==="accessory")row=accessories.find(x=>x.id===id);
+
+    // Fallback for older/open detail states.
+    if(!row && activeCustomerId){
+        row=customers.find(x=>x.id===activeCustomerId);
+        if(row){source="finance";id=row.id;}
     }
-    if(!c){alert("Customer record नहीं मिला.");return;}
-    if(!confirm(`Delete ${c.customerName||"this customer"} (${c.customerCode||""}) permanently?`))return;
+    if(!row && u){
+        const groups=getUnifiedRecords(u.phone,u.name);
+        row=getLatestUnifiedRecord(groups);
+        source=row?.__source||null;
+        id=row?.id||null;
+    }
+
+    if(!row||!source||!id){alert("Customer record नहीं मिला.");return;}
+
+    const collectionName=source==="finance"?COL:source==="repair"?REPAIR_COL:source==="second"?SECOND_COL:ACCESSORY_COL;
+    const label=source==="finance"?"Finance":source==="repair"?"Repairing":source==="second"?"Second Hand":"Accessories";
+    if(!confirm(`Delete ${row.customerName||row.name||"this customer"} का ${label} record?`))return;
+
     try{
-        await deleteWithRecycle(COL,c.id,c);
-        await audit("customer_delete",{section:"Kabir Mobile Data",customerId:c.id,customerCode:c.customerCode,customerName:c.customerName,description:`Customer ${c.customerName||c.customerCode||c.id} deleted`});
+        await deleteWithRecycle(collectionName,id,row);
+        await audit("customer_delete",{
+            section:source==="finance"?"Kabir Mobile Data":label,
+            customerId:id,
+            customerCode:row.customerCode||null,
+            customerName:row.customerName||row.name||null,
+            description:`${label} customer record moved to Recently Deleted`
+        });
         closeCustomerDetail();
         renderAllCustomers();
-        showSuccessToast("Customer Deleted","Customer record deleted successfully");
-    }catch(e){console.error(e);alert("Customer delete नहीं हुआ. Firebase Rules check करें.")}
+        if(source==="finance")renderSearch();
+        if(source==="repair")renderRepairing();
+        if(source==="second")renderSecondHand();
+        if(source==="accessory")renderAccessories();
+        showSuccessToast("Deleted","Customer record moved to Recently Deleted");
+    }catch(e){
+        console.error(e);
+        alert("Customer delete नहीं हुआ. Firebase Rules check करें.");
+    }
 }
-function editCustomer(){
-    if(enforceWriteLock("formMessage"))return;
-    const c=customers.find(x=>x.id===activeCustomerId);
-    if(!c){alert("यह customer Finance/Customer database में नहीं है, इसलिए Customer Edit उपलब्ध नहीं है।");return;}
+
+function openFinanceEdit(c){
     closeCustomerDetail();
     show("addSection");
     const map={customerName:"customerName",address:"address",pincode:"pincode",city:"city",state:"state",phone:"phone",
@@ -1628,14 +1653,89 @@ function editCustomer(){
       phoneAmount:"phoneAmount",downPayment:"downPayment",emiAmount:"emiAmount",emiMonths:"emiMonths",
       lockName:"lockName",stock:"stock",counter:"counter",financerName:"financerName"};
     Object.entries(map).forEach(([k,id])=>{if($(id))$(id).value=c[k]??""});
+    $("entryDate").value=c.entryDate||todayISO();
     $("customerCode").value=c.customerCode||"";
     $("saveCustomerButton").textContent="UPDATE CUSTOMER";
     $("customerForm").dataset.editId=c.id;
     $("brand").dispatchEvent(new Event("change"));
     setTimeout(()=>{
         $("model").value=c.model||"";$("model").dispatchEvent(new Event("change"));
-        setTimeout(()=>{$("colour").value=c.colour||"";$('storage').value=c.storage||""},0);
+        setTimeout(()=>{$("colour").value=c.colour||"";$("storage").value=c.storage||""},0);
     },100);
+}
+function openRepairEdit(r){
+    closeCustomerDetail();
+    show("repairAddSection");
+    const map={repairEntryDate:"entryDate",repairCustomerName:"customerName",repairPhone:"phone",repairDevice:"device",repairProblem:"problem",repairBy:"repairBy",repairTotal:"total",repairPartsPrice:"partsPrice"};
+    Object.entries(map).forEach(([id,key])=>{if($(id))$(id).value=r[key]??""});
+    $("repairForm").dataset.editId=r.id;
+    const btn=$("repairForm")?.querySelector("button[type='submit']");
+    if(btn)btn.textContent="UPDATE REPAIRING";
+    updateRepairProfit();
+}
+function openSecondEdit(x){
+    closeCustomerDetail();
+    show("secondAddSection");
+    $("secondCondition").value=x.condition||"";
+    $("secondCustomerName").value=x.customerName||"";
+    $("secondPhone").value=x.phone||"";
+    $("secondImei").value=x.imei||"";
+    $("secondPrice").value=x.price??"";
+    $("secondSalePrice").value=x.salePrice??"";
+    const brandType=$("secondBrandType"),modelType=$("secondModelType");
+    const brand=$("secondBrand"),model=$("secondModel");
+    brandType.value="";
+    modelType.value="";
+    if(Object.keys(BRANDS).includes(x.brand)){
+        brand.value=x.brand;
+        brand.dispatchEvent(new Event("change"));
+        setTimeout(()=>{model.value=x.model||""},0);
+    }else{
+        brand.value="";
+        model.value="";
+        brandType.value=x.brand||"";
+        modelType.value=x.model||"";
+    }
+    $("secondHandForm").dataset.editId=x.id;
+    const btn=$("secondHandForm")?.querySelector("button[type='submit']");
+    if(btn)btn.textContent="UPDATE SECOND HAND";
+    updateSecondProfit();
+}
+function openAccessoryEdit(x){
+    closeCustomerDetail();
+    show("accessoryAddSection");
+    $("accessoryName").value=x.name||"";
+    $("accessoryCategory").value=x.category||"";
+    $("accessorySn").value=x.sn||"";
+    $("accessoryQty").value=x.quantity??"";
+    $("accessoryPrice").value=x.price??"";
+    $("accessorySalePrice").value=x.salePrice??"";
+    $("accessoryCustomerName").value=x.customerName||"";
+    $("accessoryCustomerPhone").value=x.customerPhone||"";
+    $("accessoryForm").dataset.editId=x.id;
+    const btn=$("accessoryForm")?.querySelector("button[type='submit']");
+    if(btn)btn.textContent="UPDATE ACCESSORY";
+    updateAccessoryProfit();
+}
+function editCustomer(){
+    if(enforceWriteLock("formMessage"))return;
+    const u=window.activeUnifiedCustomer;
+    let row=null;
+    if(u?.actionSource==="finance")row=customers.find(x=>x.id===u.actionId);
+    else if(u?.actionSource==="repair")row=repairing.find(x=>x.id===u.actionId);
+    else if(u?.actionSource==="second")row=secondHand.find(x=>x.id===u.actionId);
+    else if(u?.actionSource==="accessory")row=accessories.find(x=>x.id===u.actionId);
+
+    if(!row){alert("Customer record नहीं मिला.");return;}
+    if(!canEditRecord(row)){
+        alert(editLockMessage(row));
+        return;
+    }
+    const source=u.actionSource;
+    if(source==="finance")openFinanceEdit(row);
+    else if(source==="repair")openRepairEdit(row);
+    else if(source==="second")openSecondEdit(row);
+    else if(source==="accessory")openAccessoryEdit(row);
 }
 
 /* =========================================================
@@ -1828,16 +1928,46 @@ function setupAccessoryFields(){["accessoryPrice","accessorySalePrice"].forEach(
 function updateAccessoryProfit(){const p=Number(val("accessoryPrice")||0),s=Number(val("accessorySalePrice")||0);if($("accessoryProfit"))$("accessoryProfit").textContent=`₹${(s-p).toLocaleString("en-IN")}`;}
 async function saveSecondHand(e){
     e.preventDefault();if(enforceWriteLock("secondMessage"))return;
+    const editId=$("secondHandForm").dataset.editId||"";
+    const existing=editId?secondHand.find(x=>x.id===editId):null;
+    if(editId && (!existing || !canEditRecord(existing))){msg("secondMessage",editLockMessage(existing));return;}
     const brand=val("secondBrandType")||val("secondBrand"),model=val("secondModelType")||val("secondModel");
-    const data={customerName:val("secondCustomerName"),phone:val("secondPhone").replace(/\D/g,""),brand,model,device:[brand,model].filter(Boolean).join(" "),imei:val("secondImei").replace(/\D/g,""),condition:val("secondCondition"),price:Number(val("secondPrice")||0),salePrice:Number(val("secondSalePrice")||0),profit:Number(val("secondSalePrice")||0)-Number(val("secondPrice")||0),createdAt:serverTimestamp(),createdBy:user?.uid||null};
+    const data={customerName:val("secondCustomerName"),phone:val("secondPhone").replace(/\D/g,""),brand,model,device:[brand,model].filter(Boolean).join(" "),imei:val("secondImei").replace(/\D/g,""),condition:val("secondCondition"),price:Number(val("secondPrice")||0),salePrice:Number(val("secondSalePrice")||0),profit:Number(val("secondSalePrice")||0)-Number(val("secondPrice")||0)};
     if(!data.condition||!brand||!model||!/^(?:\d{15})?$/.test(data.imei)||!data.customerName||!/^\d{10}$/.test(data.phone)){msg("secondMessage","Condition, brand, model, valid 10 digit phone और IMEI (15 digit) सही भरें.");return;}
-    try{await addDoc(collection(db,SECOND_COL),data);await audit("second_hand_add",{section:"Second Hand",customerName:data.customerName,description:`Second-hand phone added: ${data.device}`,extra:{phone:data.phone,imei:data.imei,brand,model,profit:data.profit}});e.target.reset();$("secondBrandType").value="";$("secondModelType").value="";$("secondModel").innerHTML='<option value="">Select brand first</option>';$("secondModel").disabled=true;updateSecondProfit();showSuccessToast("Successfully Saved","Second-hand phone stock में add हो गया.");}catch(err){console.error(err);msg("secondMessage",err?.message||"Save failed.");}
+    try{
+        if(editId){
+            await updateDoc(doc(db,SECOND_COL,editId),data);
+            await audit("customer_edit",{section:"Second Hand",customerId:editId,customerName:data.customerName,description:`Second-hand customer ${data.customerName||editId} edited`});
+        }else{
+            const added=await addDoc(collection(db,SECOND_COL),{...data,createdAt:serverTimestamp(),createdBy:user?.uid||null});
+            await audit("second_hand_add",{section:"Second Hand",customerId:added.id,customerName:data.customerName,description:`Second-hand phone added: ${data.device}`,extra:{phone:data.phone,imei:data.imei,brand,model,profit:data.profit}});
+        }
+        e.target.reset();delete $("secondHandForm").dataset.editId;
+        $("secondBrandType").value="";$("secondModelType").value="";$("secondModel").innerHTML='<option value="">Select brand first</option>';$("secondModel").disabled=true;
+        const btn=$("secondHandForm")?.querySelector("button[type='submit']");if(btn)btn.textContent="SAVE SECOND HAND PHONE";
+        updateSecondProfit();showSuccessToast(editId?"Updated":"Successfully Saved",editId?"Second-hand data updated successfully":"Second-hand phone stock में add हो गया.");
+    }catch(err){console.error(err);msg("secondMessage",err?.message||"Save failed.");}
 }
+
 async function saveAccessory(e){
     e.preventDefault();if(enforceWriteLock("accessoryMessage"))return;
-    const data={name:val("accessoryName"),category:val("accessoryCategory"),sn:val("accessorySn"),quantity:Number(val("accessoryQty")||0),price:Number(val("accessoryPrice")||0),salePrice:Number(val("accessorySalePrice")||0),profit:Number(val("accessorySalePrice")||0)-Number(val("accessoryPrice")||0),customerName:val("accessoryCustomerName"),customerPhone:val("accessoryCustomerPhone").replace(/\D/g,""),createdAt:serverTimestamp(),createdBy:user?.uid||null};
+    const editId=$("accessoryForm").dataset.editId||"";
+    const existing=editId?accessories.find(x=>x.id===editId):null;
+    if(editId && (!existing || !canEditRecord(existing))){msg("accessoryMessage",editLockMessage(existing));return;}
+    const data={name:val("accessoryName"),category:val("accessoryCategory"),sn:val("accessorySn"),quantity:Number(val("accessoryQty")||0),price:Number(val("accessoryPrice")||0),salePrice:Number(val("accessorySalePrice")||0),profit:Number(val("accessorySalePrice")||0)-Number(val("accessoryPrice")||0),customerName:val("accessoryCustomerName"),customerPhone:val("accessoryCustomerPhone").replace(/\D/g,"")};
     if(!data.name||!data.category||data.quantity<1){msg("accessoryMessage","Name, category और quantity भरें.");return;}
-    try{await addDoc(collection(db,ACCESSORY_COL),data);await audit("accessory_add",{section:"Accessories",customerName:data.customerName,description:`Accessory added: ${data.name}`,extra:{category:data.category,quantity:data.quantity,sn:data.sn,profit:data.profit,customerPhone:data.customerPhone}});e.target.reset();updateAccessoryProfit();showSuccessToast("Successfully Saved","Accessory stock में add हो गया.");}catch(err){console.error(err);msg("accessoryMessage",err?.message||"Save failed.");}
+    try{
+        if(editId){
+            await updateDoc(doc(db,ACCESSORY_COL,editId),data);
+            await audit("customer_edit",{section:"Accessories",customerId:editId,customerName:data.customerName||data.name,description:`Accessory customer record ${data.customerName||data.name||editId} edited`});
+        }else{
+            const added=await addDoc(collection(db,ACCESSORY_COL),{...data,createdAt:serverTimestamp(),createdBy:user?.uid||null});
+            await audit("accessory_add",{section:"Accessories",customerId:added.id,customerName:data.customerName,description:`Accessory added: ${data.name}`,extra:{category:data.category,quantity:data.quantity,sn:data.sn,profit:data.profit,customerPhone:data.customerPhone}});
+        }
+        e.target.reset();delete $("accessoryForm").dataset.editId;
+        const btn=$("accessoryForm")?.querySelector("button[type='submit']");if(btn)btn.textContent="ADD ACCESSORY";
+        updateAccessoryProfit();showSuccessToast(editId?"Updated":"Successfully Saved",editId?"Accessory data updated successfully":"Accessory stock में add हो गया.");
+    }catch(err){console.error(err);msg("accessoryMessage",err?.message||"Save failed.");}
 }
 
 function renderAllCustomers(){
@@ -1849,20 +1979,103 @@ function renderAllCustomers(){
     box.innerHTML=rows.length?rows.map((x,i)=>`<article class="result all-customer-result" data-phone="${esc(x.phone)}" data-name="${esc(x.name)}"><div class="result-top"><div><div class="result-name">${esc(x.name)}</div><div class="result-meta">${esc(x.phone||"Phone not available")}</div></div><div class="work-log-tag">${esc([...x.types].join(" • "))}</div></div><div class="result-open-hint">Tap करके आज तक का पूरा data देखें</div></article>`).join(""):"<div class=\"empty\">No customer found.</div>";
     box.querySelectorAll(".all-customer-result").forEach(card=>card.addEventListener("click",()=>showUnifiedCustomerHistory(card.dataset.phone,card.dataset.name)));
 }
-function showUnifiedCustomerHistory(phone,name){
-    const p=String(phone||"").replace(/\D/g,"");const n=String(name||"").trim().toLowerCase();
+function getRecordCreatedDate(row){
+    if(!row)return null;
+    const d=row.createdAt?.toDate?.();
+    if(d instanceof Date && !Number.isNaN(d.getTime()))return d;
+    if(row.createdAt){
+        const x=new Date(row.createdAt);
+        if(!Number.isNaN(x.getTime()))return x;
+    }
+    return null;
+}
+function canEditRecord(row){
+    const d=getRecordCreatedDate(row);
+    if(!d)return false;
+    return (Date.now()-d.getTime()) < 24*60*60*1000;
+}
+function editLockMessage(row){
+    const d=getRecordCreatedDate(row);
+    if(!d)return "इस record का exact add time उपलब्ध नहीं है, इसलिए Edit सुरक्षित रूप से lock है.";
+    const hours=Math.max(0,(Date.now()-d.getTime())/3600000);
+    if(hours>=24)return "इस record को add किए 24 घंटे पूरे हो चुके हैं. Edit अब automatically lock है.";
+    const left=24-hours;
+    const h=Math.floor(left),m=Math.floor((left-h)*60);
+    return `Edit केवल add होने के 24 घंटे तक उपलब्ध है. लगभग ${h} घंटे ${m} मिनट बाकी हैं.`;
+}
+function recordSource(row){
+    if(!row)return null;
+    if(row.__source)return row.__source;
+    return null;
+}
+function getUnifiedRecords(phone,name){
+    const p=String(phone||"").replace(/\D/g,"");
+    const n=String(name||"").trim().toLowerCase();
     const same=x=>(p&&String(x.phone||x.customerPhone||"").replace(/\D/g,"")===p)||(!p&&n&&String(x.customerName||"").trim().toLowerCase()===n);
-    const finance=customers.filter(same),repair=repairing.filter(same),second=secondHand.filter(same),acc=accessories.filter(same);
+    return {
+        finance:customers.filter(same),
+        repair:repairing.filter(same),
+        second:secondHand.filter(same),
+        acc:accessories.filter(same)
+    };
+}
+function getLatestUnifiedRecord(groups){
+    const rows=[
+        ...groups.finance.map(x=>({...x,__source:"finance"})),
+        ...groups.repair.map(x=>({...x,__source:"repair"})),
+        ...groups.second.map(x=>({...x,__source:"second"})),
+        ...groups.acc.map(x=>({...x,__source:"accessory"}))
+    ];
+    return rows.sort((a,b)=>(getRecordCreatedDate(b)?.getTime()||0)-(getRecordCreatedDate(a)?.getTime()||0))[0]||null;
+}
+function showUnifiedCustomerHistory(phone,name){
+    const groups=getUnifiedRecords(phone,name);
+    const {finance,repair,second,acc}=groups;
     const title=name||finance[0]?.customerName||repair[0]?.customerName||second[0]?.customerName||acc[0]?.customerName||"Customer";
+    const primary=getLatestUnifiedRecord(groups);
+
     $("detailTitle").textContent=`${title} • Complete History`;
-    activeCustomerId=finance[0]?.id||null;
-    window.activeUnifiedCustomer={phone:p,name:title,financeId:finance[0]?.id||null,repairId:repair[0]?.id||null,secondId:second[0]?.id||null,accessoryId:acc[0]?.id||null};
+    activeCustomerId=primary?.__source==="finance"?primary.id:null;
+    window.activeUnifiedCustomer={
+        phone:String(phone||"").replace(/\D/g,""),
+        name:title,
+        financeId:finance[0]?.id||null,
+        repairId:repair[0]?.id||null,
+        secondId:second[0]?.id||null,
+        accessoryId:acc[0]?.id||null,
+        actionSource:primary?.__source||null,
+        actionId:primary?.id||null
+    };
+
     const editBtn=$("editCustomerButton"),deleteBtn=$("deleteCustomerButton");
-    const financeEditable=!!activeCustomerId;
-    if(editBtn){editBtn.disabled=false;editBtn.title=financeEditable?"Edit Finance customer":"This customer has no Finance record";}
-    if(deleteBtn){deleteBtn.disabled=false;deleteBtn.title=financeEditable?"Delete Finance customer":"Delete available customer record";}
-    const rows=[];finance.forEach(x=>rows.push(`<article class="history-row"><b>💳 Finance / Phone</b><small>${esc(formatDateTime(x))}</small><span>${esc(`${x.brand||""} ${x.model||""}`)} • IMEI ${esc(x.imei||"—")} • ₹${Number(x.phoneAmount||0).toLocaleString("en-IN")}</span></article>`));repair.forEach(x=>rows.push(`<article class="history-row"><b>🛠 Repairing</b><small>${esc(formatDateTime(x))}</small><span>${esc(x.device||"")} • ${esc(x.problem||"")} • Total ₹${Number(x.total ?? x.payment ?? 0).toLocaleString("en-IN")} • Parts ₹${Number(x.partsPrice||0).toLocaleString("en-IN")} • Profit ₹${Number(x.profit??(Number(x.total ?? x.payment ?? 0)-Number(x.partsPrice||0))).toLocaleString("en-IN")}</span></article>`));second.forEach(x=>rows.push(`<article class="history-row"><b>📱 Second Hand</b><small>${esc(formatDateTime(x))}</small><span>${esc(`${x.brand||""} ${x.model||x.device||""}`)} • IMEI ${esc(x.imei||"—")} • Profit ₹${Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))).toLocaleString("en-IN")}</span></article>`));acc.forEach(x=>rows.push(`<article class="history-row"><b>🎧 Accessories</b><small>${esc(formatDateTime(x))}</small><span>${esc(x.name||"")} • SN ${esc(x.sn||"—")} • Profit ₹${Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))).toLocaleString("en-IN")}</span></article>`));
-    $("customerDetailBody").innerHTML=`<div class="detail-grid">${detailItem("Customer",title)}${detailItem("Phone",p||finance[0]?.phone||repair[0]?.phone||second[0]?.phone||acc[0]?.customerPhone||"—")}${detailItem("Finance Records",finance.length)}${detailItem("Repairing Records",repair.length)}${detailItem("Second Hand Records",second.length)}${detailItem("Accessories Records",acc.length)}</div><div class="history-list">${rows.join("")||'<div class="empty">इस customer का कोई history record नहीं मिला.</div>'}</div>`;$("customerDetailModal")?.classList.remove("hidden");
+    const editable=!!primary && canEditRecord(primary);
+    if(editBtn){
+        editBtn.disabled=!editable;
+        editBtn.title=primary?(
+            editable?`Edit ${primary.__source} record (24-hour window active)`:editLockMessage(primary)
+        ):"No customer record found";
+        editBtn.textContent=editable?"EDIT CUSTOMER":"EDIT LOCKED";
+    }
+    if(deleteBtn){
+        deleteBtn.disabled=!primary;
+        deleteBtn.title=primary?"Delete the latest customer record":"No customer record found";
+        deleteBtn.textContent="DELETE CUSTOMER";
+    }
+
+    const rows=[];
+    finance.forEach(x=>rows.push(`<article class="history-row"><b>💳 Finance / Phone</b><small>${esc(formatDateTime(x))}</small><span>${esc(`${x.brand||""} ${x.model||""}`)} • IMEI ${esc(x.imei||"—")} • ₹${Number(x.phoneAmount||0).toLocaleString("en-IN")}</span></article>`));
+    repair.forEach(x=>rows.push(`<article class="history-row"><b>🛠 Repairing</b><small>${esc(formatDateTime(x))}</small><span>${esc(x.device||"")} • ${esc(x.problem||"")} • Total ₹${Number(x.total ?? x.payment ?? 0).toLocaleString("en-IN")} • Parts ₹${Number(x.partsPrice||0).toLocaleString("en-IN")} • Profit ₹${Number(x.profit??(Number(x.total ?? x.payment ?? 0)-Number(x.partsPrice||0))).toLocaleString("en-IN")}</span></article>`));
+    second.forEach(x=>rows.push(`<article class="history-row"><b>📱 Second Hand</b><small>${esc(formatDateTime(x))}</small><span>${esc(`${x.brand||""} ${x.model||x.device||""}`)} • IMEI ${esc(x.imei||"—")} • Profit ₹${Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))).toLocaleString("en-IN")}</span></article>`));
+    acc.forEach(x=>rows.push(`<article class="history-row"><b>🎧 Accessories</b><small>${esc(formatDateTime(x))}</small><span>${esc(x.name||"")} • SN ${esc(x.sn||"—")} • Profit ₹${Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))).toLocaleString("en-IN")}</span></article>`));
+
+    const status=primary
+        ? (editable
+            ? `<div class="edit-window-note">✏️ Edit available for 24 hours after this record was added.</div>`
+            : `<div class="edit-window-note locked">🔒 ${esc(editLockMessage(primary))}</div>`)
+        : "";
+
+    $("customerDetailBody").innerHTML=`<div class="detail-grid">${detailItem("Customer",title)}${detailItem("Phone",String(phone||"").replace(/\D/g,"")||finance[0]?.phone||repair[0]?.phone||second[0]?.phone||acc[0]?.customerPhone||"—")}${detailItem("Finance Records",finance.length)}${detailItem("Repairing Records",repair.length)}${detailItem("Second Hand Records",second.length)}${detailItem("Accessories Records",acc.length)}</div>${status}<div class="history-list">${rows.join("")||'<div class="empty">इस customer का कोई history record नहीं मिला.</div>'}</div>`;
+    $("customerDetailModal")?.classList.remove("hidden");
 }
 
 function subscribeRepairing(){
@@ -1908,46 +2121,49 @@ function renderRepairing(){
 async function saveRepair(e){
     e.preventDefault();
     if(enforceWriteLock("repairMessage"))return;
+    const editId=$("repairForm").dataset.editId||"";
+    const existing=editId?repairing.find(x=>x.id===editId):null;
+    if(editId && (!existing || !canEditRecord(existing))){msg("repairMessage",editLockMessage(existing));return;}
+
     const ids=["repairCustomerName","repairPhone","repairDevice","repairProblem","repairBy","repairTotal","repairPartsPrice"];
     for(const id of ids)if(!val(id)){ $(id)?.focus();msg("repairMessage","सभी fields भरना जरूरी है.");return }
     const phone=val("repairPhone").replace(/\D/g,"");
     if(!/^\d{10}$/.test(phone)){msg("repairMessage","10 digit customer phone number डालें.");return}
-
     const total=Number(val("repairTotal")||0);
     const partsPrice=Number(val("repairPartsPrice")||0);
     const profit=total-partsPrice;
-
-    const saveBtn = $("repairForm")?.querySelector("button[type='submit']");
-    if(saveBtn) saveBtn.disabled=true;
+    const saveBtn=$("repairForm")?.querySelector("button[type='submit']");
+    if(saveBtn)saveBtn.disabled=true;
 
     try{
-        const repairRef=await addDoc(collection(db,REPAIR_COL),{
-            entryDate:val("repairEntryDate") || todayISO(),
+        const data={
+            entryDate:val("repairEntryDate")||todayISO(),
             customerName:val("repairCustomerName"),
-            phone,
-            device:val("repairDevice"),
-            problem:val("repairProblem"),
-            repairBy:val("repairBy"),
-            total,
-            partsPrice,
-            profit,
-            createdAt:serverTimestamp(),
-            createdBy:user?.uid||null
-        });
-        await audit("repairing_add",{section:"Kabir Repairing Data",customerId:repairRef.id,customerName:val("repairCustomerName"),description:`Repairing added: ${val("repairProblem")||"Problem"}`,extra:{phone,device:val("repairDevice"),problem:val("repairProblem"),total,partsPrice,profit}});
-
+            phone,device:val("repairDevice"),problem:val("repairProblem"),repairBy:val("repairBy"),
+            total,partsPrice,profit
+        };
+        if(editId){
+            await updateDoc(doc(db,REPAIR_COL,editId),data);
+            await audit("customer_edit",{section:"Kabir Repairing Data",customerId:editId,customerName:data.customerName,description:`Repairing customer ${data.customerName||editId} edited`});
+        }else{
+            const repairRef=await addDoc(collection(db,REPAIR_COL),{...data,createdAt:serverTimestamp(),createdBy:user?.uid||null});
+            await audit("repairing_add",{section:"Kabir Repairing Data",customerId:repairRef.id,customerName:data.customerName,description:`Repairing added: ${data.problem||"Problem"}`,extra:{phone,device:data.device,problem:data.problem,total,partsPrice,profit}});
+        }
         $("repairForm").reset();
+        delete $("repairForm").dataset.editId;
         if($("repairEntryDate"))$("repairEntryDate").value=todayISO();
+        if(saveBtn)saveBtn.textContent="SAVE REPAIRING";
         updateRepairProfit();
         msg("repairMessage","");
-        showSuccessToast("Successfully Saved","Repairing data saved successfully");
+        showSuccessToast(editId?"Updated":"Successfully Saved",editId?"Repairing data updated successfully":"Repairing data saved successfully");
     }catch(e){
         console.error(e);
         msg("repairMessage",e?.message||"Repairing save नहीं हुआ.");
     }finally{
-        if(saveBtn) saveBtn.disabled=false;
+        if(saveBtn)saveBtn.disabled=false;
     }
 }
+
 function loadScript(src){return new Promise((resolve,reject)=>{const s=document.createElement("script");s.src=src;s.onload=resolve;s.onerror=reject;document.head.appendChild(s)})}
 async function exportXlsx(rows,filename,sheet){
     try{
