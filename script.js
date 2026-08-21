@@ -2140,86 +2140,25 @@ function runPdfWithSelectedDate(section){
     const from=$("pdfFromDate")?.value||"",to=$("pdfToDate")?.value||"";
     buildSelectedPdf(section,from,to);
 }
-function normalizeText(x){return String(x??"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^\p{L}\p{N}\u20b9.]+/gu," ").replace(/\s+/g," ").trim();}
+function normalizeText(x){return String(x||"").toLowerCase().replace(/[^\p{L}\p{N}]+/gu," ").trim();}
 function allDataRows(){return [
  ...customers.map(x=>({...x,__section:"Finance"})),
  ...repairing.map(x=>({...x,__section:"Repairing"})),
  ...secondHand.map(x=>({...x,__section:"Second Hand"})),
  ...accessories.map(x=>({...x,__section:"Accessories"}))
 ];}
-function smartAnswerLanguage(q){const n=normalizeText(q);if(/[\u0900-\u097f]/.test(q))return "hi";if(/\b(kya|kitne|kitni|kitna|kaun|dikhao|batao|hai|hain|aaj|kal|naam|customer|data|profit|paisa|phone)\b/i.test(n))return "hinglish";return "en";}
-function aiDateOf(x){return x?.createdAt?.toDate?.()||((x?.createdAt instanceof Date)?x.createdAt:null)||(x?.clientTime?new Date(x.clientTime):null)||(x?.date?new Date(x.date):null)||(x?.createdDate?new Date(x.createdDate):null);}
-function aiIsToday(x){const d=aiDateOf(x),n=new Date();return !!d&&d.getFullYear()===n.getFullYear()&&d.getMonth()===n.getMonth()&&d.getDate()===n.getDate();}
-function aiIsYesterday(x){const d=aiDateOf(x),n=new Date();n.setHours(0,0,0,0);n.setDate(n.getDate()-1);return !!d&&d>=n&&d<new Date(n.getTime()+86400000);}
-function aiIsThisMonth(x){const d=aiDateOf(x),n=new Date();return !!d&&d.getFullYear()===n.getFullYear()&&d.getMonth()===n.getMonth();}
-function aiIsThisWeek(x){const d=aiDateOf(x);if(!d)return false;const n=new Date();const day=n.getDay()||7;const start=new Date(n);start.setHours(0,0,0,0);start.setDate(n.getDate()-day+1);return d>=start&&d<=new Date();}
-function aiMoney(x){const keys=["profit","phoneAmount","downPayment","emiAmount","total","payment","partsPrice","price","salePrice","purchasePrice","amount","saleAmount"];return keys.reduce((o,k)=>{if(o[k]!==undefined)return o;return o},{}),0;}
-function aiNumber(x,...keys){for(const k of keys){const v=Number(x?.[k]);if(Number.isFinite(v))return v;}return 0;}
-function aiSectionRows(rows,section){const s=normalizeText(section);if(!s)return rows;return rows.filter(x=>normalizeText(x.__section).includes(s));}
-function aiRowText(x){return normalizeText(Object.entries(x||{}).filter(([k])=>!k.startsWith("__")).map(([k,v])=>`${k} ${v?.toDate?v.toDate().toLocaleString("en-IN"):v??""}`).join(" "));}
-function aiFilterRows(rows,q){
- const n=normalizeText(q);let out=rows;
- if(/\b(finance|financed|emi|down payment|bajaj|hdb|tvs credit|home credit|idfc|tata capital|shriram|mahindra finance)\b/i.test(n))out=aiSectionRows(out,"Finance");
- if(/\b(repair|repairing|repaired|repairing wale|रिपेयर|मरम्मत)\b/i.test(q))out=aiSectionRows(out,"Repairing");
- if(/\b(second hand|secondhand|used phone|used mobile|पुराना फोन)\b/i.test(n))out=aiSectionRows(out,"Second Hand");
- if(/\b(accessor|accessories|charger|cable|cover|earbuds|सामान)\b/i.test(n))out=aiSectionRows(out,"Accessories");
- if(/\b(aaj|today|आज)\b/i.test(n))out=out.filter(aiIsToday);
- else if(/\b(yesterday|kal|कल)\b/i.test(n))out=out.filter(aiIsYesterday);
- else if(/\b(this week|is hafte|iss hafte|इस हफ्ते)\b/i.test(n))out=out.filter(aiIsThisWeek);
- else if(/\b(this month|is mahine|iss mahine|इस महीने)\b/i.test(n))out=out.filter(aiIsThisMonth);
- const phone=(n.match(/\b\d{10}\b/)||[])[0];if(phone)out=out.filter(x=>aiRowText(x).includes(phone));
- const imei=(n.match(/\b\d{15}\b/)||[])[0];if(imei)out=out.filter(x=>aiRowText(x).includes(imei));
- const code=(n.match(/\bkm\s*\d{4,}\b/i)||[])[0];if(code)out=out.filter(x=>normalizeText(x.customerCode).replace(/\s/g,"")===code.replace(/\s/g,"").toLowerCase());
- return out;
-}
-function aiProfit(x){
- if(Number.isFinite(Number(x?.profit)))return Number(x.profit);
- if(x?.__section==="Repairing")return aiNumber(x,"total","payment","amount")-aiNumber(x,"partsPrice","partPrice");
- if(x?.__section==="Second Hand")return aiNumber(x,"salePrice","saleAmount")-aiNumber(x,"price","purchasePrice");
- if(x?.__section==="Accessories")return aiNumber(x,"salePrice","saleAmount")-aiNumber(x,"price","purchasePrice");
- return 0;
-}
-function aiRenderRows(rows){return rows.slice(0,100).map(x=>`<article class="result"><div class="result-top"><div><div class="result-name">${esc(x.customerName||x.name||x.accessoryName||"Record")}</div><div class="result-meta">${esc(x.__section||"")} • ${esc(x.phone||x.customerPhone||"")} • ${esc(formatDateTime(x))}</div></div></div><div class="result-grid">${item("Device",x.device||[x.brand,x.model].filter(Boolean).join(" ")||x.category||"—")}${item("IMEI / SN",x.imei||x.sn||"—")}${item("Amount",x.phoneAmount!=null?`₹${Number(x.phoneAmount).toLocaleString("en-IN")`:x.total!=null?`₹${Number(x.total).toLocaleString("en-IN")`:x.salePrice!=null?`₹${Number(x.salePrice).toLocaleString("en-IN")`:x.quantity!=null?String(x.quantity):"—")}${item("Finance / Problem",x.financeCompany||x.problem||x.condition||"—")}</div></article>`).join("");}
-function aiHelpHtml(){return [
-"आज कितने customer add हुए?","इस महीने का total profit कितना है?","Aman का पूरा record दिखाओ","Bajaj Finance के कितने customer हैं?","किसकी EMI सबसे ज्यादा है?","आज की repairing बताओ","Pending repairing दिखाओ","Second hand में iPhone कितने हैं?","सबसे ज्यादा profit वाला phone कौन सा है?","Accessories में charger का stock कितना है?","9876543210 का record दिखाओ","KM1234 का पूरा data बताओ","इस हफ्ते कितने records add हुए?","किस brand के सबसे ज्यादा phones हैं?","आज किस user ने सबसे ज्यादा काम किया?","Recently deleted में क्या है?","पूरा finance data दिखाओ","सभी records दिखाओ"
-].map(q=>`<button type="button" data-ai-question="${esc(q)}">${esc(q)}</button>`).join("");}
+function smartAnswerLanguage(q){const n=normalizeText(q);if(/[\u0900-\u097f]/.test(q))return "hi";if(/\b(kya|kitne|kaun|dikhao|batao|hai|hain|aaj|kal|naam|customer|data)\b/i.test(n))return "hinglish";return "en";}
 function smartSearch(){
- const q=val("universalSearchInput"),a=$("smartSearchAnswer"),r=$("smartSearchResults");if(!a||!r)return;
- const n=normalizeText(q);if(!n){a.innerHTML='<div class="empty">AI Search से अपने Kabir Data के बारे में कुछ भी पूछें। Hindi, English या Hinglish में लिखें या 🎙️ दबाकर बोलें।</div>';r.innerHTML="";return;}
- const lang=smartAnswerLanguage(q),rows=allDataRows();let filtered=aiFilterRows(rows,q),answer="";
- const total=customers.length,repairs=repairing.length,second=secondHand.length,acc=accessories.length;
- const countMode=/(total|count|how many|kitne|kitni|kitna|कितने|कितनी|कितना|कितने हैं|कितना है)/i.test(n);
- const todayMode=/\b(today|aaj|आज)\b/i.test(n),monthMode=/\b(this month|is mahine|iss mahine|इस महीने)\b/i.test(n),weekMode=/\b(this week|is hafte|iss hafte|इस हफ्ते)\b/i.test(n);
- if(/\b(show all|all records|sabhi records|sab data|पूरा data|सभी records|सब दिखाओ)\b/i.test(n))answer=lang==="hi"?`कुल ${rows.length} records मिले।`:lang==="hinglish"?`Total ${rows.length} records mile.`:`I found ${rows.length} records.`;
- else if(countMode&&/\b(customer|customers|ग्राहक)\b/i.test(n)&&!todayMode&&!monthMode&&!weekMode)answer=lang==="hi"?`कुल ${total} customer हैं।`:lang==="hinglish"?`Total ${total} customers hain.`:`There are ${total} customers.`;
- else if(countMode&&/\b(repair|repairing|रिपेयर|मरम्मत)\b/i.test(n)&&!todayMode&&!monthMode&&!weekMode)answer=`Repairing में ${repairs} records हैं।`;
- else if(countMode&&/\b(second hand|secondhand|used phone|पुराना फोन)\b/i.test(n)&&!todayMode&&!monthMode&&!weekMode)answer=`Second Hand में ${second} records हैं।`;
- else if(countMode&&/\b(accessor|accessories|charger|cable|cover|earbuds)\b/i.test(n)&&!todayMode&&!monthMode&&!weekMode)answer=`Accessories में ${acc} records हैं।`;
- else if(todayMode||monthMode||weekMode){answer=lang==="hi"?`${filtered.length} matching records मिले।`:lang==="hinglish"?`${filtered.length} matching records mile.`:`${filtered.length} matching records found.`;}
- else if(/\b(profit|profitability|munafa|मुनाफा|कमाई)\b/i.test(n)){const set=filtered.length?filtered:rows;const prof=set.reduce((s,x)=>s+aiProfit(x),0);answer=lang==="hi"?`इस search के अनुसार ज्ञात profit ₹${prof.toLocaleString("en-IN")} है।`:lang==="hinglish"?`Is search ke hisaab se known profit ₹${prof.toLocaleString("en-IN")} hai.`:`Known profit for this search is ₹${prof.toLocaleString("en-IN")}.`;}
- else if(/\b(highest|maximum|max|sabse zyada|सबसे ज्यादा|highest profit|सबसे अधिक)\b/i.test(n)&&/(profit|munafa|मुनाफा|emi|amount|price|stock)/i.test(n)){const key=/emi/i.test(n)?"emiAmount":/stock/i.test(n)?"quantity":/amount|price/i.test(n)?"phoneAmount":"__profit";const set=filtered.length?filtered:rows;const best=set.reduce((a,b)=>{const av=key==="__profit"?aiProfit(a):aiNumber(a,key),bv=key==="__profit"?aiProfit(b):aiNumber(b,key);return bv>av?b:a;},set[0]);if(best){const value=key==="__profit"?aiProfit(best):aiNumber(best,key);answer=`सबसे अधिक value वाला record: ${best.customerName||best.name||best.model||"Record"} — ${key==="__profit"?"₹"+value.toLocaleString("en-IN"):value.toLocaleString("en-IN")}.`;filtered=[best];}else answer="Matching record नहीं मिला।";}
- else if(/\b(lowest|minimum|min|sabse kam|सबसे कम|कम)\b/i.test(n)&&/(profit|munafa|emi|amount|price|stock)/i.test(n)){const key=/emi/i.test(n)?"emiAmount":/stock/i.test(n)?"quantity":"__profit";const set=filtered.length?filtered:rows;const best=set.reduce((a,b)=>{const av=key==="__profit"?aiProfit(a):aiNumber(a,key),bv=key==="__profit"?aiProfit(b):aiNumber(b,key);return bv<av?b:a;},set[0]);if(best){const value=key==="__profit"?aiProfit(best):aiNumber(best,key);answer=`सबसे कम value वाला record: ${best.customerName||best.name||best.model||"Record"} — ${key==="__profit"?"₹"+value.toLocaleString("en-IN"):value.toLocaleString("en-IN")}.`;filtered=[best];}}
- else if(/\b(finance|bajaj|hdb|tvs|home credit|idfc|tata capital|shriram|mahindra|emi|down payment)\b/i.test(n)){answer=`Finance से जुड़े ${filtered.length} records मिले।`;}
- else if(/\b(pending|बाकी|बाकी है|due|unpaid|remaining)\b/i.test(n)){const set=filtered.filter(x=>{const t=normalizeText([x.status,x.paymentStatus,x.payment,x.pending,x.due,x.billStatus].join(" "));return /pending|due|unpaid|remaining|बाकी/.test(t)||Number(x.pendingAmount)>0||Number(x.dueAmount)>0;});filtered=set;answer=`Pending/Due से जुड़े ${set.length} records मिले।`;}
- else if(/\b(brand|model|phone|mobile|iphone|samsung|oneplus|vivo|oppo|realme|xiaomi|redmi|motorola|google|nothing|poco)\b/i.test(n)){answer=`${filtered.length} matching phone/data records मिले।`;}
- else {answer=filtered.length?(lang==="hi"?`${filtered.length} matching records मिले।`:lang==="hinglish"?`${filtered.length} matching records mile.`:`Found ${filtered.length} matching records.`):(lang==="hi"?"कोई matching record नहीं मिला।":"No matching record found. Try asking with a name, phone, IMEI, code, date, finance company, repair problem, model or stock item.");}
- a.innerHTML=`<div class="smart-answer-text">${esc(answer)}</div><div class="ai-command-note">AI ने आपके सवाल को database fields, date, section और numbers के आधार पर समझा है।</div>`;
- r.innerHTML=aiRenderRows(filtered);
-}
-function setupAiVoice(){
- const btn=$("aiVoiceButton"),input=$("universalSearchInput"),status=$("aiVoiceStatus");if(!btn||!input)return;
- const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){btn.title="Voice Search browser में उपलब्ध नहीं है";btn.onclick=()=>{if(status)status.textContent="इस browser में voice search available नहीं है."};return;}
- const rec=new SR();rec.lang="hi-IN";rec.interimResults=false;rec.maxAlternatives=1;
- rec.onstart=()=>{btn.classList.add("listening");if(status)status.textContent="सुन रहा हूँ…"};
- rec.onend=()=>{btn.classList.remove("listening");if(status)status.textContent="AI Search ready"};
- rec.onerror=()=>{btn.classList.remove("listening");if(status)status.textContent="Voice input नहीं मिला, फिर कोशिश करें."};
- rec.onresult=e=>{input.value=e.results[0][0].transcript||"";smartSearch();};
- btn.onclick=()=>{try{rec.start()}catch(_){} };
-}
-function setupAiHelp(){
- const help=$("aiHelpButton"),box=$("aiQuestionSuggestions"),input=$("universalSearchInput");if(!help||!box)return;
- help.onclick=()=>{box.classList.toggle("hidden");if(!box.innerHTML)box.innerHTML=aiHelpHtml();};
- box.addEventListener("click",e=>{const b=e.target.closest("[data-ai-question]");if(!b)return;input.value=b.dataset.aiQuestion;box.classList.add("hidden");smartSearch();input.focus();});
+ const q=val("universalSearchInput");const a=$("smartSearchAnswer"),r=$("smartSearchResults");if(!a||!r)return;const n=normalizeText(q);if(!n){a.innerHTML='<div class="empty">पूछें: “आज कितने customer हैं?”, “Aman ka phone dikhao”, “show repairing data”, “profit कितना है?”</div>';r.innerHTML="";return;}
+ const lang=smartAnswerLanguage(q), rows=allDataRows();let answer="", filtered=[];
+ const total=customers.length, repairs=repairing.length, second=secondHand.length, acc=accessories.length;
+ if(/(total|kitne|how many|count|कितने|कितनी|कितना).*(customer|customers|ग्राहक)/i.test(q)) answer=lang==="hi"?`कुल ${total} customer हैं।`:lang==="hinglish"?`Total ${total} customers hain.`:`There are ${total} customers in the database.`;
+ else if(/(repair|repairing|रिपेयर)/i.test(q)&&/(total|kitne|count|कितने)/i.test(q)) answer=lang==="hi"?`Repairing में ${repairs} records हैं।`:lang==="hinglish"?`Repairing mein ${repairs} records hain.`:`There are ${repairs} repairing records.`;
+ else if(/(second|second hand)/i.test(q)&&/(total|kitne|count|कितने)/i.test(q)) answer=`Second Hand mein ${second} records hain.`;
+ else if(/(accessor|accessories)/i.test(q)&&/(total|kitne|count|कितने)/i.test(q)) answer=`Accessories mein ${acc} records hain.`;
+ else if(/(profit|munafa|मुनाफा)/i.test(q)){const prof=repairing.reduce((s,x)=>s+Number(x.profit??(Number(x.total ?? x.payment ?? 0)-Number(x.partsPrice||0))),0)+secondHand.reduce((s,x)=>s+Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))),0)+accessories.reduce((s,x)=>s+Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))),0);answer=lang==="hi"?`कुल ज्ञात profit ₹${prof.toLocaleString("en-IN")} है।`:`Total known profit is ₹${prof.toLocaleString("en-IN")}.`;}
+ else {filtered=rows.filter(x=>normalizeText([x.customerName,x.customerCode,x.phone,x.customerPhone,x.imei,x.brand,x.model,x.device,x.problem,x.name,x.category,x.sn,x.financeCompany,x.__section,formatDateTime(x)].join(" ")).includes(n));answer=filtered.length?(lang==="hi"?`${filtered.length} matching records मिले।`:lang==="hinglish"?`${filtered.length} matching records mile.`:`Found ${filtered.length} matching records.`):(lang==="hi"?"कोई matching record नहीं मिला।":"No matching record found.");}
+ a.innerHTML=`<div class="smart-answer-text">${esc(answer)}</div>`;r.innerHTML=filtered.slice(0,50).map(x=>`<article class="result"><div class="result-name">${esc(x.customerName||x.name||"Record")}</div><div class="result-meta">${esc(x.__section||"")} • ${esc(x.phone||x.customerPhone||"")} • ${esc(formatDateTime(x))}</div><div class="result-grid">${item("Device",x.device||`${x.brand||""} ${x.model||""}`)}${item("IMEI / SN",x.imei||x.sn||"—")}${item("Amount",x.phoneAmount!=null?`₹${Number(x.phoneAmount).toLocaleString("en-IN")}`:x.total!=null?`₹${Number(x.total).toLocaleString("en-IN")}`:x.salePrice!=null?`₹${Number(x.salePrice).toLocaleString("en-IN")}`:"—")}${item("Customer",x.customerName||x.name||"—")}</div></article>`).join("");
 }
 
 function applyTheme(theme){
@@ -2266,8 +2205,6 @@ function featureNav(){
     $("homeSearchButton")?.addEventListener("click",()=>{show("smartSearchSection");$("universalSearchInput")?.focus();smartSearch();audit("customer_search",{section:"All Data",description:"Smart database search opened"});});
     $("recentDeletedButton")?.addEventListener("click",()=>{show("recentDeletedSection");renderRecentlyDeleted();});
     $("universalSearchInput")?.addEventListener("input",smartSearch);
-    setupAiVoice();
-    setupAiHelp();
     $("closePdfSelectButton")?.addEventListener("click",()=>$("pdfSelectModal")?.classList.add("hidden"));
     $("pdfChoices")?.addEventListener("click",e=>{const b=e.target.closest("[data-pdf-section]");if(b)runPdfWithSelectedDate(b.dataset.pdfSection)});
 }
