@@ -6,8 +6,10 @@
 <main id="appScreen" class="admin app hidden">
 <header class="glass topbar"><div><div class="eyebrow">KABIR MOBILE</div><h2>Admin Settings</h2></div><a class="round" href="index.html">‹</a></header>
 <section id="adminHomePage" data-admin-page class="glass panel"><div class="section-head"><div><div class="eyebrow">SECURITY</div><h2>Admin Control</h2></div></div>
-<button id="pinSettingsButton" class="glass module-card admin-wide-button" type="button"><span class="module-icon">🔐</span><span><b>PIN SETTINGS</b><small>Tap करके PIN change करें</small></span><em>›</em></button></section>
+<button id="pinSettingsButton" class="glass module-card admin-wide-button" type="button"><span class="module-icon">🔐</span><span><b>PIN SETTINGS</b><small>Tap करके PIN change करें</small></span><em>›</em></button>
+</section>
 <section id="pinPage" data-admin-page class="glass panel hidden admin-page"><div class="section-head"><div><div class="eyebrow">SECURITY</div><h2>PIN Settings</h2></div><button class="close" data-admin-back="adminHomePage">×</button></div><p class="muted">Main website और Admin Panel दोनों में यही shared PIN काम करेगा.</p><form id="changePinForm"><label>Current PIN<input id="currentPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></label><label>New PIN<input id="newPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></label><label>Confirm New PIN<input id="confirmPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></label><button class="save" type="submit">SAVE NEW PIN</button><p id="pinSettingsMessage" class="message"></p></form></section>
+
 <footer>Copyright © 2026 Kabir Data powered by AMAN</footer>
 </main>
 <script type="module" src="script.js"></script></body></html>
