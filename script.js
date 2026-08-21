@@ -2923,11 +2923,12 @@ function renderInventoryStock(){
     rows=rows.filter(x=>!q||[x.brand,x.model,x.imei,x.ram,x.storage,x.colour,x.partyName,x.partyPhone,x.customerName,x.customerPhone,x.conditionType,x.status].join(" ").toLowerCase().includes(q));
     box.innerHTML=rows.length?rows.map(x=>{
         const sold=x.status==="sold";
-        const actions=sold?"":`<div class="inventory-stock-actions"><button type="button" class="inventory-stock-sell-btn" data-stock-sell="${esc(x.id)}">SELL</button><button type="button" class="inventory-stock-delete-btn" data-stock-delete="${esc(x.id)}">DELETE</button></div>`;
+        const isUsed=String(x.conditionType||x.phoneType||"used").toLowerCase()==="used"; const actions=sold?(isUsed?`<div class="inventory-stock-actions"><button type="button" class="inventory-stock-restock-btn" data-stock-restock="${esc(x.id)}">RESTOCK</button></div>`:""):`<div class="inventory-stock-actions"><button type="button" class="inventory-stock-sell-btn" data-stock-sell="${esc(x.id)}">SELL</button><button type="button" class="inventory-stock-delete-btn" data-stock-delete="${esc(x.id)}">DELETE</button></div>`;
         return `<article class="result inventory-stock-card"><div class="result-top"><div><div class="result-name">${esc(`${x.brand||""} ${x.model||"Phone"}`.trim())}</div><div class="result-meta">${esc(String(x.conditionType||x.phoneType||"Used").toUpperCase())} • ${sold?"SOLD":"AVAILABLE"}</div></div><span class="work-log-tag">${sold?"SOLD":"SELL"}</span></div><div class="result-grid">${item("IMEI",x.imei||"—")}${item("RAM / Storage",`${x.ram||"—"} / ${x.storage||"—"}`)}${item("Colour",x.colour||"—")}${item("Customer",x.customerName||x.partyName||"—")}${item("Mobile",x.customerPhone||x.partyPhone||"—")}${item("Purchase",invMoney(x.purchasePrice))}${item("Sale",x.salePrice?invMoney(x.salePrice):"—")}${item("Margin",x.salePrice?invMoney(Number(x.salePrice)-Number(x.purchasePrice||0)):"—")}</div>${actions}</article>`;
     }).join(""):"<div class=\"empty\">No inventory phones found.</div>";
     box.querySelectorAll("[data-stock-sell]").forEach(b=>b.addEventListener("click",()=>inventoryOpenSellForPhone(b.dataset.stockSell)));
     box.querySelectorAll("[data-stock-delete]").forEach(b=>b.addEventListener("click",()=>deleteInventoryPhone(b.dataset.stockDelete)));
+    box.querySelectorAll("[data-stock-restock]").forEach(b=>b.addEventListener("click",()=>restockInventoryPhone(b.dataset.stockRestock)));
 }
 async function deleteInventoryPhone(id){
     if(enforceWriteLock())return;
@@ -3024,6 +3025,55 @@ function inventorySellPreview(){
     if(x&&$("invSellPrice"))$("invSellPrice").value=x.salePrice||x.sellingPrice||x.purchasePrice||"";
 }
 function parseInventoryRamStorage(v){const parts=String(v||"").split("/");return {ram:(parts[0]||"").trim(),storage:(parts.slice(1).join("/")||"").trim()};}
+function inventoryDateKey(dateLike){
+    const d=dateLike instanceof Date?new Date(dateLike):new Date(dateLike||Date.now());
+    if(Number.isNaN(d.getTime()))return todayISO().replace(/-/g,"/");
+    const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,"0"),day=String(d.getDate()).padStart(2,"0");
+    return `${y}/${m}/${day}`;
+}
+function nextInventoryInvoiceNo(dateLike){
+    const key=inventoryDateKey(dateLike);
+    let max=0;
+    for(const x of inventoryInvoices){
+        if(x.type!=="sale")continue;
+        const m=String(x.invoiceNo||"").match(/^INV-(\d{4}\/\d{2}\/\d{2})-(\d{2,})$/);
+        if(m&&m[1]===key)max=Math.max(max,Number(m[2])||0);
+        else {
+            const d=invDateValue(x);
+            if(inventoryDateKey(d)===key){
+                const old=String(x.invoiceNo||"").match(/-(\d+)$/);
+                if(old)max=Math.max(max,Number(old[1])||0);
+            }
+        }
+    }
+    return `INV-${key}-${String(max+1).padStart(2,"0")}`;
+}
+function nextInventorySerial(){
+    let max=0;
+    for(const x of inventoryInvoices){
+        for(const it of (x.items||[])){
+            const m=String(it.sn||"").match(/^KM(\d+)$/i);
+            if(m)max=Math.max(max,Number(m[1])||0);
+        }
+    }
+    return `KM${String(max+1).padStart(3,"0")}`;
+}
+async function restockInventoryPhone(id){
+    if(enforceWriteLock())return;
+    const phone=inventoryPhones.find(x=>x.id===id);
+    if(!phone||phone.status!=="sold"||String(phone.conditionType||phone.phoneType||"used").toLowerCase()!=="used")return;
+    const name=`${phone.brand||""} ${phone.model||"Phone"}`.trim();
+    if(!confirm(`\"${name}\" को Restock करें?\nयह phone SOLD से वापस SELL/AVAILABLE में आ जाएगा.`))return;
+    try{
+        await updateDoc(doc(db,INVENTORY_PHONE_COL,id),{status:"in_stock",salePrice:0,soldToPartyId:null,soldToPartyName:null,soldToPartyPhone:null,customerName:phone.partyName||null,customerPhone:phone.partyPhone||null,soldAt:null,updatedAt:serverTimestamp(),updatedBy:user?.uid||null,restockedAt:serverTimestamp()});
+        await audit("inventory_phone_restock",{section:"Inventory Stock",customerName:phone.customerName||phone.partyName||"",description:`Inventory phone restocked: ${name}`,extra:{imei:phone.imei||"",inventoryId:id}});
+        showSuccessToast("Restocked","Phone अब SELL / AVAILABLE stock में आ गया.");
+        inventoryStockFilter="used";inventoryStockStatus="sell";
+        document.querySelectorAll("[data-stock-condition]").forEach(x=>x.classList.toggle("active",x.dataset.stockCondition==="used"));
+        document.querySelectorAll("[data-stock-status]").forEach(x=>x.classList.toggle("active",x.dataset.stockStatus==="sell"));
+        renderInventoryStock();
+    }catch(err){console.error(err);alert(err?.message||"Restock failed.");}
+}
 async function saveInventoryPurchase(e){
     e.preventDefault();if(enforceWriteLock("inventoryTransactionMessage"))return;
     const phone=val("invPurchaseCustomerPhone").replace(/\D/g,""),rs=parseInventoryRamStorage(val("invPurchaseRamStorage"));
@@ -3032,7 +3082,7 @@ async function saveInventoryPurchase(e){
     if(!data.partyName||!/^[0-9]{10}$/.test(phone)||!data.brand||!data.model||!/^[0-9]{15}$/.test(data.imei)||purchase<0||selling<0){msg("inventoryTransactionMessage","Customer name, 10 digit mobile, brand, model, 15 digit IMEI और prices सही भरें.");return;}
     try{
         const added=await addDoc(collection(db,INVENTORY_PHONE_COL),data);
-        const invoice={invoiceNo:`INV-${new Date().toISOString().slice(0,10).replace(/-/g,"")}-${String(Date.now()).slice(-5)}`,type:"purchase",date:new Date().toISOString(),partyId:null,partyName:data.partyName,partyPhone:phone,customerName:data.customerName,customerPhone:phone,items:[{inventoryId:added.id,brand:data.brand,model:data.model,imei:data.imei,ram:data.ram,storage:data.storage,colour:data.colour,quantity:1,rate:purchase,amount:purchase,sn:""}],total:purchase,amountWords:invAmountWords(purchase),createdAt:serverTimestamp(),createdBy:user?.uid||null};
+        const invoice={invoiceNo:nextInventoryInvoiceNo(new Date()),type:"purchase",date:new Date().toISOString(),partyId:null,partyName:data.partyName,partyPhone:phone,customerName:data.customerName,customerPhone:phone,items:[{inventoryId:added.id,brand:data.brand,model:data.model,imei:data.imei,ram:data.ram,storage:data.storage,colour:data.colour,quantity:1,rate:purchase,amount:purchase,sn:""}],total:purchase,amountWords:invAmountWords(purchase),createdAt:serverTimestamp(),createdBy:user?.uid||null};
         await addDoc(collection(db,INVENTORY_INVOICE_COL),invoice);await audit("inventory_purchase",{section:"Inventory",customerName:data.partyName,description:`Phone purchased: ${data.brand} ${data.model}`,extra:{imei:data.imei,amount:purchase,customerPhone:phone,condition:data.condition}});
         showSuccessToast("Purchase Saved","Phone stock में add हो गया और invoice बन गया.");renderInventoryTransactionForm("purchase");
     }catch(err){console.error(err);msg("inventoryTransactionMessage",err?.message||"Purchase save failed.");}
@@ -3043,7 +3093,7 @@ async function saveInventorySale(e){
     if(!phone||phone.status==="sold"||!customerName||!/^[0-9]{10}$/.test(customerPhone)||sale<0){msg("inventoryTransactionMessage","Available phone, customer name, valid 10 digit mobile और sell amount सही भरें.");return;}
     try{
         await updateDoc(doc(db,INVENTORY_PHONE_COL,phone.id),{status:"sold",salePrice:sale,soldToPartyId:null,soldToPartyName:customerName,soldToPartyPhone:customerPhone,customerName,customerPhone,soldAt:serverTimestamp(),updatedBy:user?.uid||null});
-        const invoice={invoiceNo:`INV-${new Date().toISOString().slice(0,10).replace(/-/g,"")}-${String(Date.now()).slice(-5)}`,type:"sale",date:new Date(val("invSellDate")||new Date()).toISOString(),partyId:null,partyName:customerName,partyPhone:customerPhone,customerName,customerPhone,items:[{inventoryId:phone.id,brand:phone.brand,model:phone.model,imei:phone.imei,ram:phone.ram,storage:phone.storage,colour:phone.colour,quantity:1,rate:sale,amount:sale,sn:""}],total:sale,amountWords:invAmountWords(sale),createdAt:serverTimestamp(),createdBy:user?.uid||null};
+        const invoice={invoiceNo:nextInventoryInvoiceNo(val("invSellDate")||new Date()),type:"sale",date:new Date(val("invSellDate")||new Date()).toISOString(),partyId:null,partyName:customerName,partyPhone:customerPhone,customerName,customerPhone,items:[{inventoryId:phone.id,brand:phone.brand,model:phone.model,imei:phone.imei,ram:phone.ram,storage:phone.storage,colour:phone.colour,quantity:1,rate:sale,amount:sale,sn:nextInventorySerial()}],total:sale,amountWords:invAmountWords(sale),createdAt:serverTimestamp(),createdBy:user?.uid||null};
         const invRef=await addDoc(collection(db,INVENTORY_INVOICE_COL),invoice);await audit("inventory_sale",{section:"Inventory",customerName,description:`Phone sold: ${phone.brand||""} ${phone.model||""}`,extra:{imei:phone.imei,amount:sale,customerPhone}});
         showSuccessToast("Sale Saved","Stock में SOLD और Invoice में save हो गया.");
         inventoryInvoicePreviewId=invRef.id;$("inventorySellPurchaseModal")?.classList.add("hidden");renderInventoryTransactionForm("sell");openInventoryInvoicePreview(invRef.id);
@@ -3075,7 +3125,7 @@ async function editInventoryInvoice(id){
 async function deleteInventoryInvoice(id){
     const inv=inventoryInvoices.find(x=>x.id===id);if(!inv)return;
     if(!confirm(`Invoice ${inv.invoiceNo||""} को delete करें?`))return;
-    try{await deleteDoc(doc(db,INVENTORY_INVOICE_COL,id));await audit("inventory_invoice_delete",{section:"Inventory",invoiceNo:inv.invoiceNo,description:"Sale invoice deleted"});showSuccessToast("Invoice Deleted","Invoice successfully deleted.");}
+    try{await deleteWithRecycle(INVENTORY_INVOICE_COL,id,inv);await audit("inventory_invoice_delete",{section:"Inventory",invoiceNo:inv.invoiceNo,description:"Sale invoice moved to Recently Deleted"});showSuccessToast("Invoice Deleted","Invoice Recently Deleted में चला गया.");renderInventoryInvoices();}
     catch(e){console.error(e);alert(e?.message||"Invoice delete failed.");}
 }
 function openInventoryInvoicePreview(id){
