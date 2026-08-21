@@ -25,6 +25,9 @@ const SECOND_COL="secondHand";
 const ACCESSORY_COL="accessories";
 const DELETED_COL="recentlyDeleted";
 const AUDIT_COL="auditLogs";
+const INVENTORY_PHONE_COL="inventoryPhones";
+const INVENTORY_PARTY_COL="inventoryParties";
+const INVENTORY_INVOICE_COL="inventoryInvoices";
 const SETTINGS_COL="settings";
 const SETTINGS_DOC="security";
 const REMOTE_DEVICES_URL="https://cdn.jsdelivr.net/gh/bsthen/device-models/devices.json";
@@ -37,6 +40,12 @@ let secondHand=[];
 let accessories=[];
 let auditLogs=[];
 let auditListenerStarted=false;
+let inventoryPhones=[];
+let inventoryParties=[];
+let inventoryInvoices=[];
+let inventoryStockFilter="all";
+let inventoryInvoiceRange="all";
+let inventoryInvoicePreviewId=null;
 let scanStream=null;
 let scanTimer=null;
 
@@ -920,6 +929,7 @@ function nav(){
 
 
     $("customerModule")?.addEventListener("click",()=>{open("customerPage");renderAllCustomers();});
+    $("inventoryModule")?.addEventListener("click",()=>{open("inventoryPage");inventoryShowTab("inventoryHome");renderInventoryHome();});
     document.querySelectorAll("[data-page-back]").forEach(b=>b.addEventListener("click",()=>{if(b.dataset.pageBack==="homeView")show("homeView",{back:true});else open(b.dataset.pageBack);}));
     document.querySelectorAll("[data-close]").forEach(b=>b.addEventListener("click",()=>{
         const target=b.dataset.close;
@@ -2768,6 +2778,151 @@ document.addEventListener("click",e=>{
     if(close){e.preventDefault();e.stopImmediatePropagation();closeCustomerDetail();return;}
 });
 
+
+/* =========================================================
+   PHONE INVENTORY — PARTY / STOCK / INVOICE
+========================================================= */
+function invMoney(v){return `₹${Number(v||0).toLocaleString("en-IN")}`;}
+function invDateValue(x){
+    const v=x?.createdAt;
+    if(v?.toDate)return v.toDate();
+    if(v?.seconds)return new Date(v.seconds*1000);
+    if(typeof v==="string")return new Date(v);
+    if(v instanceof Date)return v;
+    return new Date(0);
+}
+function invDate(d){return d&&d.getTime()?d.toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"}):"—";}
+function invDateISO(d){const x=new Date(d);return isNaN(x)?"":x.toLocaleDateString("en-CA");}
+function invAmountWords(n){
+    n=Math.round(Number(n||0));
+    if(n===0)return "Zero Rupees";
+    const ones=["","One","Two","Three","Four","Five","Six","Seven","Eight","Nine","Ten","Eleven","Twelve","Thirteen","Fourteen","Fifteen","Sixteen","Seventeen","Eighteen","Nineteen"];
+    const tens=["","","Twenty","Thirty","Forty","Fifty","Sixty","Seventy","Eighty","Ninety"];
+    const two=x=>x<20?ones[x]:tens[Math.floor(x/10)]+(x%10?" "+ones[x%10]:"");
+    const under1000=x=>(x>=100?ones[Math.floor(x/100)]+" Hundred"+(x%100?" "+two(x%100):""):two(x));
+    let out=[];if(n>=10000000){out.push(under1000(Math.floor(n/10000000))+" Crore");n%=10000000;}if(n>=100000){out.push(under1000(Math.floor(n/100000))+" Lakh");n%=100000;}if(n>=1000){out.push(under1000(Math.floor(n/1000))+" Thousand");n%=1000;}if(n)out.push(under1000(n));return out.join(" ")+" Rupees";
+}
+function inventoryShowTab(id){
+    document.querySelectorAll("#inventoryPage > .inventory-tab").forEach(x=>x.classList.add("hidden"));
+    const el=$(id);if(el)el.classList.remove("hidden");
+    document.querySelectorAll("[data-inventory-tab]").forEach(b=>b.classList.toggle("active",b.dataset.inventoryTab===id));
+    if(id==="inventoryHome")renderInventoryHome();
+    if(id==="inventoryPartySection")renderInventoryParties();
+    if(id==="inventoryStockSection")renderInventoryStock();
+    if(id==="inventoryInvoiceSection")renderInventoryInvoices();
+}
+function subscribePhoneInventory(){
+    if(isAdminPage)return;
+    onSnapshot(collection(db,INVENTORY_PHONE_COL),snap=>{inventoryPhones=snap.docs.map(d=>({id:d.id,...d.data()}));renderInventoryHome();renderInventoryStock();},e=>console.warn("Inventory phones load:",e));
+    onSnapshot(collection(db,INVENTORY_PARTY_COL),snap=>{inventoryParties=snap.docs.map(d=>({id:d.id,...d.data()}));renderInventoryParties();renderInventoryTransactionForm();},e=>console.warn("Inventory parties load:",e));
+    onSnapshot(collection(db,INVENTORY_INVOICE_COL),snap=>{inventoryInvoices=snap.docs.map(d=>({id:d.id,...d.data()}));inventoryInvoices.sort((a,b)=>invDateValue(b)-invDateValue(a));renderInventoryInvoices();renderInventoryHome();},e=>console.warn("Inventory invoices load:",e));
+}
+function renderInventoryHome(){
+    const total=inventoryPhones.length, available=inventoryPhones.filter(x=>x.status!=="sold").length, sold=inventoryPhones.filter(x=>x.status==="sold").length;
+    const value=inventoryPhones.filter(x=>x.status!=="sold").reduce((n,x)=>n+Number(x.purchasePrice||0),0);
+    if($("invTotalPhones"))$("invTotalPhones").textContent=total;
+    if($("invAvailablePhones"))$("invAvailablePhones").textContent=available;
+    if($("invSoldPhones"))$("invSoldPhones").textContent=sold;
+    if($("invStockValue"))$("invStockValue").textContent=invMoney(value);
+    const sales=inventoryInvoices.filter(x=>x.type==="sale").reduce((n,x)=>n+Number(x.total||0),0);
+    const purchases=inventoryInvoices.filter(x=>x.type==="purchase").reduce((n,x)=>n+Number(x.total||0),0);
+    const body=$("inventoryDashboardBody");if(!body)return;
+    body.innerHTML=`<div class="inventory-summary-grid"><div><span>Phones</span><b>${total}</b></div><div><span>Available</span><b>${available}</b></div><div><span>Sold</span><b>${sold}</b></div><div><span>Parties</span><b>${inventoryParties.length}</b></div><div><span>Purchase</span><b>${invMoney(purchases)}</b></div><div><span>Sales</span><b>${invMoney(sales)}</b></div><div><span>Stock Value</span><b>${invMoney(value)}</b></div><div><span>Invoices</span><b>${inventoryInvoices.length}</b></div></div>`;
+}
+function renderInventoryParties(){
+    const box=$("inventoryPartyResults");if(!box)return;
+    const q=val("inventoryPartySearch").toLowerCase();
+    const rows=inventoryParties.filter(x=>!q||[x.name,x.phone,x.type].join(" ").toLowerCase().includes(q));
+    box.innerHTML=rows.length?rows.map(x=>`<article class="result inventory-party-result"><div class="result-top"><div><div class="result-name">${esc(x.name||"Party")}</div><div class="result-meta">${x.type==="vendor"?"Vendor":"Customer"} • ${esc(x.phone||"—")}</div></div><span class="work-log-tag">${x.type==="vendor"?"VENDOR":"CUSTOMER"}</span></div><div class="result-grid">${item("Mobile",x.phone||"—")}${item("Type",x.type==="vendor"?"Vendor":"Customer")}</div></article>`).join(""):"<div class=\"empty\">No customers / vendors found.</div>";
+}
+function renderInventoryStock(){
+    const box=$("inventoryStockResults");if(!box)return;
+    const q=val("inventoryStockSearch").toLowerCase();
+    let rows=inventoryPhones.filter(x=>inventoryStockFilter==="all"||(inventoryStockFilter==="sold"?x.status==="sold":String(x.conditionType||x.phoneType||"").toLowerCase()===inventoryStockFilter));
+    rows=rows.filter(x=>!q||[x.brand,x.model,x.imei,x.ram,x.storage,x.colour,x.partyName,x.partyPhone,x.conditionType,x.status].join(" ").toLowerCase().includes(q));
+    box.innerHTML=rows.length?rows.map(x=>`<article class="result inventory-stock-card"><div class="result-top"><div><div class="result-name">${esc(`${x.brand||""} ${x.model||"Phone"}`.trim())}</div><div class="result-meta">${esc(String(x.conditionType||x.phoneType||"Used").toUpperCase())} • ${x.status==="sold"?"SOLD":"IN STOCK"}</div></div><span class="work-log-tag">${x.status==="sold"?"SOLD":"AVAILABLE"}</span></div><div class="result-grid">${item("IMEI",x.imei||"—")}${item("RAM / Storage",`${x.ram||"—"} / ${x.storage||"—"}`)}${item("Colour",x.colour||"—")}${item("Party",x.partyName||"—")}${item("Party Mobile",x.partyPhone||"—")}${item("Purchase",invMoney(x.purchasePrice))}${item("Sale",x.salePrice?invMoney(x.salePrice):"—")}</div></article>`).join(""):"<div class=\"empty\">No inventory phones found.</div>";
+}
+function inventoryPartyOptions(type,includeBlank=true){
+    const list=inventoryParties.filter(x=>!type||x.type===type);return (includeBlank?'<option value="">Select party</option>':"")+list.map(x=>`<option value="${esc(x.id)}">${esc(x.name)} • ${esc(x.phone||"")}</option>`).join("");
+}
+function renderInventoryTransactionForm(mode){
+    const box=$("inventoryTransactionFormBox");if(!box||box.dataset.mode===mode)return;
+    box.dataset.mode=mode;
+    if(mode==="purchase"){
+        box.innerHTML=`<form id="inventoryPurchaseForm"><div class="inventory-form-title">📥 Purchase Phone</div><label>Party / Vendor<select id="invPurchaseParty" required>${inventoryPartyOptions("vendor")}</select></label><div class="combo-row"><label>Used / New<select id="invPurchaseType" required><option value="used">Used</option><option value="new">New</option></select></label><label>Brand<input id="invPurchaseBrand" required></label></div><div class="combo-row"><label>Model<input id="invPurchaseModel" required></label><label>IMEI<input id="invPurchaseImei" inputmode="numeric" maxlength="15" required></label></div><div class="combo-row"><label>RAM<input id="invPurchaseRam" placeholder="8 GB"></label><label>Storage<input id="invPurchaseStorage" placeholder="128 GB"></label></div><div class="combo-row"><label>Colour<input id="invPurchaseColour"></label><label>Purchase Price<input id="invPurchasePrice" type="number" min="0" inputmode="decimal" required></label></div><button class="save" type="submit">SAVE PURCHASE</button><p id="inventoryTransactionMessage" class="message"></p></form>`;
+        $("inventoryPurchaseForm")?.addEventListener("submit",saveInventoryPurchase);
+    }else if(mode==="sell"){
+        const available=inventoryPhones.filter(x=>x.status!=="sold");
+        box.innerHTML=`<form id="inventorySellForm"><div class="inventory-form-title">📤 Sell Phone</div><label>Select Phone<select id="invSellPhone" required><option value="">Select available phone</option>${available.map(x=>`<option value="${esc(x.id)}">${esc(`${x.brand||""} ${x.model||"Phone"}`)} • IMEI ${esc(x.imei||"—")} • ${invMoney(x.purchasePrice)}</option>`).join("")}</select></label><label>Customer<select id="invSellParty" required>${inventoryPartyOptions("customer")}</select></label><div class="combo-row"><label>Sell Price<input id="invSellPrice" type="number" min="0" inputmode="decimal" required></label><label>Invoice Date<input id="invSellDate" type="date" value="${invDateISO(new Date())}"></label></div><div id="inventorySellPhonePreview" class="inventory-selected-phone"></div><button class="save" type="submit">SAVE SALE + CREATE INVOICE</button><p id="inventoryTransactionMessage" class="message"></p></form>`;
+        $("invSellPhone")?.addEventListener("change",inventorySellPreview);
+        $("inventorySellForm")?.addEventListener("submit",saveInventorySale);
+    }
+}
+function inventorySellPreview(){const x=inventoryPhones.find(r=>r.id===val("invSellPhone"));const box=$("inventorySellPhonePreview");if(!box)return;box.innerHTML=x?`<b>${esc(`${x.brand||""} ${x.model||"Phone"}`)}</b><small>IMEI ${esc(x.imei||"—")} • ${esc(x.ram||"—")} / ${esc(x.storage||"—")} • ${esc(x.colour||"—")}</small>`:"";if(x&&$("invSellPrice")&&!$("invSellPrice").value)$("invSellPrice").value=x.salePrice||"";}
+async function saveInventoryPurchase(e){
+    e.preventDefault();if(enforceWriteLock("inventoryTransactionMessage"))return;
+    const party=inventoryParties.find(x=>x.id===val("invPurchaseParty"));
+    const data={partyId:party?.id||null,partyName:party?.name||"",partyPhone:party?.phone||"",partyType:"vendor",phoneType:val("invPurchaseType"),conditionType:val("invPurchaseType"),brand:val("invPurchaseBrand"),model:val("invPurchaseModel"),imei:val("invPurchaseImei").replace(/\D/g,""),ram:val("invPurchaseRam"),storage:val("invPurchaseStorage"),colour:val("invPurchaseColour"),purchasePrice:Number(val("invPurchasePrice")||0),salePrice:0,status:"in_stock",createdAt:serverTimestamp(),createdBy:user?.uid||null};
+    if(!party||!data.brand||!data.model||!/^(?:\d{15})$/.test(data.imei)||data.purchasePrice<0){msg("inventoryTransactionMessage","Vendor, brand, model, 15 digit IMEI और purchase price सही भरें.");return;}
+    try{const added=await addDoc(collection(db,INVENTORY_PHONE_COL),data);const invoice={invoiceNo:`INV-${new Date().toISOString().slice(0,10).replace(/-/g,"")}-${String(Date.now()).slice(-5)}`,type:"purchase",date:new Date().toISOString(),partyId:party.id,partyName:party.name,partyPhone:party.phone,items:[{inventoryId:added.id,brand:data.brand,model:data.model,imei:data.imei,ram:data.ram,storage:data.storage,colour:data.colour,quantity:1,rate:data.purchasePrice,amount:data.purchasePrice,sn:""}],total:data.purchasePrice,amountWords:invAmountWords(data.purchasePrice),createdAt:serverTimestamp(),createdBy:user?.uid||null};await addDoc(collection(db,INVENTORY_INVOICE_COL),invoice);await audit("inventory_purchase",{section:"Inventory",customerName:party.name,description:`Phone purchased: ${data.brand} ${data.model}`,extra:{imei:data.imei,amount:data.purchasePrice,partyType:"vendor"}});e.target.reset();showSuccessToast("Purchase Saved","Phone stock में add हो गया और invoice बन गया.");renderInventoryTransactionForm();}catch(err){console.error(err);msg("inventoryTransactionMessage",err?.message||"Purchase save failed.");}
+}
+async function saveInventorySale(e){
+    e.preventDefault();if(enforceWriteLock("inventoryTransactionMessage"))return;
+    const phone=inventoryPhones.find(x=>x.id===val("invSellPhone")),party=inventoryParties.find(x=>x.id===val("invSellParty"));
+    const sale=Number(val("invSellPrice")||0);if(!phone||!party||sale<0){msg("inventoryTransactionMessage","Available phone, customer और sale price चुनें.");return;}
+    try{await updateDoc(doc(db,INVENTORY_PHONE_COL,phone.id),{status:"sold",salePrice:sale,soldToPartyId:party.id,soldToPartyName:party.name,soldToPartyPhone:party.phone,soldAt:serverTimestamp(),updatedBy:user?.uid||null});const invoice={invoiceNo:`INV-${new Date().toISOString().slice(0,10).replace(/-/g,"")}-${String(Date.now()).slice(-5)}`,type:"sale",date:new Date(val("invSellDate")||new Date()).toISOString(),partyId:party.id,partyName:party.name,partyPhone:party.phone,items:[{inventoryId:phone.id,brand:phone.brand,model:phone.model,imei:phone.imei,ram:phone.ram,storage:phone.storage,colour:phone.colour,quantity:1,rate:sale,amount:sale,sn:""}],total:sale,amountWords:invAmountWords(sale),createdAt:serverTimestamp(),createdBy:user?.uid||null};await addDoc(collection(db,INVENTORY_INVOICE_COL),invoice);await audit("inventory_sale",{section:"Inventory",customerName:party.name,description:`Phone sold: ${phone.brand||""} ${phone.model||""}`,extra:{imei:phone.imei,amount:sale,partyType:"customer"}});e.target.reset();showSuccessToast("Sale Saved","Phone sold और invoice generated.");renderInventoryTransactionForm();}catch(err){console.error(err);msg("inventoryTransactionMessage",err?.message||"Sale save failed.");}
+}
+function renderInventoryInvoices(){
+    const box=$("inventoryInvoiceResults");if(!box)return;
+    const q=val("inventoryInvoiceSearch").toLowerCase();const now=new Date();now.setHours(0,0,0,0);
+    let rows=inventoryInvoices.filter(x=>{const d=invDateValue(x);const day=new Date(d);day.setHours(0,0,0,0);if(inventoryInvoiceRange==="today")return day.getTime()===now.getTime();if(inventoryInvoiceRange==="yesterday"){const y=new Date(now);y.setDate(y.getDate()-1);return day.getTime()===y.getTime();}if(inventoryInvoiceRange==="week"){const from=new Date(now);from.setDate(from.getDate()-6);return day>=from;}if(inventoryInvoiceRange==="month")return day.getMonth()===now.getMonth()&&day.getFullYear()===now.getFullYear();return true;});
+    rows=rows.filter(x=>!q||[x.invoiceNo,x.partyName,x.partyPhone,x.type,(x.items||[]).map(i=>[i.brand,i.model,i.imei].join(" ")).join(" ")].join(" ").toLowerCase().includes(q));
+    if($("inventoryInvoiceCount"))$("inventoryInvoiceCount").textContent=rows.length;
+    box.innerHTML=rows.length?rows.map(x=>{const item0=(x.items||[])[0]||{};return `<article class="inventory-invoice-card"><div class="inventory-invoice-main"><div class="inventory-invoice-device">${esc(`${item0.brand||""} ${item0.model||"Phone"}`.trim())}</div><div class="inventory-invoice-no">${esc(x.invoiceNo||"—")}</div><div class="inventory-invoice-party">👤 ${esc(x.partyName||"—")}<br>📱 ${esc(x.partyPhone||"—")}</div><b class="inventory-invoice-type">${x.type==="purchase"?"Purchase Invoice":"Sale Invoice"}</b><div class="inventory-invoice-total">${invMoney(x.total)}</div><small class="inventory-invoice-label">Bill Total Amount</small></div><div class="inventory-invoice-footer"><button type="button" class="inventory-bill-btn" data-invoice-preview="${esc(x.id)}">⬇ Bill</button><span>${invDate(invDateValue(x))}</span><button type="button" class="inventory-edit-btn" data-invoice-preview="${esc(x.id)}">Edit</button></div></article>`}).join(""):"<div class=\"empty\">No invoices found.</div>";
+    box.querySelectorAll("[data-invoice-preview]").forEach(b=>b.addEventListener("click",()=>openInventoryInvoicePreview(b.dataset.invoicePreview)));
+}
+function openInventoryInvoicePreview(id){
+    const inv=inventoryInvoices.find(x=>x.id===id);if(!inv)return;inventoryInvoicePreviewId=id;const it=(inv.items||[])[0]||{};const total=Number(inv.total||0);
+    const shopPhone="7247345495",gstin="Chhattisgarh",shopAddress="Shop no EG13 rajive plaza near old Bus stand bilaspur";
+    const terms=`(1). सेकंड हैंड मोबाइल में काउंटर छोड़ने के बाद किसी भी तरह की वारंटी - गारंटी नहीं होती है। कृपया चेक करके ले जाएं।   (2). बिका हुआ माल वापस नहीं होगा और न ही बदला जायेगा।   (3). अगर आप किसी भी सेकंड हैंड फोन को वापसी या बदली करवाते हैं तो आपका 30% से 40% रु. कट जायेगा।   (4). नए मोबाइल की वारंटी सर्विस सेंटर से ही मिलेगी।`;
+    $("inventoryInvoicePreview").innerHTML=`<div class="print-invoice" id="printableInventoryInvoice"><div class="invoice-border"><div class="invoice-head"><div><b>GSTIN : </b>${esc(gstin)}</div><div class="invoice-shop-title">Kabir mobile</div><div>${shopPhone}</div><div></div><div class="invoice-address">${esc(shopAddress)}</div></div><div class="invoice-details"><div><u>Invoice Details</u><p><b>Invoice No :</b> ${esc(inv.invoiceNo||"")}</p><p><b>Date :</b> ${invDate(invDateValue(inv))}</p></div><div><p><b>Name :</b> ${esc(inv.partyName||"")}</p><p><b>Contact :</b> ${esc(inv.partyPhone||"")}</p></div></div><table class="invoice-table"><thead><tr><th>S No.</th><th>Particulars</th><th>S.N.</th><th>Qty.</th><th>Rate</th><th>Amount</th></tr></thead><tbody><tr><td>1</td><td><b>${esc(`${it.brand||""} ${it.model||"Phone"}`.trim())}</b><br>IMEI - ${esc(it.imei||"")}<br>${esc(it.colour||"")}<br>${esc(it.storage||"")} ${it.ram?`/ ${esc(it.ram)}`:""}</td><td>${esc(it.sn||it.imei?.slice(-5)||"")}</td><td>1</td><td>${Number(it.rate||total)}</td><td>${Number(it.amount||total)}</td></tr></tbody><tfoot><tr><th colspan="3">Total</th><th>1</th><th></th><th>${Number(total)}</th></tr></tfoot></table><div class="invoice-words"><b>Invoice Amount In Words :</b> ${esc(inv.amountWords||invAmountWords(total))}</div><div class="invoice-terms"><div><b>Terms & Conditions:</b><p>${esc(terms)}</p></div><div class="invoice-sign"><b>For, Kabir mobile</b><br><br>Authorised<br>Signatory</div></div></div></div>`;
+    $("inventoryInvoicePreviewModal")?.classList.remove("hidden");
+}
+function printInventoryInvoice(){
+    const content=$("printableInventoryInvoice")?.outerHTML;if(!content)return;const w=window.open("","_blank","width=900,height=1200");if(!w){alert("Print window blocked. Browser popup allow करें.");return;}w.document.write(`<html><head><title>Kabir mobile Invoice</title><style>${inventoryPrintCss()}</style></head><body>${content}</body></html>`);w.document.close();w.focus();setTimeout(()=>w.print(),300);
+}
+async function downloadInventoryInvoicePdf(){
+    const inv=inventoryInvoices.find(x=>x.id===inventoryInvoicePreviewId);if(!inv)return;
+    try{
+        if(!window.html2canvas)await loadScript("https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js");
+        if(!window.jspdf)await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
+        const canvas=await html2canvas($("printableInventoryInvoice"),{scale:2,useCORS:true,backgroundColor:"#ffffff"});
+        const {jsPDF}=window.jspdf;const pdf=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
+        const pageW=210,pageH=297,margin=5,imgW=pageW-margin*2,imgH=canvas.height*imgW/canvas.width;
+        let srcY=0;const srcH=Math.max(1,Math.floor(canvas.height*((pageH-margin*2)/imgH)));
+        while(srcY<canvas.height){const h=Math.min(srcH,canvas.height-srcY);const pageCanvas=document.createElement("canvas");pageCanvas.width=canvas.width;pageCanvas.height=h;pageCanvas.getContext("2d").drawImage(canvas,0,srcY,canvas.width,h,0,0,canvas.width,h);if(srcY>0)pdf.addPage();pdf.addImage(pageCanvas.toDataURL("image/jpeg",.94),"JPEG",margin,margin,imgW,h*imgW/canvas.width);srcY+=h;}
+        pdf.save(`${inv.invoiceNo||"Kabir_Invoice"}.pdf`);
+    }catch(err){console.error(err);alert("Invoice PDF generate नहीं हो पाया. Print option से direct PDF save कर सकते हैं.");}
+}
+function inventoryPrintCss(){return `.print-invoice{background:#fff;color:#111;font-family:Arial,sans-serif}.invoice-border{border:1px solid #111;padding:8mm;box-sizing:border-box;min-height:280mm}.invoice-head{display:grid;grid-template-columns:1fr 1.5fr 1fr;align-items:center;border-bottom:1px solid #111;padding-bottom:5mm;font-size:12pt}.invoice-shop-title{text-align:center;font-size:24pt;font-weight:700}.invoice-head>div:nth-child(3){text-align:right}.invoice-address{grid-column:1/-1;text-align:center;font-size:12pt;margin-top:-4mm}.invoice-details{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid #111;padding:4mm 0;min-height:25mm;font-size:11pt}.invoice-details>div:last-child{text-align:left;padding-left:10mm}.invoice-details p{margin:2mm 0}.invoice-table{width:100%;border-collapse:collapse;margin-top:0;font-size:10pt}.invoice-table th,.invoice-table td{border:1px solid #111;padding:3mm;text-align:center;vertical-align:top}.invoice-table tbody td:nth-child(2){text-align:center;line-height:1.45}.invoice-table tbody tr{height:150mm}.invoice-words{padding:10mm 0 5mm;font-size:11pt}.invoice-terms{display:grid;grid-template-columns:3fr 1fr;gap:8mm;font-size:10pt;line-height:1.6}.invoice-sign{padding-top:12mm;text-align:left}@media print{body{margin:0}.invoice-border{border:1px solid #111}}`}
+function setupInventoryUI(){
+    $("inventoryPartySearch")?.addEventListener("input",renderInventoryParties);$("inventoryStockSearch")?.addEventListener("input",renderInventoryStock);$("inventoryInvoiceSearch")?.addEventListener("input",renderInventoryInvoices);
+    $("inventoryNewInvoiceButton")?.addEventListener("click",()=>{$("inventorySellPurchaseModal")?.classList.remove("hidden");renderInventoryTransactionForm("sell");});
+    $("inventoryInvoiceFilterButton")?.addEventListener("click",()=>{$("inventoryInvoiceSection")?.scrollTo?.({top:0,behavior:"smooth"});});
+    document.querySelectorAll("[data-inventory-tab]").forEach(b=>b.addEventListener("click",()=>inventoryShowTab(b.dataset.inventoryTab)));
+    document.querySelectorAll("[data-stock-filter]").forEach(b=>b.addEventListener("click",()=>{inventoryStockFilter=b.dataset.stockFilter;document.querySelectorAll("[data-stock-filter]").forEach(x=>x.classList.toggle("active",x===b));renderInventoryStock();}));
+    document.querySelectorAll("[data-invoice-range]").forEach(b=>b.addEventListener("click",()=>{inventoryInvoiceRange=b.dataset.invoiceRange;document.querySelectorAll("[data-invoice-range]").forEach(x=>x.classList.toggle("active",x===b));renderInventoryInvoices();}));
+    $("inventoryAddPartyButton")?.addEventListener("click",()=>{$("inventoryPartyModal")?.classList.remove("hidden");});
+    $("inventoryPartyForm")?.addEventListener("submit",saveInventoryParty);
+    $("inventorySellPurchaseButton")?.addEventListener("click",()=>{$("inventorySellPurchaseModal")?.classList.remove("hidden");renderInventoryTransactionForm("purchase");});
+    document.querySelectorAll("[data-inventory-mode]").forEach(b=>b.addEventListener("click",()=>renderInventoryTransactionForm(b.dataset.inventoryMode)));
+    document.querySelectorAll("[data-inventory-close]").forEach(b=>b.addEventListener("click",()=>$(b.dataset.inventoryClose)?.classList.add("hidden")));
+    $("inventoryPrintInvoiceButton")?.addEventListener("click",printInventoryInvoice);$("inventoryDownloadInvoiceButton")?.addEventListener("click",downloadInventoryInvoicePdf);
+    document.querySelectorAll("[data-inventory-dashboard]").forEach(b=>b.addEventListener("click",()=>{const title={statistics:"Statistics",performance:"Performance",stockValue:"Stock Value",overview:"Overview"}[b.dataset.inventoryDashboard]||"Overview";const body=$("inventoryDashboardBody");if(!body)return;const sales=inventoryInvoices.filter(x=>x.type==="sale").reduce((n,x)=>n+Number(x.total||0),0),purchases=inventoryInvoices.filter(x=>x.type==="purchase").reduce((n,x)=>n+Number(x.total||0),0),profit=inventoryInvoices.filter(x=>x.type==="sale").reduce((n,x)=>{const it=(x.items||[])[0]||{};const ph=inventoryPhones.find(p=>p.id===it.inventoryId);return n+(Number(x.total||0)-Number(ph?.purchasePrice||0));},0);body.innerHTML=`<h3>${title}</h3><div class="inventory-summary-grid"><div><span>Total Phones</span><b>${inventoryPhones.length}</b></div><div><span>Available</span><b>${inventoryPhones.filter(x=>x.status!=="sold").length}</b></div><div><span>Sold</span><b>${inventoryPhones.filter(x=>x.status==="sold").length}</b></div><div><span>Parties</span><b>${inventoryParties.length}</b></div><div><span>Purchase Value</span><b>${invMoney(purchases)}</b></div><div><span>Sales Value</span><b>${invMoney(sales)}</b></div><div><span>Estimated Profit</span><b>${invMoney(profit)}</b></div><div><span>Invoices</span><b>${inventoryInvoices.length}</b></div></div>`;}));
+}
+async function saveInventoryParty(e){
+    e.preventDefault();if(enforceWriteLock("inventoryPartyMessage"))return;const phone=val("inventoryPartyPhone").replace(/\D/g,"");if(!/^\d{10}$/.test(phone)){msg("inventoryPartyMessage","10 digit mobile number डालें.");return;}const data={type:val("inventoryPartyType"),name:val("inventoryPartyName"),phone,createdAt:serverTimestamp(),createdBy:user?.uid||null};try{await addDoc(collection(db,INVENTORY_PARTY_COL),data);await audit("inventory_party_add",{section:"Inventory Party",customerName:data.name,description:`${data.type} party added: ${data.name}`,extra:{phone}});e.target.reset();$("inventoryPartyModal")?.classList.add("hidden");showSuccessToast("Party Saved","Customer / Vendor saved successfully");}catch(err){console.error(err);msg("inventoryPartyMessage",err?.message||"Party save failed.");}}
+
 /* =========================================================
    INITIALIZE
 ========================================================= */
@@ -2813,6 +2968,7 @@ async function init(){
      */
     themeSystem();
     featureNav();
+    setupInventoryUI();
     if(!$('appScreen')?.classList.contains('admin')) audit('page_open',{section:'Kabir Mobile Data',description:'Website opened',deviceBrand:deviceInfo().brand,deviceModel:deviceInfo().model});
     setupHomeDateFilter();
     adminAnalytics();
@@ -2823,6 +2979,7 @@ async function init(){
         subscribe();
         subscribeRepairing();
         subscribeInventory();
+        subscribePhoneInventory();
     }).catch(e=>{
         console.error("Firebase data initialization blocked:",e);
     });
