@@ -81,7 +81,10 @@
   <div class="section-head"><div><div class="eyebrow">PHONE INVENTORY</div><h2>Stock</h2><small class="section-subtitle">Used / New phones</small></div><button class="close" data-page-back="inventoryPage">×</button></div>
   <section id="inventoryStockSection" class="inventory-tab">
     <div class="inventory-stock-heading"><div><b>Total Stock</b><strong id="invStockCount">0</strong></div><small class="muted">Used + New + Sold</small></div>
-    <div class="inventory-toggle-row"><button class="inventory-toggle active" data-stock-filter="all" type="button">ALL</button><button class="inventory-toggle" data-stock-filter="used" type="button">USED</button><button class="inventory-toggle" data-stock-filter="new" type="button">NEW</button><button class="inventory-toggle" data-stock-filter="sold" type="button">SOLD</button></div>
+    <div class="inventory-stock-switches">
+      <div class="inventory-toggle-group"><small>DEVICE TYPE</small><div class="inventory-toggle-row"><button class="inventory-toggle active" data-stock-condition="used" type="button">USED</button><button class="inventory-toggle" data-stock-condition="new" type="button">NEW</button></div></div>
+      <div class="inventory-toggle-group"><small>STATUS</small><div class="inventory-toggle-row"><button class="inventory-toggle active" data-stock-status="sell" type="button">SELL</button><button class="inventory-toggle" data-stock-status="sold" type="button">SOLD</button></div></div>
+    </div>
     <div class="search inventory-long-search"><span>⌕</span><input id="inventoryStockSearch" type="search" placeholder="Search IMEI, model, RAM, storage, colour, party…"></div>
     <div id="inventoryStockResults" class="results inventory-results"></div>
   </section>
