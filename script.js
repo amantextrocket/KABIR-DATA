@@ -833,6 +833,9 @@ function subscribe(){
             });
 
             counts();
+            const lifetimeCount=getLifetimeCustomerDirectory().length;
+            $("homeCustomerCount")&&($("homeCustomerCount").textContent=`${lifetimeCount} Customers`);
+            $("inventoryCustomerCount")&&($("inventoryCustomerCount").textContent=String(lifetimeCount));
             renderSearch();
             updateAdmin();
             homeDateFilter();
@@ -1990,9 +1993,9 @@ function changePin(){
 
 let repairListenerStarted=false;
 
-function subscribeInventory(){
-    onSnapshot(collection(db,SECOND_COL),snap=>{ secondHand=snap.docs.map(d=>({id:d.id,...d.data()})); if($("secondStockCount"))$("secondStockCount").textContent=String(secondHand.length); renderSecondHand(); },e=>console.warn("Second hand load:",e));
-    onSnapshot(collection(db,ACCESSORY_COL),snap=>{ accessories=snap.docs.map(d=>({id:d.id,...d.data()})); if($("accessoryStockCount"))$("accessoryStockCount").textContent=String(accessories.reduce((n,x)=>n+Number(x.quantity||0),0)); renderAccessories(); },e=>console.warn("Accessories load:",e));
+function subscribeSecondaryAndAccessories(){
+    onSnapshot(collection(db,SECOND_COL),snap=>{ secondHand=snap.docs.map(d=>({id:d.id,...d.data()})); if($("secondStockCount"))$("secondStockCount").textContent=String(secondHand.length); updateLifetimeCustomerCountUI(); renderSecondHand(); },e=>console.warn("Second hand load:",e));
+    onSnapshot(collection(db,ACCESSORY_COL),snap=>{ accessories=snap.docs.map(d=>({id:d.id,...d.data()})); if($("accessoryStockCount"))$("accessoryStockCount").textContent=String(accessories.reduce((n,x)=>n+Number(x.quantity||0),0)); updateLifetimeCustomerCountUI(); renderAccessories(); },e=>console.warn("Accessories load:",e));
 }
 function renderSecondHand(){
     const box=$("secondResults");if(!box)return;
@@ -2067,13 +2070,32 @@ async function saveAccessory(e){
     }catch(err){console.error(err);msg("accessoryMessage",err?.message||"Save failed.");}
 }
 
+function updateLifetimeCustomerCountUI(){
+    const count=getLifetimeCustomerDirectory().length;
+    $("homeCustomerCount")&&($("homeCustomerCount").textContent=`${count} Customers`);
+    $("inventoryCustomerCount")&&($("inventoryCustomerCount").textContent=String(count));
+}
+function getLifetimeCustomerDirectory(){
+    const map=new Map();
+    const add=(r,type,name,phone)=>{
+        const n=String(name||"").trim(),p=String(phone||"").replace(/\D/g,"");
+        if(!n&&!p)return;
+        const key=p||n.toLowerCase();
+        if(!map.has(key))map.set(key,{name:n||"Customer",phone:p,types:new Set(),records:0});
+        const item=map.get(key); item.types.add(type); item.records++;
+    };
+    customers.forEach(x=>add(x,"Finance",x.customerName,x.phone));
+    repairing.forEach(x=>add(x,"Repairing",x.customerName,x.phone));
+    secondHand.forEach(x=>add(x,"Second Hand",x.customerName,x.phone));
+    accessories.forEach(x=>add(x,"Accessories",x.customerName,x.customerPhone));
+    return [...map.values()];
+}
 function renderAllCustomers(){
     const box=$("allCustomerResults");if(!box)return;const q=val("allCustomerSearchInput").toLowerCase();
-    const map=new Map();
-    const add=(r,type,name,phone)=>{const n=String(name||"").trim(),p=String(phone||"").replace(/\D/g,"");if(!n&&!p)return;const key=p||n.toLowerCase();if(!map.has(key))map.set(key,{name:n||"Customer",phone:p,types:new Set()});map.get(key).types.add(type);};
-    customers.forEach(x=>add(x,"Finance",x.customerName,x.phone));repairing.forEach(x=>add(x,"Repairing",x.customerName,x.phone));secondHand.forEach(x=>add(x,"Second Hand",x.customerName,x.phone));accessories.forEach(x=>add(x,"Accessories",x.customerName,x.customerPhone));
-    const rows=[...map.values()].filter(x=>!q||[x.name,x.phone,[...x.types].join(" ")].join(" ").toLowerCase().includes(q));
-    box.innerHTML=rows.length?rows.map((x,i)=>`<article class="result all-customer-result" data-phone="${esc(x.phone)}" data-name="${esc(x.name)}"><div class="result-top"><div><div class="result-name">${esc(x.name)}</div><div class="result-meta">${esc(x.phone||"Phone not available")}</div></div><div class="work-log-tag">${esc([...x.types].join(" • "))}</div></div><div class="result-open-hint">Tap करके आज तक का पूरा data देखें</div></article>`).join(""):"<div class=\"empty\">No customer found.</div>";
+    const rows=getLifetimeCustomerDirectory().filter(x=>!q||[x.name,x.phone,[...x.types].join(" ")].join(" ").toLowerCase().includes(q));
+    const count=getLifetimeCustomerDirectory().length;
+    $("homeCustomerCount")&&($("homeCustomerCount").textContent=`${count} Customers`);
+    box.innerHTML=rows.length?rows.map(x=>`<article class="result all-customer-result" data-phone="${esc(x.phone)}" data-name="${esc(x.name)}"><div class="result-top"><div><div class="result-name">${esc(x.name)}</div><div class="result-meta">${esc(x.phone||"Phone not available")} • ${x.records} record${x.records===1?"":"s"}</div></div><div class="work-log-tag">${esc([...x.types].join(" • "))}</div></div><div class="result-open-hint">Tap करके आज तक का पूरा data देखें</div></article>`).join(""):"<div class=\"empty\">No customer found.</div>";
     box.querySelectorAll(".all-customer-result").forEach(card=>card.addEventListener("click",()=>showUnifiedCustomerHistory(card.dataset.phone,card.dataset.name)));
 }
 function getRecordCreatedDate(row){
@@ -2189,6 +2211,7 @@ function subscribeRepairing(){
         });
 
         counts();
+        updateLifetimeCustomerCountUI();
         renderRepairing();
     };
 
@@ -2804,15 +2827,19 @@ function invAmountWords(n){
 }
 function inventoryShowTab(id){
     document.querySelectorAll("#inventoryPage > .inventory-tab").forEach(x=>x.classList.add("hidden"));
-    const el=$(id);if(el)el.classList.remove("hidden");
+    const target=$(id);if(target)target.classList.remove("hidden");
+    const detail=id==="inventoryPartyDetailSection";
+    $("inventoryPage")?.querySelector(".inventory-nav-grid")?.classList.toggle("hidden",detail);
+    $("inventorySellPurchaseButton")?.classList.toggle("hidden",detail);
     document.querySelectorAll("[data-inventory-tab]").forEach(b=>b.classList.toggle("active",b.dataset.inventoryTab===id));
     if(id==="inventoryHome")renderInventoryHome();
     if(id==="inventoryPartySection")renderInventoryParties();
+    if(id==="inventoryPartyDetailSection")renderInventoryPartyDetail();
     if(id==="inventoryStockSection")renderInventoryStock();
     if(id==="inventoryInvoiceSection")renderInventoryInvoices();
 }
-function subscribePhoneInventory(){
-    if(isAdminPage)return;
+function subscribeInventory(){
+    if(window.__inventoryListenerStarted)return;window.__inventoryListenerStarted=true;
     onSnapshot(collection(db,INVENTORY_PHONE_COL),snap=>{inventoryPhones=snap.docs.map(d=>({id:d.id,...d.data()}));renderInventoryHome();renderInventoryStock();},e=>console.warn("Inventory phones load:",e));
     onSnapshot(collection(db,INVENTORY_PARTY_COL),snap=>{inventoryParties=snap.docs.map(d=>({id:d.id,...d.data()}));renderInventoryParties();renderInventoryTransactionForm();},e=>console.warn("Inventory parties load:",e));
     onSnapshot(collection(db,INVENTORY_INVOICE_COL),snap=>{inventoryInvoices=snap.docs.map(d=>({id:d.id,...d.data()}));inventoryInvoices.sort((a,b)=>invDateValue(b)-invDateValue(a));renderInventoryInvoices();renderInventoryHome();},e=>console.warn("Inventory invoices load:",e));
@@ -2820,23 +2847,59 @@ function subscribePhoneInventory(){
 function renderInventoryHome(){
     const total=inventoryPhones.length, available=inventoryPhones.filter(x=>x.status!=="sold").length, sold=inventoryPhones.filter(x=>x.status==="sold").length;
     const value=inventoryPhones.filter(x=>x.status!=="sold").reduce((n,x)=>n+Number(x.purchasePrice||0),0);
-    if($("invTotalPhones"))$("invTotalPhones").textContent=total;
-    if($("invAvailablePhones"))$("invAvailablePhones").textContent=available;
-    if($("invSoldPhones"))$("invSoldPhones").textContent=sold;
-    if($("invStockValue"))$("invStockValue").textContent=invMoney(value);
+    $("invTotalPhones")&&($("invTotalPhones").textContent=String(total));$("invAvailablePhones")&&($("invAvailablePhones").textContent=String(available));$("invSoldPhones")&&($("invSoldPhones").textContent=String(sold));$("invStockValue")&&($("invStockValue").textContent=invMoney(value));
     const sales=inventoryInvoices.filter(x=>x.type==="sale").reduce((n,x)=>n+Number(x.total||0),0);
     const purchases=inventoryInvoices.filter(x=>x.type==="purchase").reduce((n,x)=>n+Number(x.total||0),0);
+    const customerCount=getLifetimeCustomerDirectory().length;
+    $("homeCustomerCount")&&($("homeCustomerCount").textContent=`${customerCount} Customers`);$("inventoryCustomerCount")&&($("inventoryCustomerCount").textContent=String(customerCount));$("invStockCount")&&($("invStockCount").textContent=String(total));
     const body=$("inventoryDashboardBody");if(!body)return;
-    body.innerHTML=`<div class="inventory-summary-grid"><div><span>Phones</span><b>${total}</b></div><div><span>Available</span><b>${available}</b></div><div><span>Sold</span><b>${sold}</b></div><div><span>Parties</span><b>${inventoryParties.length}</b></div><div><span>Purchase</span><b>${invMoney(purchases)}</b></div><div><span>Sales</span><b>${invMoney(sales)}</b></div><div><span>Stock Value</span><b>${invMoney(value)}</b></div><div><span>Invoices</span><b>${inventoryInvoices.length}</b></div></div>`;
+    body.innerHTML=`<div class="inventory-summary-grid"><div><span>Total Phones</span><b>${total}</b></div><div><span>Available</span><b>${available}</b></div><div><span>Sold</span><b>${sold}</b></div><div><span>Customers</span><b>${customerCount}</b></div><div><span>Vendors</span><b>${inventoryParties.filter(x=>x.type==="vendor").length}</b></div><div><span>Purchase</span><b>${invMoney(purchases)}</b></div><div><span>Sales</span><b>${invMoney(sales)}</b></div><div><span>Invoices</span><b>${inventoryInvoices.length}</b></div></div>`;
 }
 function renderInventoryParties(){
-    const box=$("inventoryPartyResults");if(!box)return;
-    const q=val("inventoryPartySearch").toLowerCase();
-    const rows=inventoryParties.filter(x=>!q||[x.name,x.phone,x.type].join(" ").toLowerCase().includes(q));
-    box.innerHTML=rows.length?rows.map(x=>`<article class="result inventory-party-result"><div class="result-top"><div><div class="result-name">${esc(x.name||"Party")}</div><div class="result-meta">${x.type==="vendor"?"Vendor":"Customer"} • ${esc(x.phone||"—")}</div></div><span class="work-log-tag">${x.type==="vendor"?"VENDOR":"CUSTOMER"}</span></div><div class="result-grid">${item("Mobile",x.phone||"—")}${item("Type",x.type==="vendor"?"Vendor":"Customer")}</div></article>`).join(""):"<div class=\"empty\">No customers / vendors found.</div>";
+    const box=$("inventoryPartyResults");if(!box)return;const q=val("inventoryPartySearch").toLowerCase();
+    const customersDir=getLifetimeCustomerDirectory().map(x=>({...x,kind:"customer"}));
+    const vendors=inventoryParties.filter(x=>x.type==="vendor").map(x=>({name:x.name||"Vendor",phone:String(x.phone||"").replace(/\D/g,""),types:new Set(["Vendor"]),records:1,kind:"vendor",vendorId:x.id}));
+    const map=new Map();[...customersDir,...vendors].forEach(x=>{const key=x.kind+"|"+(x.phone||x.name.toLowerCase());if(!map.has(key))map.set(key,x);});
+    const rows=[...map.values()].filter(x=>!q||[x.name,x.phone,[...x.types].join(" ")].join(" ").toLowerCase().includes(q));
+    $("inventoryCustomerCount")&&($("inventoryCustomerCount").textContent=String(customersDir.length));
+    box.innerHTML=rows.length?rows.map(x=>`<article class="result inventory-party-result" data-party-kind="${x.kind}" data-phone="${esc(x.phone)}" data-name="${esc(x.name)}" data-vendor-id="${esc(x.vendorId||"")}"><div class="result-top"><div><div class="result-name">${esc(x.name)}</div><div class="result-meta">${esc(x.phone||"Phone not available")} • ${x.records||1} record${(x.records||1)===1?"":"s"}</div></div><span class="work-log-tag">${x.kind==="vendor"?"VENDOR":"CUSTOMER"}</span></div><div class="result-open-hint">Tap करके पूरा record / history देखें</div></article>`).join(""):"<div class=\"empty\">No customers / vendors found.</div>";
+    box.querySelectorAll(".inventory-party-result").forEach(card=>card.addEventListener("click",()=>{
+        if(card.dataset.partyKind==="vendor") showInventoryVendorDetail(card.dataset.vendorId);
+        else showInventoryCustomerDetail(card.dataset.phone,card.dataset.name);
+    }));
+}
+function showInventoryCustomerDetail(phone,name){
+    window.__inventoryPartyDetail={kind:"customer",phone:String(phone||"").replace(/\D/g,""),name:name||"Customer"};
+    inventoryShowTab("inventoryPartyDetailSection");
+}
+function showInventoryVendorDetail(id){
+    window.__inventoryPartyDetail={kind:"vendor",vendorId:id};
+    inventoryShowTab("inventoryPartyDetailSection");
+}
+function renderInventoryPartyDetail(){
+    const body=$("inventoryPartyDetailBody"),title=$("inventoryPartyDetailTitle");if(!body||!title)return;
+    const d=window.__inventoryPartyDetail||{};
+    if(d.kind==="vendor"){
+        const v=inventoryParties.find(x=>x.id===d.vendorId);if(!v){title.textContent="Vendor";body.innerHTML='<div class="empty">Vendor not found.</div>';return;}
+        title.textContent=v.name||"Vendor";
+        const purchases=inventoryInvoices.filter(x=>x.type==="purchase"&&x.partyId===v.id);
+        body.innerHTML=`<div class="detail-grid">${detailItem("Party Type","Vendor")}${detailItem("Mobile",v.phone||"—")}${detailItem("Purchase Records",purchases.length)}${detailItem("Purchase Value",invMoney(purchases.reduce((n,x)=>n+Number(x.total||0),0)))}</div><div class="history-list">${purchases.map(x=>`<article class="history-row"><b>📥 Purchase Invoice</b><small>${esc(invDate(invDateValue(x)))}</small><span>${esc(x.invoiceNo||"—")} • ${invMoney(x.total)}</span></article>`).join("")||'<div class="empty">No purchase history found.</div>'}</div>`;
+        return;
+    }
+    const groups=getUnifiedRecords(d.phone,d.name), finance=groups.finance,repair=groups.repair,second=groups.second,acc=groups.acc;
+    title.textContent=d.name||"Customer";
+    const rows=[];
+    finance.forEach(x=>rows.push(`<article class="history-row"><b>💳 Finance / Phone</b><small>${esc(formatDateTime(x))}</small><span>${esc(`${x.brand||""} ${x.model||""}`)} • IMEI ${esc(x.imei||"—")} • ₹${Number(x.phoneAmount||0).toLocaleString("en-IN")}</span></article>`));
+    repair.forEach(x=>rows.push(`<article class="history-row"><b>🛠 Repairing</b><small>${esc(formatDateTime(x))}</small><span>${esc(x.device||"")} • ${esc(x.problem||"")} • Total ₹${Number(x.total ?? x.payment ?? 0).toLocaleString("en-IN")} • Parts ₹${Number(x.partsPrice||0).toLocaleString("en-IN")} • Profit ₹${Number(x.profit??(Number(x.total ?? x.payment ?? 0)-Number(x.partsPrice||0))).toLocaleString("en-IN")}</span></article>`));
+    second.forEach(x=>rows.push(`<article class="history-row"><b>📱 Second Hand</b><small>${esc(formatDateTime(x))}</small><span>${esc(`${x.brand||""} ${x.model||x.device||""}`)} • IMEI ${esc(x.imei||"—")} • Profit ₹${Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))).toLocaleString("en-IN")}</span></article>`));
+    acc.forEach(x=>rows.push(`<article class="history-row"><b>🎧 Accessories</b><small>${esc(formatDateTime(x))}</small><span>${esc(x.name||"")} • SN ${esc(x.sn||"—")} • Profit ₹${Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))).toLocaleString("en-IN")}</span></article>`));
+    rows.sort((a,b)=>0);
+    const total=finance.length+repair.length+second.length+acc.length;
+    body.innerHTML=`<div class="detail-grid">${detailItem("Customer",d.name||"Customer")}${detailItem("Mobile",d.phone||"—")}${detailItem("Total Records",total)}${detailItem("Finance",finance.length)}${detailItem("Repairing",repair.length)}${detailItem("Second Hand",second.length)}${detailItem("Accessories",acc.length)}</div><div class="history-list">${rows.join("")||'<div class="empty">इस customer का कोई history record नहीं मिला.</div>'}</div>`;
 }
 function renderInventoryStock(){
     const box=$("inventoryStockResults");if(!box)return;
+    $("invStockCount")&&($("invStockCount").textContent=String(inventoryPhones.length));
     const q=val("inventoryStockSearch").toLowerCase();
     let rows=inventoryPhones.filter(x=>inventoryStockFilter==="all"||(inventoryStockFilter==="sold"?x.status==="sold":String(x.conditionType||x.phoneType||"").toLowerCase()===inventoryStockFilter));
     rows=rows.filter(x=>!q||[x.brand,x.model,x.imei,x.ram,x.storage,x.colour,x.partyName,x.partyPhone,x.conditionType,x.status].join(" ").toLowerCase().includes(q));
@@ -2916,7 +2979,7 @@ function setupInventoryUI(){
     $("inventoryPartyForm")?.addEventListener("submit",saveInventoryParty);
     $("inventorySellPurchaseButton")?.addEventListener("click",()=>{$("inventorySellPurchaseModal")?.classList.remove("hidden");renderInventoryTransactionForm("purchase");});
     document.querySelectorAll("[data-inventory-mode]").forEach(b=>b.addEventListener("click",()=>renderInventoryTransactionForm(b.dataset.inventoryMode)));
-    document.querySelectorAll("[data-inventory-close]").forEach(b=>b.addEventListener("click",()=>$(b.dataset.inventoryClose)?.classList.add("hidden")));
+    document.querySelectorAll("[data-inventory-close]").forEach(b=>b.addEventListener("click",()=>{const m=$(b.dataset.inventoryClose);if(m){m.classList.add("hidden");m.scrollTop=0;const card=m.querySelector(".modal-card");if(card)card.scrollTop=0;}}));
     $("inventoryPrintInvoiceButton")?.addEventListener("click",printInventoryInvoice);$("inventoryDownloadInvoiceButton")?.addEventListener("click",downloadInventoryInvoicePdf);
     document.querySelectorAll("[data-inventory-dashboard]").forEach(b=>b.addEventListener("click",()=>{const title={statistics:"Statistics",performance:"Performance",stockValue:"Stock Value",overview:"Overview"}[b.dataset.inventoryDashboard]||"Overview";const body=$("inventoryDashboardBody");if(!body)return;const sales=inventoryInvoices.filter(x=>x.type==="sale").reduce((n,x)=>n+Number(x.total||0),0),purchases=inventoryInvoices.filter(x=>x.type==="purchase").reduce((n,x)=>n+Number(x.total||0),0),profit=inventoryInvoices.filter(x=>x.type==="sale").reduce((n,x)=>{const it=(x.items||[])[0]||{};const ph=inventoryPhones.find(p=>p.id===it.inventoryId);return n+(Number(x.total||0)-Number(ph?.purchasePrice||0));},0);body.innerHTML=`<h3>${title}</h3><div class="inventory-summary-grid"><div><span>Total Phones</span><b>${inventoryPhones.length}</b></div><div><span>Available</span><b>${inventoryPhones.filter(x=>x.status!=="sold").length}</b></div><div><span>Sold</span><b>${inventoryPhones.filter(x=>x.status==="sold").length}</b></div><div><span>Parties</span><b>${inventoryParties.length}</b></div><div><span>Purchase Value</span><b>${invMoney(purchases)}</b></div><div><span>Sales Value</span><b>${invMoney(sales)}</b></div><div><span>Estimated Profit</span><b>${invMoney(profit)}</b></div><div><span>Invoices</span><b>${inventoryInvoices.length}</b></div></div>`;}));
 }
@@ -2978,8 +3041,8 @@ async function init(){
         purgeExpiredDeleted();
         subscribe();
         subscribeRepairing();
+        subscribeSecondaryAndAccessories();
         subscribeInventory();
-        subscribePhoneInventory();
     }).catch(e=>{
         console.error("Firebase data initialization blocked:",e);
     });
