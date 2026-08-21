@@ -606,3 +606,29 @@ input[type="date"]{width:100%!important;max-width:100%!important;min-width:0!imp
   .inventory-transaction-modal .modal-card{width:100%!important;min-height:calc(100svh - 8px)!important;border-radius:22px!important;padding:14px!important}
   .inventory-transaction-modal .section-head{top:-14px!important;margin:-14px -14px 14px!important;padding:14px!important}
 }
+
+/* Inventory V6 refinements */
+.inventory-home-empty{display:none!important}
+.inventory-subpage-head{margin-bottom:14px}
+.inventory-switches{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.inventory-switch-group{display:grid;grid-template-columns:auto 1fr 1fr;align-items:center;gap:5px;padding:7px;border:1px solid var(--glass-border);border-radius:15px;background:rgba(255,255,255,.035)}
+.inventory-switch-group>span{font-size:9px;color:var(--muted);font-weight:800;letter-spacing:.08em;padding:0 4px}
+.inventory-switch-group .inventory-toggle{width:100%}
+.inventory-stock-actions{display:flex;gap:8px;margin-top:12px}
+.inventory-stock-actions button{flex:1;border:0;border-radius:12px;padding:9px 12px;font-weight:900;font-size:11px;letter-spacing:.05em}
+.inventory-stock-sell-btn{background:#c92835!important;color:#fff!important}
+.inventory-stock-delete-btn{background:rgba(255,255,255,.09)!important;color:var(--text)!important;border:1px solid var(--glass-border)!important}
+.inventory-invoice-card{border-radius:18px!important}
+.inventory-invoice-main{padding:13px 13px 10px!important;min-height:145px!important}
+.inventory-invoice-device{font-size:17px!important}
+.inventory-invoice-no{font-size:12px!important}
+.inventory-invoice-party{margin-top:14px!important;font-size:12px!important;line-height:1.45!important}
+.inventory-invoice-total{font-size:21px!important;margin-top:5px!important}
+.inventory-invoice-label{font-size:10px!important}
+.inventory-invoice-type{font-size:10px!important}
+.inventory-invoice-footer{grid-template-columns:1fr 1.1fr .8fr .8fr!important;min-height:42px!important}
+.inventory-invoice-footer button{font-size:10px!important;padding:0 5px!important}
+.inventory-invoice-footer span{font-size:9px!important;line-height:1.2}
+.inventory-edit-btn{background:#238d8a;color:#fff}
+.inventory-delete-btn{background:#a91f2a;color:#fff;border:0}
+@media(max-width:600px){.inventory-switches{grid-template-columns:1fr}.inventory-subpage-head{margin-bottom:10px}.inventory-invoice-main{min-height:130px!important}.inventory-invoice-footer{grid-template-columns:1fr 1.15fr .75fr .75fr!important}}
