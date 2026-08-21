@@ -393,8 +393,3 @@ html[data-theme="rose"] body{background:radial-gradient(circle at 15% 8%,rgba(25
 
 /* ===== ENTRY DATE + CLOSE BUTTON VISIBILITY FIX ===== */
 .entry-date-label{margin-bottom:10px!important}.entry-date-field{width:100%!important;height:40px!important;min-height:40px!important;padding:0 11px!important;border-radius:13px!important;font-size:13px!important}.app-page .close{position:relative!important;z-index:120!important;flex:0 0 auto!important}.app-page .section-head{position:relative;z-index:110}.modal{z-index:200!important}.modal .close{position:relative!important;z-index:220!important}
-
-
-/* ===== TRAFFIC PANEL ===== */
-.admin-traffic-tabs{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}.admin-traffic-tabs .action{min-height:105px}.traffic-content{margin-top:16px}.traffic-stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.traffic-stat{padding:16px;border:1px solid var(--border);border-radius:20px;background:rgba(255,255,255,.045);backdrop-filter:blur(14px)}.traffic-stat small{display:block;color:var(--muted);margin-bottom:7px}.traffic-stat b{font-size:22px}.traffic-performance{display:grid;gap:16px;padding:16px;border:1px solid var(--border);border-radius:20px;background:rgba(255,255,255,.045)}.traffic-performance>div{display:grid;grid-template-columns:1fr auto;gap:7px}.traffic-performance span{color:var(--muted)}.traffic-performance b{text-align:right}.traffic-performance i{grid-column:1/-1;height:8px;border-radius:999px;background:var(--glass);overflow:hidden;position:relative}.traffic-performance i:after{content:"";position:absolute;inset:0;background:currentColor;opacity:.65}
-@media(max-width:520px){.admin-traffic-tabs{gap:9px}.admin-traffic-tabs .action{min-height:92px}.traffic-stat-grid{gap:9px}}
