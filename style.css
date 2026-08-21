@@ -634,3 +634,6 @@ input[type="date"]{width:100%!important;max-width:100%!important;min-width:0!imp
 .inventory-invoice-footer{min-height:42px!important;grid-template-columns:1fr 1fr 1fr!important}
 .inventory-invoice-footer button{font-size:10px!important;padding:0 5px!important}
 .inventory-delete-btn{background:#8d2525!important;color:#fff!important;border:0!important}
+
+/* Inventory #10 - iPhone style RESTOCK action */
+.inventory-stock-restock-btn{border:1px solid rgba(70,220,120,.45)!important;background:linear-gradient(135deg,rgba(45,220,125,.28),rgba(15,120,70,.18))!important;color:#b9ffd0!important;border-radius:14px!important;padding:7px 12px!important;min-height:34px!important;font-size:10px!important;font-weight:800!important;letter-spacing:.08em!important;box-shadow:0 8px 20px rgba(0,0,0,.18),inset 0 1px 0 rgba(255,255,255,.14)!important;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);transition:transform .18s ease,filter .18s ease!important}.inventory-stock-restock-btn:active{transform:scale(.94)!important;filter:brightness(1.15)}
