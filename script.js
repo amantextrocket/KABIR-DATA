@@ -19,6 +19,7 @@ const db=getFirestore(app);
 
 const PIN_KEY="kabir_mobile_pin";
 const DEFAULT_PIN="0000";
+const VERIFIED_PIN_CACHE_KEY="kabir_verified_pin_cache";
 const COL="customers";
 const REPAIR_COL="repairing";
 const SECOND_COL="secondHand";
@@ -354,6 +355,7 @@ async function loadSharedPin(){
         }catch(e){
             console.error("Shared PIN load failed:",e);
             pinLoaded=false;
+            pinLoadPromise=null;
             throw Error("PIN load नहीं हुआ. Firebase connection check करें.");
         }
     })();
@@ -718,10 +720,21 @@ function setupPin(){
             if(e.value!==entered)return;
             // Never unlock from a cached/local PIN. Wait for live Firebase PIN.
             try{
-                await authReady;
-                const livePin=await loadSharedPin();
+                const connectedUser=await authReady;
+                let livePin=null;
+                if(connectedUser){
+                    try{ livePin=await loadSharedPin(); }catch(_){ livePin=null; }
+                }
+                // If Firebase is temporarily unavailable, use only a PIN that was
+                // previously verified successfully online. Firebase will continue
+                // retrying in the background and refresh the live PIN when online.
+                if(!livePin){
+                    const cached=localStorage.getItem(VERIFIED_PIN_CACHE_KEY)||"";
+                    if(/^\d{4}$/.test(cached)) livePin=cached;
+                }
                 if(e.value!==entered)return;
                 if(entered===livePin){
+                    localStorage.setItem(VERIFIED_PIN_CACHE_KEY,entered);
                     audit("login_success",{section:$('appScreen')?.classList.contains('admin')?'Admin Panel':'Kabir Mobile Data',description:'PIN login successful',deviceBrand:deviceInfo().brand,deviceModel:deviceInfo().model});
                     unlock();
                     msg("pinMessage","");
@@ -753,15 +766,35 @@ function setupPin(){
 let authReadyResolve;
 let authReadyReject;
 let authStarted=false;
+let authRetryTimer=null;
+let dataSyncStarted=false;
+let lastAuthError=null;
 const authReady=new Promise((resolve,reject)=>{
     authReadyResolve=resolve;
     authReadyReject=reject;
 });
 
-async function authInit(){
-    if(authStarted)return authReady;
+function startDataSync(){
+    if(dataSyncStarted || !user)return;
+    dataSyncStarted=true;
+    purgeExpiredDeleted();
+    subscribe();
+    subscribeRepairing();
+    subscribeSecondaryAndAccessories();
+    subscribeInventory();
+}
+
+function scheduleAuthRetry(){
+    if(authRetryTimer)return;
+    authRetryTimer=setTimeout(()=>{
+        authRetryTimer=null;
+        authInit(true).catch(()=>{});
+    },3000);
+}
+
+async function authInit(isRetry=false){
+    if(authStarted && !isRetry)return authReady;
     authStarted=true;
-    let settled=false;
 
     const setStatus=(text,isError=false)=>{
         if($("connectionStatus")){
@@ -777,50 +810,56 @@ async function authInit(){
     const resolveUser=(u)=>{
         if(!u)return false;
         user=u;
+        lastAuthError=null;
         updateAdmin();
         setStatus("Firebase connected ✓");
-        if(!settled){
-            settled=true;
+        if(!authReadyResolved){
+            authReadyResolved=true;
             authReadyResolve(u);
         }
+        startDataSync();
+        // Refresh the live PIN in the background after Firebase reconnects.
+        loadSharedPin().catch(()=>{});
         return true;
     };
 
     const rejectAuth=(e)=>{
         console.error("Firebase authentication error:",e);
         user=null;
+        lastAuthError=e;
         updateAdmin();
         const code=e?.code||"";
-        let text="Firebase authentication failed.";
+        let text="Firebase offline — app will retry automatically.";
         if(code.includes("operation-not-allowed")){
-            text="Firebase Auth में Anonymous Sign-in OFF है. Firebase Console → Authentication → Sign-in method → Anonymous ON करें.";
+            text="Firebase Auth unavailable — Anonymous Sign-in check करें.";
         }else if(code.includes("unauthorized-domain")){
-            text="इस website domain को Firebase Authentication → Settings → Authorized domains में add करें.";
+            text="Firebase domain authorization issue — retrying…";
         }else if(code.includes("network-request-failed")){
-            text="Firebase network connection failed. Internet connection check करें.";
-        }else if(e?.message){
-            text=`Firebase authentication failed: ${e.message}`;
+            text="Firebase offline — background sync retrying…";
         }
         setStatus(text,true);
-        if(!settled){
-            settled=true;
-            authReadyReject(e);
+        scheduleAuthRetry();
+        // Do NOT reject authReady: the UI must never remain locked on a
+        // permanent “Firebase connecting…” state.
+        if(!authReadyResolved){
+            authReadyResolved=true;
+            authReadyResolve(null);
         }
     };
 
-    onAuthStateChanged(auth,u=>{
-        if(u) resolveUser(u);
-        else if(!auth.currentUser) setStatus("Firebase connecting…");
-    },rejectAuth);
+    if(!window.__kabirAuthObserver){
+        window.__kabirAuthObserver=true;
+        onAuthStateChanged(auth,u=>{
+            if(u) resolveUser(u);
+            else if(!auth.currentUser) setStatus("Firebase offline — retrying in background…",true);
+        },rejectAuth);
+    }
 
     try{
         if(auth.currentUser){
             resolveUser(auth.currentUser);
             return authReady;
         }
-
-        // Resolve directly from signInAnonymously's returned credential too.
-        // This avoids waiting indefinitely for a delayed auth-state callback.
         const credential=await signInAnonymously(auth);
         if(!resolveUser(credential?.user||auth.currentUser)){
             throw new Error("Anonymous sign-in succeeded but Firebase user was not returned.");
@@ -830,6 +869,8 @@ async function authInit(){
     }
     return authReady;
 }
+
+let authReadyResolved=false;
 
 /* =========================================================
    FIRESTORE CUSTOMER LISTENER
@@ -916,9 +957,9 @@ function updateAdmin(){
             );
 
     if($("adminFirebaseStatus"))
-        $("adminFirebaseStatus").textContent=user?"Firebase connected":"Connecting to Firebase…";
+        $("adminFirebaseStatus").textContent=user?"Firebase connected":"Firebase offline — retrying…";
     if($("connectionStatus"))
-        $("connectionStatus").textContent=user?"Firebase connected ✓":"Firebase connecting…";
+        $("connectionStatus").textContent=user?"Firebase connected ✓":"Firebase offline — retrying…";
 }
 
 
@@ -3169,15 +3210,11 @@ async function init(){
     adminAnalytics();
     if($('appScreen')?.classList.contains('admin')) audit('page_open',{section:'Admin Panel',description:'Admin Panel opened'});
 
+    // Firebase is non-blocking: data sync starts as soon as auth succeeds.
+    // The UI never waits forever for Firebase.
     authReady.then(()=>{
-        purgeExpiredDeleted();
-        subscribe();
-        subscribeRepairing();
-        subscribeSecondaryAndAccessories();
-        subscribeInventory();
-    }).catch(e=>{
-        console.error("Firebase data initialization blocked:",e);
-    });
+        if(user) startDataSync();
+    }).catch(()=>{});
 
     $("customerForm")
         ?.addEventListener(
