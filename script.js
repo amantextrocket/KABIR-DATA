@@ -915,6 +915,11 @@ function show(id,{back=false}={}){
     if(back && pageHistory.length>1){pageHistory.pop();id=pageHistory[pageHistory.length-1];}
     document.querySelectorAll("[data-page]").forEach(x=>x.classList.add("hidden"));
     const el=$(id);
+    // Inventory के landing page और उसके सभी 4 pages पर SELL / PURCHASE
+    // sticky action हमेशा उपलब्ध रहे. बाकी pages पर यह hidden रहेगा.
+    const inventorySticky=$("inventoryStickyActions");
+    const isInventoryPage=String(id||"").startsWith("inventory");
+    inventorySticky?.classList.toggle("hidden",!isInventoryPage);
     if(el){
         el.classList.remove("hidden");
         requestAnimationFrame(()=>{
@@ -2913,11 +2918,25 @@ function renderInventoryStock(){
     box.innerHTML=rows.length?rows.map(x=>`<article class="result inventory-stock-card"><div class="result-top"><div><div class="result-name">${esc(`${x.brand||""} ${x.model||"Phone"}`.trim())}</div><div class="result-meta">${esc(String(x.conditionType||x.phoneType||"Used").toUpperCase())} • ${x.status==="sold"?"SOLD":"IN STOCK"}</div></div><span class="work-log-tag">${x.status==="sold"?"SOLD":"AVAILABLE"}</span></div><div class="result-grid">${item("IMEI",x.imei||"—")}${item("RAM / Storage",`${x.ram||"—"} / ${x.storage||"—"}`)}${item("Colour",x.colour||"—")}${item("Customer",x.customerName||x.partyName||"—")}${item("Mobile",x.customerPhone||x.partyPhone||"—")}${item("Purchase",invMoney(x.purchasePrice))}${item("Sale",x.salePrice?invMoney(x.salePrice):"—")}${item("Margin",x.salePrice?invMoney(Number(x.salePrice)-Number(x.purchasePrice||0)):"—")}</div></article>`).join(""):"<div class=\"empty\">No inventory phones found.</div>";
 }
 function inventoryBrandOptions(){
-    const brands=[...new Set([...Object.keys(BRANDS||{}),...Object.keys(remoteModelsByBrand||{})])].sort((a,b)=>a.localeCompare(b));
+    // Inventory में केवल phone/tablet brands रखें; remote catalog के
+    // laptop/PC/other device brands यहाँ नहीं आएँगे.
+    const brands=Object.keys(BRANDS||{}).sort((a,b)=>a.localeCompare(b));
     return '<option value="">Select brand</option>'+brands.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join("");
 }
+function isInventoryPhoneTabletModel(name){
+    const n=String(name||"").toLowerCase().trim();
+    if(!n)return false;
+    // केवल phone/tablet family रखें; laptop, PC, watch, TV, audio आदि हटाएँ.
+    const blocked=/(\blaptop\b|\bnotebook\b|\bmacbook\b|\bchromebook\b|\bdesktop\b|\bworkstation\b|\bmini pc\b|\bmini-pc\b|\bmonitor\b|\bsmartwatch\b|\bwatch\b|\btv\b|\btelevision\b|\bearbuds?\b|\bheadphones?\b|\bheadset\b|\bprinter\b|\bcamera\b|\bprojector\b)/i;
+    return !blocked.test(n);
+}
 function inventoryModelOptions(brand){
-    const models=modelListForBrand(brand||"");
+    const b=String(brand||"").trim();
+    if(!b)return '<option value="">Select model</option>';
+    const local=Object.keys(BRANDS?.[b]?.models||{});
+    const key=Object.keys(remoteModelsByBrand||{}).find(k=>k.toLowerCase()===b.toLowerCase());
+    const remote=key?(remoteModelsByBrand[key]||[]):[];
+    const models=[...new Set([...local,...remote].filter(isInventoryPhoneTabletModel))];
     return '<option value="">Select model</option>'+models.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join("");
 }
 function inventoryColourOptions(brand,model){
