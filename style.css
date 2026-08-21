@@ -389,3 +389,6 @@ html[data-theme="rose"] body{background:radial-gradient(circle at 15% 8%,rgba(25
 
 /* Only Search and Recently Deleted are highlighted; the input and deleted list stay normal. */
 .smart-search-box{animation:none!important;border:1px solid var(--border)!important;background:rgba(255,255,255,.055)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.06)!important}
+
+/* ===== 24 HOUR CUSTOMER EDIT WINDOW ===== */
+.edit-window-badge{display:inline-flex;align-items:center;justify-content:center;max-width:150px;padding:7px 9px;border-radius:12px;font-size:9px;font-weight:800;line-height:1.2;text-align:center;white-space:normal}.edit-open{color:var(--success);background:rgba(85,223,139,.10);border:1px solid rgba(85,223,139,.20)}.edit-locked{color:#ff9b9b;background:rgba(255,90,90,.09);border:1px solid rgba(255,100,100,.18)}#entryDate{font-weight:750}#editCustomerButton:disabled{opacity:.45;cursor:not-allowed;filter:saturate(.5)}
