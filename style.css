@@ -581,3 +581,28 @@ input[type="date"]{width:100%!important;max-width:100%!important;min-width:0!imp
 .inventory-transaction-modal .section-head{position:sticky;top:-16px;z-index:5;margin:-16px -16px 16px;padding:16px;background:rgba(12,14,20,.92);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border-bottom:1px solid var(--border)}
 .inventory-transaction-modal .inventory-choice-grid{grid-template-columns:1fr 1fr}.inventory-transaction-modal form{padding-bottom:12px}
 @media(max-width:520px){.inventory-nav-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.inventory-nav-card{min-height:88px;padding:11px;border-radius:19px}.inventory-nav-card span{width:32px;height:32px;font-size:18px}.inventory-nav-card b{font-size:11px}.inventory-nav-card small{font-size:9px}.inventory-section-toolbar{grid-template-columns:1fr!important}.inventory-long-search{width:100%}.inventory-home-summary{gap:7px}.inventory-home-summary>div{padding:11px}.inventory-home-summary strong{font-size:19px}.inventory-transaction-modal .inventory-choice-grid{grid-template-columns:1fr 1fr}.inventory-transaction-modal .modal-card{max-height:calc(100svh - 12px);padding:14px}.inventory-transaction-modal .section-head{top:-14px;margin:-14px -14px 14px;padding:14px}}
+/* Inventory V5 action bar + transaction form fixes */
+.inventory-sticky-actions{position:fixed;left:12px;right:12px;bottom:max(12px,env(safe-area-inset-bottom));z-index:500;display:flex;align-items:flex-end;justify-content:flex-start;gap:8px;pointer-events:none}
+.inventory-sticky-actions.hidden{display:none!important}
+.inventory-sticky-actions button{pointer-events:auto!important}
+.inventory-sticky-actions .inventory-sticky-sell,.inventory-sticky-actions .inventory-sticky-add{position:static!important;transform:none!important;width:auto!important;margin:0!important;min-height:44px!important;height:44px!important;padding:0 13px!important;border-radius:15px!important;font-size:11px!important;letter-spacing:.04em!important;box-shadow:0 12px 28px rgba(0,0,0,.32)!important}
+.inventory-sticky-actions .inventory-sticky-sell{background:linear-gradient(135deg,rgba(55,220,185,.52),rgba(0,100,100,.40))!important}
+.inventory-sticky-actions .inventory-sticky-add{background:linear-gradient(135deg,rgba(255,255,255,.15),rgba(20,120,110,.32))!important}
+.inventory-transaction-modal{align-items:flex-start!important;justify-content:center!important;overflow-y:auto!important;overflow-x:hidden!important;padding:calc(8px + env(safe-area-inset-top)) 8px calc(20px + env(safe-area-inset-bottom))!important;overscroll-behavior:contain!important;-webkit-overflow-scrolling:touch!important}
+.inventory-transaction-modal .modal-card{width:min(100%,620px)!important;max-height:none!important;min-height:calc(100svh - 16px)!important;overflow:visible!important;padding:16px!important;margin:0 auto!important}
+.inventory-transaction-modal .section-head{position:sticky!important;top:-16px!important;z-index:20!important;margin:-16px -16px 16px!important;padding:16px!important;background:rgba(10,14,18,.94)!important;backdrop-filter:blur(18px)!important;-webkit-backdrop-filter:blur(18px)!important;border-bottom:1px solid var(--border)!important}
+.inventory-transaction-modal .section-head .close{position:relative!important;z-index:30!important;flex:0 0 39px!important}
+.inventory-transaction-modal .inventory-transaction-box{padding-bottom:18px!important}
+.inventory-form-card label{margin-bottom:10px}
+.inventory-form-card .with-button{grid-template-columns:minmax(0,1fr) auto}
+.inventory-form-card .with-button button{white-space:nowrap;min-width:78px}
+#inventoryMarginBox{margin:12px 0 4px}
+#inventoryMarginBox em{font-size:15px;font-weight:800}
+.inventory-selected-phone{gap:6px!important}
+@media(max-width:520px){
+  .inventory-sticky-actions{left:8px;right:8px;bottom:max(8px,env(safe-area-inset-bottom));gap:7px}
+  .inventory-sticky-actions .inventory-sticky-sell,.inventory-sticky-actions .inventory-sticky-add{height:42px!important;min-height:42px!important;padding:0 11px!important;font-size:10px!important}
+  .inventory-transaction-modal{padding:calc(4px + env(safe-area-inset-top)) 4px calc(12px + env(safe-area-inset-bottom))!important}
+  .inventory-transaction-modal .modal-card{width:100%!important;min-height:calc(100svh - 8px)!important;border-radius:22px!important;padding:14px!important}
+  .inventory-transaction-modal .section-head{top:-14px!important;margin:-14px -14px 14px!important;padding:14px!important}
+}
