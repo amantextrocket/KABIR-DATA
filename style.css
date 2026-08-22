@@ -770,3 +770,63 @@ html[data-theme="light"] .eyebrow{color:#697384!important}
     grid-template-columns:minmax(0,1fr) minmax(0,1fr);
   }
 }
+
+/* =========================================================
+   FINAL REQUESTED UI FIXES — HOME / MOBILE / CUSTOMER
+========================================================= */
+html,body{touch-action:manipulation;-webkit-text-size-adjust:100%;text-size-adjust:100%;}
+
+/* Header stays in normal document flow so home cards can never hide behind it. */
+.topbar.premium-brandbar,.topbar{position:relative!important;top:auto!important;z-index:60!important;}
+.home-view{padding-top:18px!important;}
+.home-modules{margin-top:18px!important;padding-top:2px!important;}
+
+/* Solid Kabir Mobile header; theme primary colour changes it cleanly. */
+.topbar.premium-brandbar,.topbar{
+  background:var(--solid-primary)!important;
+  background-image:none!important;
+  border:0!important;
+  color:#fff!important;
+  box-shadow:0 14px 35px rgba(0,0,0,.24)!important;
+  backdrop-filter:none!important;
+  -webkit-backdrop-filter:none!important;
+}
+.topbar .eyebrow,.topbar h2,.topbar button,.topbar *{color:#fff!important;}
+.topbar .round{background:rgba(255,255,255,.14)!important;border-color:rgba(255,255,255,.35)!important;box-shadow:none!important;}
+
+/* White text throughout the website; theme accents remain on borders/backgrounds. */
+body,body *{color:var(--text);}
+small,.muted,.section-subtitle,.module-card small{color:rgba(255,255,255,.72)!important;}
+input::placeholder,textarea::placeholder{color:rgba(255,255,255,.55)!important;opacity:1;}
+select option{color:#fff!important;}
+
+/* Every theme gets white readable text and its own highlighted primary accent. */
+html[data-theme="light"]{--text:#fff;--muted:rgba(255,255,255,.72);}
+html[data-theme="dark"],html[data-theme="midnight"],html[data-theme="silver"],html[data-theme="glass"],html[data-theme="sunset"],html[data-theme="emerald"],html[data-theme="rose"]{--text:#fff;--muted:rgba(255,255,255,.72);}
+.theme-grid button.selected{background:var(--solid-primary)!important;color:#fff!important;border-color:rgba(255,255,255,.55)!important;box-shadow:0 0 0 2px rgba(255,255,255,.10),0 10px 24px rgba(0,0,0,.18)!important;}
+
+/* iPhone Safari: prevent focus zoom on form fields. */
+input,select,textarea{font-size:16px!important;}
+input[type="date"]{font-size:16px!important;}
+
+/* Finance Add Customer: compact date field. */
+#customerForm .entry-date-label{max-width:155px!important;}
+#customerForm .entry-date-field{height:34px!important;min-height:34px!important;padding:0 8px!important;font-size:14px!important;}
+
+/* Customer model: search/type first, filtered selection below. */
+#customerForm .model-field input#modelType{margin-bottom:7px!important;}
+#customerForm .model-field select#model{margin-top:0!important;}
+
+/* Keep the compact two-column form aligned and prevent overflow. */
+#customerForm .customer-block>label{min-width:0!important;overflow:hidden;}
+#customerForm input,#customerForm select,#customerForm textarea{width:100%!important;box-sizing:border-box!important;}
+
+@media(max-width:600px){
+  .home-view{padding-top:16px!important;}
+  .home-modules{margin-top:16px!important;}
+  #customerForm .entry-date-label{max-width:145px!important;}
+}
+
+html[data-theme="light"]{--solid-card:#303a48;--solid-card-2:#3b4757;--solid-input:#202a37;--border:#59697c;--glass:#303a48;}
+html[data-theme="light"] body *{color:#fff!important;}
+html[data-theme="light"] input::placeholder,html[data-theme="light"] textarea::placeholder{color:rgba(255,255,255,.55)!important;}
