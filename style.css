@@ -982,3 +982,21 @@ html[data-theme="light"] .eyebrow,html[data-theme="light"] .section-subtitle,htm
 html[data-theme="light"] .save,html[data-theme="light"] button{border-color:#9aa6b5;}
 html[data-theme="light"] .theme-grid button{background:#fff!important;color:#111827!important;border-color:#b8c0cc!important;}
 html[data-theme="light"] .theme-grid button.selected{background:var(--solid-primary)!important;color:#fff!important;}
+
+
+/* ===== V8: RESPONSIVE FULL-SIZE + CUSTOMER DETAIL / HEADER FIX ===== */
+.app{width:100%!important;max-width:1440px!important;margin:0 auto!important;padding-left:max(12px,env(safe-area-inset-left))!important;padding-right:max(12px,env(safe-area-inset-right))!important;}
+@media(min-width:700px){.app{padding-left:24px!important;padding-right:24px!important}.topbar{min-height:82px!important;padding:16px 20px!important}.topbar h2{font-size:27px!important}.round{width:52px!important;height:52px!important}}
+@media(min-width:1100px){.app{padding-left:32px!important;padding-right:32px!important}.home-modules{gap:18px!important}.module-card{min-height:170px!important;padding:24px 26px!important}.app-page{padding:28px!important}}
+
+#customerDetailModal{z-index:20000!important;align-items:flex-start!important;padding:calc(12px + env(safe-area-inset-top)) 12px calc(18px + env(safe-area-inset-bottom))!important;overflow:auto!important;}
+#customerDetailModal .detail-card{width:min(100%,760px)!important;max-height:calc(100svh - 24px)!important;overflow:auto!important;position:relative!important;margin:auto!important;}
+#customerDetailModal .section-head{position:sticky!important;top:-20px!important;z-index:30!important;margin:-20px -20px 18px!important;padding:20px!important;background:rgba(12,16,20,.97)!important;backdrop-filter:blur(18px)!important;-webkit-backdrop-filter:blur(18px)!important;border-bottom:1px solid var(--border)!important;}
+#customerDetailModal #closeDetailButton{position:relative!important;z-index:40!important;flex:0 0 39px!important;opacity:1!important;visibility:visible!important;}
+#customerDetailModal .detail-actions{position:relative;z-index:10;}
+
+#homeView{position:relative!important;z-index:1!important;padding-top:18px!important;scroll-margin-top:110px!important;}
+#homeView .home-modules,#homeView .module-card{position:relative!important;z-index:1!important;}
+#appScreen>.topbar.premium-brandbar{z-index:10000!important;}
+.app-page{scroll-margin-top:110px!important;}
+@media(max-width:600px){#homeView{padding-top:16px!important}#customerDetailModal{padding-left:8px!important;padding-right:8px!important}#customerDetailModal .detail-card{max-height:calc(100svh - 16px)!important}}
