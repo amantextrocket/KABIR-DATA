@@ -1003,8 +1003,16 @@ html[data-theme="light"] .theme-grid button.selected{background:var(--solid-prim
 
 /* Customer database Repair / Finance switch */
 .customer-type-switch{display:grid;grid-template-columns:1fr 1fr;gap:7px;padding:5px;margin:0 0 12px;border:1px solid var(--border);border-radius:18px;background:rgba(0,0,0,.16)}
-.customer-type-tab{min-height:48px;border:1px solid transparent;border-radius:13px;background:transparent;color:var(--muted);display:flex;align-items:center;justify-content:center;gap:9px;font-weight:800;letter-spacing:.8px;font-size:12px}
-.customer-type-tab b{min-width:28px;height:25px;padding:0 8px;border-radius:99px;display:inline-flex;align-items:center;justify-content:center;background:rgba(255,255,255,.08);color:var(--text);font-size:11px}
-.customer-type-tab.active{background:rgba(255,255,255,.12);border-color:var(--border);color:var(--text);box-shadow:inset 0 1px 0 rgba(255,255,255,.08)}
-.customer-type-tab.active b{background:var(--success);color:#06130c}
+.customer-type-tab{min-height:48px;border:0;border-radius:13px;color:#fff;display:flex;align-items:center;justify-content:center;gap:9px;font-weight:900;letter-spacing:.8px;font-size:12px;transition:.18s ease;box-shadow:0 6px 18px rgba(0,0,0,.16)}
+.customer-type-tab b{min-width:30px;height:26px;padding:0 8px;border-radius:99px;display:inline-flex;align-items:center;justify-content:center;background:rgba(0,0,0,.22);color:#fff;font-size:11px}
+.customer-type-tab.customer-type-repair{background:#e53935}
+.customer-type-tab.customer-type-finance{background:#16a34a}
+.customer-type-tab:not(.active){filter:saturate(.9);opacity:.78}
+.customer-type-tab.active{opacity:1;transform:translateY(-1px);box-shadow:0 8px 22px rgba(0,0,0,.24),inset 0 1px 0 rgba(255,255,255,.2)}
+.customer-type-tab.active b{background:rgba(0,0,0,.28);color:#fff}
+.result-date{margin-top:4px;font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.2px}
+#editCustomerButton,#deleteCustomerButton{border:0!important;color:#fff!important;font-weight:900!important;box-shadow:0 8px 20px rgba(0,0,0,.18);transition:.18s ease}
+#editCustomerButton{background:#16a34a!important}
+#deleteCustomerButton{background:#e53935!important}
+#editCustomerButton:disabled,#deleteCustomerButton:disabled{background:#555!important;color:#fff!important;opacity:.55!important}
 @media(max-width:430px){.customer-type-tab{min-height:45px;font-size:11px}}
