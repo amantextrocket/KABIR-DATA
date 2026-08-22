@@ -117,13 +117,24 @@ function modelListForBrand(brand){
     const remote=key?remoteModelsByBrand[key]:[];
     return [...new Set([...local,...remote])];
 }
-function fillModelOptions(brand){
+function fillModelOptions(brand,query=""){
     const m=$("model"); if(!m)return;
+    const q=String(query||"").trim().toLowerCase();
+    const all=modelListForBrand(brand);
+    const list=q?all.filter(x=>x.toLowerCase().includes(q)):all;
     m.innerHTML='<option value="">Select model</option>';
-    modelListForBrand(brand).forEach(x=>{
+    list.forEach(x=>{
         const o=document.createElement("option");o.value=x;o.textContent=x;m.appendChild(o);
     });
-    m.disabled=!m.options.length;
+    m.disabled=!brand || list.length===0;
+}
+function syncCustomerModelOptions(){
+    const brand=val("brand"),type=$("modelType"),m=$("model");
+    if(!brand||!m)return;
+    const query=type?.value||"";
+    const current=m.value;
+    fillModelOptions(brand,query);
+    if(current && [...m.options].some(o=>o.value===current))m.value=current;
 }
 
 /* =========================================================
@@ -297,6 +308,75 @@ models:{
 "Pova 7 Pro":["Geek Black","Neon Cyan"]
 },
 storage:["128 GB","256 GB","512 GB"]
+},
+
+iQOO:{
+models:{
+"iQOO 13":["Legend","Nardo Gray","Track Black"],
+"iQOO 12":["Legend","Alpha","Phoenix"],
+"iQOO Neo 10 Pro":["Fiery Orange","Titanium Silver"],
+"iQOO Neo 10R":["Raging Blue","MoonKnight Titanium"],
+"iQOO Z10":["Stellar Blue","Silver"],
+"iQOO Z9":["Brushed Green","Graphene Blue"]
+},
+storage:["128 GB","256 GB","512 GB"]
+},
+
+Honor:{
+models:{
+"Honor 400 Pro":["Lunar Grey","Midnight Black"],
+"Honor 400":["Midnight Black","Desert Gold","Meteor Silver"],
+"Honor X9c":["Titanium Purple","Jade Cyan"]
+},
+storage:["128 GB","256 GB","512 GB"]
+},
+
+Nokia:{
+models:{
+"Nokia G42 5G":["So Grey","So Purple"],
+"Nokia C32":["Autumn Green","Beach Pink","Charcoal"]
+},
+storage:["64 GB","128 GB","256 GB"]
+},
+
+Sony:{
+models:{
+"Xperia 1 VII":["Black","Khaki Green","Orchid Purple"],
+"Xperia 10 VII":["Black","White","Turquoise"]
+},
+storage:["128 GB","256 GB"]
+},
+
+ASUS:{
+models:{
+"ROG Phone 9 Pro":["Phantom Black","Storm White"],
+"Zenfone 12 Ultra":["Sage Green","Ebony Black"]
+},
+storage:["256 GB","512 GB"]
+},
+
+Huawei:{
+models:{
+"Pura 80 Pro":["Black","White","Gold"],
+"Nova 13 Pro":["Green","White","Black"]
+},
+storage:["256 GB","512 GB"]
+},
+
+ZTE:{
+models:{
+"nubia Z70 Ultra":["Black","Yellow","Blue"],
+"RedMagic 10 Pro":["Shadow","Moonlight","Dusk"]
+},
+storage:["256 GB","512 GB"]
+},
+
+itel:{
+models:{
+"S25 Ultra":["Titanium Blue","Titanium Gray"],
+"P55 5G":["Galaxy Blue","Royal Green"]
+},
+storage:["64 GB","128 GB"]
 },
 
 Lava:{
@@ -1008,93 +1088,56 @@ document.addEventListener("keydown",e=>{
 ========================================================= */
 
 function brands(){
-
-    let b=$("brand");
-
+    const b=$("brand");
+    const modelType=$("modelType");
+    const m=$("model");
     if(!b)return;
 
-    Object.keys(BRANDS)
-        .sort()
-        .forEach(x=>{
+    b.innerHTML='<option value="">Select brand</option>';
+    Object.keys(BRANDS).sort((a,z)=>a.localeCompare(z)).forEach(x=>{
+        const o=document.createElement("option");o.value=x;o.textContent=x;b.appendChild(o);
+    });
 
-            let o=document.createElement("option");
-
-            o.value=x;
-            o.textContent=x;
-
-            b.appendChild(o);
-        });
-
-    b.onchange=()=>{
-
-        let d=BRANDS[b.value];
-
-        let m=$("model");
-        let c=$("colour");
-        let s=$("storage");
-
-        m.innerHTML=
-            '<option value="">Select model</option>';
-
-        c.innerHTML=
-            '<option value="">Select model first</option>';
-
-        s.innerHTML=
-            '<option value="">Select model first</option>';
-
-        m.disabled=!d;
-        c.disabled=true;
-        s.disabled=true;
-
-        if(d){
-
-            fillModelOptions(b.value);
-            loadAllPhoneModels().then(()=>{
-                if($("brand")?.value===b.value) fillModelOptions(b.value);
-            });
+    const refreshDetails=()=>{
+        const d=BRANDS[b.value];
+        const selected=m?.value||"";
+        const list=modelListForBrand(b.value);
+        const query=modelType?.value||"";
+        fillModelOptions(b.value,query);
+        if(selected && [...m.options].some(o=>o.value===selected))m.value=selected;
+        const activeModel=m?.value||"";
+        const cs=d?.models?.[activeModel]||[];
+        const c=$("colour"),s=$("storage");
+        if(c){
+            c.innerHTML='<option value="">Select colour</option>';
+            cs.forEach(x=>{const o=document.createElement("option");o.value=x;o.textContent=x;c.appendChild(o);});
+            c.disabled=!cs.length;
+        }
+        if(s){
+            s.innerHTML='<option value="">Select storage</option>';
+            (d?.storage||["64 GB","128 GB","256 GB","512 GB","1 TB"]).forEach(x=>{const o=document.createElement("option");o.value=x;o.textContent=x;s.appendChild(o);});
+            s.disabled=!d;
         }
     };
 
-    $("model").onchange=()=>{
+    b.onchange=()=>{
+        if(modelType)modelType.value="";
+        refreshDetails();
+        loadAllPhoneModels().then(()=>{if($("brand")?.value===b.value)refreshDetails();});
+    };
 
-        let d=BRANDS[b.value];
+    modelType?.addEventListener("input",()=>{
+        const q=modelType.value.trim();
+        fillModelOptions(b.value,q);
+        if(m?.options.length===2 && q){m.selectedIndex=1;}
+        m?.dispatchEvent(new Event("change"));
+    });
 
-        let m=$("model");
-        let c=$("colour");
-        let s=$("storage");
-
-        let cs=d?.models?.[m.value]||[];
-
-        c.innerHTML=
-            '<option value="">Select colour</option>';
-
-        cs.forEach(x=>{
-
-            let o=document.createElement("option");
-
-            o.value=x;
-            o.textContent=x;
-
-            c.appendChild(o);
-        });
-
-        c.disabled=!cs.length;
-
-        s.innerHTML=
-            '<option value="">Select storage</option>';
-
-        (d?.storage||[])
-            .forEach(x=>{
-
-                let o=document.createElement("option");
-
-                o.value=x;
-                o.textContent=x;
-
-                s.appendChild(o);
-            });
-
-        s.disabled=!d;
+    m.onchange=()=>{
+        const d=BRANDS[b.value],cs=d?.models?.[m.value]||[],c=$("colour"),s=$("storage");
+        if(modelType && m.value)modelType.value=m.value;
+        if(c){c.innerHTML='<option value="">Select colour</option>';cs.forEach(x=>{const o=document.createElement("option");o.value=x;o.textContent=x;c.appendChild(o);});c.disabled=!cs.length;}
+        if(s){s.innerHTML='<option value="">Select storage</option>';(d?.storage||["64 GB","128 GB","256 GB","512 GB","1 TB"]).forEach(x=>{const o=document.createElement("option");o.value=x;o.textContent=x;s.appendChild(o);});s.disabled=!d;}
     };
 }
 
@@ -1371,7 +1414,7 @@ async function save(e){
                 val("brand"),
 
             model:
-                val("model"),
+                (val("model") || val("modelType")),
 
             imei:
                 imei,
@@ -1467,6 +1510,7 @@ async function save(e){
         if($("entryDate"))$("entryDate").value=todayISO();
         delete $("customerForm").dataset.editId;
         if($("customerCode")) $("customerCode").value="";
+        if($("modelType")) $("modelType").value="";
         if($("saveCustomerButton")) $("saveCustomerButton").textContent="SAVE CUSTOMER";
         $("customerForm")?.querySelectorAll("input,textarea,select").forEach(el=>{
             el.classList.remove("field-filled");
@@ -1729,7 +1773,7 @@ function openFinanceEdit(c){
     closeCustomerDetail();
     show("addSection");
     const map={customerName:"customerName",address:"address",pincode:"pincode",city:"city",state:"state",phone:"phone",
-      brand:"brand",model:"model",imei:"imei",colour:"colour",storage:"storage",financeCompany:"financeCompany",
+      brand:"brand",model:"model",modelType:"model",imei:"imei",colour:"colour",storage:"storage",financeCompany:"financeCompany",
       phoneAmount:"phoneAmount",downPayment:"downPayment",emiAmount:"emiAmount",emiMonths:"emiMonths",
       lockName:"lockName",stock:"stock",counter:"counter",financerName:"financerName"};
     Object.entries(map).forEach(([k,id])=>{if($(id))$(id).value=c[k]??""});
@@ -3279,6 +3323,7 @@ async function init(){
     brands();
 
     setupFinanceCompany();
+    setupCustomerFilledFields();
     setupRepairFields();
     setupEntryDateFields();
 
