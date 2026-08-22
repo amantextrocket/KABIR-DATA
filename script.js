@@ -2763,7 +2763,109 @@ function smartMathFormat(n){
     return Number(rounded).toLocaleString('en-IN',{maximumFractionDigits:10});
 }
 
-function smartSearch(){
+/* =========================================================
+   SMART VOICE ASSISTANT
+   Uses the browser's built-in Speech Recognition + Speech Synthesis.
+   No API key is required. The recognized text is passed to the existing
+   Smart Search engine so voice and typing always use the same database logic.
+========================================================= */
+let smartSpeechRecognition=null;
+let smartVoiceListening=false;
+let smartVoiceSpeaking=false;
+let smartVoiceReady=false;
+
+function smartVoiceStatus(text,type=""){
+    const el=$("smartVoiceStatus");
+    if(!el)return;
+    el.textContent=text;
+    el.className=`smart-voice-status ${type}`.trim();
+}
+function smartVoiceSetButton(mode){
+    const b=$("smartVoiceButton"),i=$("smartVoiceIcon");
+    if(!b||!i)return;
+    b.classList.toggle("listening",mode==="listening");
+    b.classList.toggle("speaking",mode==="speaking");
+    if(mode==="listening"){i.textContent="⏹️";b.title="Stop listening";b.setAttribute("aria-label","Stop listening");}
+    else if(mode==="speaking"){i.textContent="🔊";b.title="Stop voice answer";b.setAttribute("aria-label","Stop voice answer");}
+    else{i.textContent="🎙️";b.title="Voice Assistant";b.setAttribute("aria-label","Voice Assistant");}
+}
+function smartStopSpeaking(){
+    try{window.speechSynthesis?.cancel();}catch(e){}
+    smartVoiceSpeaking=false;
+    if(!smartVoiceListening)smartVoiceSetButton("idle");
+}
+function smartSpeak(text){
+    const clean=String(text||"").replace(/<[^>]*>/g," ").replace(/&nbsp;/gi," ").replace(/\s+/g," ").trim();
+    if(!clean||!("speechSynthesis" in window)){smartVoiceStatus("Voice answer आपके browser में available नहीं है.","error");return false;}
+    try{
+        window.speechSynthesis.cancel();
+        const u=new SpeechSynthesisUtterance(clean);
+        const lang=smartAnswerLanguage(clean)==="hi"?"hi-IN":(/\b(kya|kitne|kaun|dikhao|batao|hai|hain|aaj|kal|customer|data)\b/i.test(normalizeText(clean))?"hi-IN":"en-IN");
+        u.lang=lang;u.rate=.96;u.pitch=1;
+        const voices=window.speechSynthesis.getVoices?.()||[];
+        const preferred=voices.find(v=>v.lang?.toLowerCase().startsWith(lang.toLowerCase().slice(0,2)))||voices.find(v=>v.lang?.toLowerCase().includes("en-in"));
+        if(preferred)u.voice=preferred;
+        u.onstart=()=>{smartVoiceSpeaking=true;smartVoiceSetButton("speaking");smartVoiceStatus("🔊 Answer बोल रहा हूँ…","active");};
+        u.onend=()=>{smartVoiceSpeaking=false;smartVoiceSetButton("idle");smartVoiceStatus("Voice Assistant: Tap 🎙️ और अगला सवाल बोलें");};
+        u.onerror=()=>{smartVoiceSpeaking=false;smartVoiceSetButton("idle");smartVoiceStatus("Voice answer नहीं बोल पाया. आप answer screen पर पढ़ सकते हैं.","error");};
+        window.speechSynthesis.speak(u);
+        return true;
+    }catch(e){console.warn("Speech synthesis:",e);return false;}
+}
+function smartVoiceGetRecognition(){
+    const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+    if(!SR)return null;
+    const r=new SR();
+    r.continuous=false;r.interimResults=true;r.maxAlternatives=1;
+    r.lang="en-IN";
+    r.onstart=()=>{smartVoiceListening=true;smartVoiceSetButton("listening");smartVoiceStatus("🎙️ सुन रहा हूँ… अपना सवाल बोलें","active");};
+    r.onresult=e=>{
+        let finalText="",interim="";
+        for(let i=e.resultIndex;i<e.results.length;i++){
+            const t=e.results[i][0]?.transcript||"";
+            if(e.results[i].isFinal)finalText+=t;else interim+=t;
+        }
+        const input=$("universalSearchInput");
+        if(input&&(finalText||interim))input.value=(finalText||interim).trim();
+        if(interim&&!finalText)smartVoiceStatus(`🎙️ “${interim.trim()}”`,"active");
+        if(finalText){
+            const q=finalText.trim();
+            if(input)input.value=q;
+            smartSearch({speak:true});
+        }
+    };
+    r.onerror=e=>{
+        smartVoiceListening=false;smartVoiceSetButton("idle");
+        const msg=e?.error==="not-allowed"||e?.error==="service-not-allowed"?"Microphone permission allow करें.":e?.error==="no-speech"?"आवाज़ सुनाई नहीं दी. फिर से 🎙️ दबाएँ.":"Voice recognition शुरू नहीं हो पाया.";
+        smartVoiceStatus(msg,"error");
+    };
+    r.onend=()=>{smartVoiceListening=false;if(!smartVoiceSpeaking)smartVoiceSetButton("idle");if(!smartVoiceSpeaking&&$("smartVoiceStatus")?.classList.contains("active"))smartVoiceStatus("Voice Assistant: Tap 🎙️ और अगला सवाल बोलें");};
+    return r;
+}
+function smartStartVoice(){
+    if(smartVoiceSpeaking){smartStopSpeaking();return;}
+    if(smartVoiceListening){try{smartSpeechRecognition?.stop();}catch(e){}return;}
+    if(!smartSpeechRecognition)smartSpeechRecognition=smartVoiceGetRecognition();
+    if(!smartSpeechRecognition){smartVoiceStatus("इस browser में voice recognition उपलब्ध नहीं है. iPhone पर Safari/Chrome में microphone permission check करें.","error");return;}
+    try{
+        smartSpeechRecognition.lang="en-IN";
+        smartSpeechRecognition.start();
+    }catch(e){
+        try{smartSpeechRecognition.stop();}catch(_e){}
+        setTimeout(()=>{try{smartSpeechRecognition.start();}catch(_e){smartVoiceStatus("Voice recognition अभी start नहीं हुआ. फिर से 🎙️ दबाएँ.","error");}},180);
+    }
+}
+function smartVoiceAssistant(){
+    const b=$("smartVoiceButton");if(!b)return;
+    if(!smartVoiceReady){
+        smartVoiceReady=true;
+        if("speechSynthesis" in window){try{window.speechSynthesis.getVoices();}catch(e){}}
+    }
+    b.addEventListener("click",smartStartVoice);
+    $("smartVoiceStatus")?.addEventListener("click",()=>{if(smartVoiceSpeaking)smartStopSpeaking();});
+}
+
+function smartSearch(options={}){
     const q=val("universalSearchInput"),a=$("smartSearchAnswer"),r=$("smartSearchResults");if(!a||!r)return;
     const n=normalizeText(q);if(!n){a.innerHTML='<div class="empty">आप Hindi, Hinglish या English में कोई भी business question या mathematics calculation पूछ सकते हैं। जैसे: “आज का पूरा हिसाब बताओ”, “Aman की history दिखाओ”, “इस महीने profit कितना हुआ?”, “3000x30%”</div>';r.innerHTML="";return;}
     const math=smartMathExpression(q);
@@ -2773,6 +2875,7 @@ function smartSearch(){
         const answer=smartAnswerText(lang,`उत्तर: ${formatted}`,`Answer: ${formatted}`,`Answer: ${formatted}`);
         a.innerHTML=`<div class="smart-answer-text">${esc(answer)}</div><div class="smart-answer-math">${esc(q.trim())} = <b>${esc(formatted)}</b></div>`;
         r.innerHTML="";
+        if(options.speak)smartSpeak(answer);
         return;
     }
     const lang=smartLang(q), rows=smartRows(), intent=smartIntent(q), range=smartRangeFromQuery(q), [start,end,label]=range||[null,null,""];
@@ -2861,6 +2964,7 @@ function smartSearch(){
         filtered=todayRows;answer=smartAnswerText(lang,`आज की पूरी report: ${todayRows.length} records, Finance ${finance}, Repairing ${repair}, Second Hand ${second}, Accessories ${acc}, Sale/collection ${smartMoney(totalSale)}, Profit ${smartMoney(totalProfit)}।`,`Aaj ki puri report: ${todayRows.length} records, Finance ${finance}, Repairing ${repair}, Second Hand ${second}, Accessories ${acc}, Sale/collection ${smartMoney(totalSale)}, Profit ${smartMoney(totalProfit)}.`,`Today's complete report: ${todayRows.length} records, Finance ${finance}, Repairing ${repair}, Second Hand ${second}, Accessories ${acc}, Sales/collection ${smartMoney(totalSale)}, Profit ${smartMoney(totalProfit)}.`);
     }
     a.innerHTML=`<div class="smart-answer-text">${esc(answer)}</div>`;smartRenderRows(r,filtered);
+    if(options.speak)smartSpeak(answer);
 }
 
 function applyTheme(theme){
@@ -2906,7 +3010,8 @@ function featureNav(){
     $("closeDetailButton")?.addEventListener("click",e=>{e.preventDefault();e.stopPropagation();closeCustomerDetail();});
     $("homeSearchButton")?.addEventListener("click",()=>{show("smartSearchSection");$("universalSearchInput")?.focus();smartSearch();audit("customer_search",{section:"All Data",description:"Smart database search opened"});});
     $("recentDeletedButton")?.addEventListener("click",()=>{show("recentDeletedSection");renderRecentlyDeleted();});
-    $("universalSearchInput")?.addEventListener("input",smartSearch);
+    $("universalSearchInput")?.addEventListener("input",()=>smartSearch());
+    smartVoiceAssistant();
     $("closePdfSelectButton")?.addEventListener("click",()=>$("pdfSelectModal")?.classList.add("hidden"));
     $("pdfChoices")?.addEventListener("click",e=>{const b=e.target.closest("[data-pdf-section]");if(b)runPdfWithSelectedDate(b.dataset.pdfSection)});
 }
