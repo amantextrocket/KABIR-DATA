@@ -154,13 +154,17 @@
   <form id="customerForm">
     <div class="block customer-block"><b>Customer Details</b>
       <label class="entry-date-label">Entry Date<input id="entryDate" class="entry-date-field" type="date"></label>
-      <label class="customer-name-field">Customer Name<input id="customerName" autocomplete="name"></label>
+      <div class="customer-pair customer-name-phone-pair">
+        <label class="customer-name-field">Customer Name<input id="customerName" autocomplete="name"></label>
+        <label class="customer-phone-field">Mobile Number<input id="phone" type="tel" inputmode="tel" maxlength="10"></label>
+      </div>
       <label class="customer-code-field">Customer Code<input id="customerCode" readonly placeholder="Automatic KM1234"></label>
       <label>Address<textarea id="address" rows="3"></textarea></label>
       <label>PIN Code<input id="pincode" inputmode="numeric" maxlength="6" placeholder="6 digit PIN code"><small id="pincodeStatus"></small></label>
-      <label class="customer-city-field">City / Village<input id="city" placeholder="Auto from PIN"></label>
-      <label class="customer-state-field">State<input id="state" placeholder="Auto from PIN"></label>
-      <label class="customer-phone-field">Mobile Number<input id="phone" type="tel" inputmode="tel" maxlength="10"></label>
+      <div class="customer-pair customer-city-state-pair">
+        <label class="customer-city-field">City / Village<input id="city" placeholder="Auto from PIN"></label>
+        <label class="customer-state-field">State<input id="state" placeholder="Auto from PIN"></label>
+      </div>
     </div>
     <div class="block customer-block"><b>Device Details</b>
       <label>Phone Brand<select id="brand"><option value="">Select brand</option></select></label>
