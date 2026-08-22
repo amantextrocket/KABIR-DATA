@@ -1039,3 +1039,6 @@ html[data-theme="light"] .theme-grid button.selected{background:var(--solid-prim
 .smart-ai-correction{margin-bottom:8px;padding:9px 11px;border:1px solid var(--border);border-radius:12px;background:rgba(255,255,255,.045);font-size:11px;color:var(--muted)}
 .smart-voice-status.active{animation:pulseVoice 1.3s ease-in-out infinite}
 @keyframes pulseVoice{50%{opacity:.55}}
+
+/* TEXT-ONLY AI SEARCH: voice controls intentionally disabled */
+.smart-voice-button,.smart-voice-status{display:none!important;}
