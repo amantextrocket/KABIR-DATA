@@ -1087,6 +1087,25 @@ document.addEventListener("keydown",e=>{
    BRANDS / MODELS / COLOURS / STORAGE
 ========================================================= */
 
+function refreshRamStorage(brand, model){
+    const d=BRANDS?.[brand]||{};
+    const ram=$("ram"), storage=$("storage"), ramField=$("ramField");
+    const isIphone=/^iPhone\b/i.test(String(model||""));
+    const rams=["2 GB","3 GB","4 GB","6 GB","8 GB","12 GB","16 GB","18 GB","24 GB"];
+    if(ram){
+        ram.innerHTML='<option value="">Select RAM</option>';
+        rams.forEach(x=>{const o=document.createElement("option");o.value=x;o.textContent=x;ram.appendChild(o);});
+        ram.disabled=!brand || isIphone;
+        if(isIphone)ram.value="";
+    }
+    if(ramField)ramField.style.display=isIphone?"none":"";
+    if(storage){
+        storage.innerHTML='<option value="">Select storage</option>';
+        (d?.storage||["64 GB","128 GB","256 GB","512 GB","1 TB"]).forEach(x=>{const o=document.createElement("option");o.value=x;o.textContent=x;storage.appendChild(o);});
+        storage.disabled=!brand || !model;
+    }
+}
+
 function brands(){
     const b=$("brand");
     const modelType=$("modelType");
@@ -1107,17 +1126,13 @@ function brands(){
         if(selected && [...m.options].some(o=>o.value===selected))m.value=selected;
         const activeModel=m?.value||"";
         const cs=d?.models?.[activeModel]||["Black","White","Blue","Green","Red","Silver","Gold","Purple"];
-        const c=$("colour"),s=$("storage");
+        const c=$("colour");
         if(c){
             c.innerHTML='<option value="">Select colour</option>';
             if(activeModel) cs.forEach(x=>{const o=document.createElement("option");o.value=x;o.textContent=x;c.appendChild(o);});
             c.disabled=!activeModel;
         }
-        if(s){
-            s.innerHTML='<option value="">Select storage</option>';
-            (d?.storage||["64 GB","128 GB","256 GB","512 GB","1 TB"]).forEach(x=>{const o=document.createElement("option");o.value=x;o.textContent=x;s.appendChild(o);});
-            s.disabled=!d;
-        }
+        refreshRamStorage(b.value,activeModel);
     };
 
     b.onchange=()=>{
@@ -1134,10 +1149,10 @@ function brands(){
     });
 
     m.onchange=()=>{
-        const d=BRANDS[b.value],cs=d?.models?.[m.value]||["Black","White","Blue","Green","Red","Silver","Gold","Purple"],c=$("colour"),s=$("storage");
+        const d=BRANDS[b.value],cs=d?.models?.[m.value]||["Black","White","Blue","Green","Red","Silver","Gold","Purple"],c=$("colour");
         if(modelType && m.value)modelType.value=m.value;
         if(c){c.innerHTML='<option value="">Select colour</option>';if(m.value)cs.forEach(x=>{const o=document.createElement("option");o.value=x;o.textContent=x;c.appendChild(o);});c.disabled=!m.value;}
-        if(s){s.innerHTML='<option value="">Select storage</option>';(d?.storage||["64 GB","128 GB","256 GB","512 GB","1 TB"]).forEach(x=>{const o=document.createElement("option");o.value=x;o.textContent=x;s.appendChild(o);});s.disabled=!d;}
+        refreshRamStorage(b.value,m.value);
     };
 }
 
@@ -1387,7 +1402,7 @@ async function save(e){
 
         const editId=$("customerForm").dataset.editId;
         const existing=editId?customers.find(c=>c.id===editId):null;
-        if(editId && (!existing || !canEditRecord(existing))){throw Error(editLockMessage(existing));}
+        if(editId && !existing){throw Error("Customer record नहीं मिला.");}
         let customerData={
 
             customerCode:existing?.customerCode || await uniqueCustomerCode(),
@@ -1421,6 +1436,9 @@ async function save(e){
 
             colour:
                 val("colour"),
+
+            ram:
+                val("ram"),
 
             storage:
                 val("storage"),
@@ -1624,7 +1642,7 @@ function renderSearch(){
     const s=val("searchInput").toLowerCase();
     const arr=customers.filter(c=>!s||[
         c.customerCode,c.customerName,c.phone,c.imei,c.pincode,c.city,c.state,c.brand,c.model,
-        c.colour,c.storage,c.financeCompany,c.lockName,c.stock,c.counter,c.financerName,formatDateTime(c)
+        c.colour,c.ram,c.storage,c.financeCompany,c.lockName,c.stock,c.counter,c.financerName,formatDateTime(c)
     ].filter(Boolean).join(" ").toLowerCase().includes(s));
 
     if(!arr.length){box.innerHTML=`<div class="empty">${s?"No customer found.":"No customer records yet."}</div>`;return;}
@@ -1669,7 +1687,7 @@ function showCustomerDetail(c){
       ${detailItem("Address",c.address)}${detailItem("PIN Code",c.pincode)}
       ${detailItem("City / State",`${c.city||""}, ${c.state||""}`)}
       ${detailItem("Brand",c.brand)}${detailItem("Model",c.model)}${detailItem("IMEI",c.imei)}
-      ${detailItem("Colour",c.colour)}${detailItem("RAM + Storage",c.storage)}
+      ${detailItem("Colour",c.colour)}${detailItem("RAM",c.ram)}${detailItem("Storage",c.storage)}
       ${detailItem("Finance Company",c.financeCompany)}
       ${detailItem("Phone Amount",`₹${c.phoneAmount||0}`)}${detailItem("Down Payment",`₹${c.downPayment||0}`)}
       ${detailItem("EMI",`₹${c.emiAmount||0} × ${c.emiMonths||0} months`)}
@@ -1773,7 +1791,7 @@ function openFinanceEdit(c){
     closeCustomerDetail();
     show("addSection");
     const map={customerName:"customerName",address:"address",pincode:"pincode",city:"city",state:"state",phone:"phone",
-      brand:"brand",model:"model",modelType:"model",imei:"imei",colour:"colour",storage:"storage",financeCompany:"financeCompany",
+      brand:"brand",model:"model",modelType:"model",imei:"imei",colour:"colour",ram:"ram",storage:"storage",financeCompany:"financeCompany",
       phoneAmount:"phoneAmount",downPayment:"downPayment",emiAmount:"emiAmount",emiMonths:"emiMonths",
       lockName:"lockName",stock:"stock",counter:"counter",financerName:"financerName"};
     Object.entries(map).forEach(([k,id])=>{if($(id))$(id).value=c[k]??""});
@@ -1784,7 +1802,7 @@ function openFinanceEdit(c){
     $("brand").dispatchEvent(new Event("change"));
     setTimeout(()=>{
         $("model").value=c.model||"";$("model").dispatchEvent(new Event("change"));
-        setTimeout(()=>{$("colour").value=c.colour||"";$("storage").value=c.storage||""},0);
+        setTimeout(()=>{$("colour").value=c.colour||"";$("ram").value=c.ram||"";$("storage").value=c.storage||""},0);
     },100);
 }
 function openRepairEdit(r){
@@ -1851,10 +1869,6 @@ function editCustomer(){
     else if(u?.actionSource==="accessory")row=accessories.find(x=>x.id===u.actionId);
 
     if(!row){alert("Customer record नहीं मिला.");return;}
-    if(!canEditRecord(row)){
-        alert(editLockMessage(row));
-        return;
-    }
     const source=u.actionSource;
     if(source==="finance")openFinanceEdit(row);
     else if(source==="repair")openRepairEdit(row);
@@ -2190,7 +2204,7 @@ function showUnifiedCustomerHistory(phone,name){
     };
 
     const editBtn=$("editCustomerButton"),deleteBtn=$("deleteCustomerButton");
-    const editable=!!primary && canEditRecord(primary);
+    const editable=!!primary;
     if(editBtn){
         editBtn.disabled=!editable;
         editBtn.title=primary?(
@@ -2813,6 +2827,30 @@ function featureNav(){
     $("pdfChoices")?.addEventListener("click",e=>{const b=e.target.closest("[data-pdf-section]");if(b)runPdfWithSelectedDate(b.dataset.pdfSection)});
 }
 
+// Desktop Enter navigation for Add Customer: move field-by-field, save after the last field.
+function setupCustomerEnterNavigation(){
+    const form=$("customerForm");
+    if(!form || form.dataset.enterNavReady==="1")return;
+    form.dataset.enterNavReady="1";
+    form.addEventListener("keydown",e=>{
+        if(e.key!=="Enter" || e.shiftKey || e.ctrlKey || e.metaKey)return;
+        const target=e.target;
+        if(!(target instanceof HTMLElement) || !["INPUT","SELECT","TEXTAREA"].includes(target.tagName))return;
+        if(target.tagName==="TEXTAREA" && !target.dataset.singleLineEnter)return;
+        e.preventDefault();
+        const fields=[...form.querySelectorAll("input,select,textarea")].filter(el=>{
+            if(el.disabled || el.type==="hidden" || el.closest(".hidden") || el.id==="customerCode")return false;
+            const cs=getComputedStyle(el);
+            return cs.display!=="none" && cs.visibility!=="hidden";
+        });
+        const i=fields.indexOf(target);
+        if(i<0)return;
+        const next=fields[i+1];
+        if(next){ next.focus(); if(next.select && next.tagName==="INPUT" && next.type!=="date") next.select(); }
+        else form.requestSubmit();
+    });
+}
+
 // FINAL ROBUST CUSTOMER ACTION HANDLERS
 // Delegation ensures the buttons keep working even when the modal is rebuilt or re-rendered.
 document.addEventListener("click",e=>{
@@ -3368,6 +3406,7 @@ async function init(){
             "submit",
             save
         );
+    setupCustomerEnterNavigation();
     $("phone")?.addEventListener("input",applyCustomerDuplicateState);
     $("customerName")?.addEventListener("input",applyCustomerDuplicateState);
 }
