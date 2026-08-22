@@ -824,3 +824,49 @@ html[data-theme="light"] input::placeholder,html[data-theme="light"] textarea::p
 .home-modules .module-card .module-icon{background:var(--solid-card-2)!important;color:#fff!important;}
 .home-modules .module-card em{color:#fff!important;}
 .topbar.premium-brandbar,.topbar{position:sticky!important;top:0!important;z-index:1000!important;}
+
+
+/* ===== USER REQUEST: HEADER / HOME CARD / ADD CUSTOMER FINAL ALIGNMENT ===== */
+/* Keep the Kabir header in one clean layer above every page and home card. */
+#appScreen{position:relative;overflow:visible!important;}
+#appScreen>.topbar.premium-brandbar{
+  position:sticky!important;
+  top:0!important;
+  z-index:5000!important;
+  width:calc(100% + 24px)!important;
+  margin:0 -12px 0 -12px!important;
+  min-height:70px!important;
+  border-radius:0 0 24px 24px!important;
+  overflow:visible!important;
+  isolation:isolate!important;
+}
+.home-view{position:relative!important;z-index:1!important;padding-top:22px!important;}
+.home-modules{position:relative!important;z-index:1!important;margin-top:0!important;padding-top:0!important;}
+.home-modules .module-card{position:relative!important;z-index:1!important;}
+.app-page{position:relative;z-index:1;scroll-margin-top:90px!important;}
+
+/* Add Customer: date is compact but never clipped; requested pairs only. */
+#customerForm .entry-date-label{display:block!important;width:155px!important;max-width:100%!important;}
+#customerForm .entry-date-field{display:block!important;width:100%!important;height:40px!important;min-height:40px!important;padding:7px 8px!important;border-radius:12px!important;line-height:normal!important;}
+#customerForm .customer-name-field{grid-column:1!important;}
+#customerForm .customer-phone-field{grid-column:2!important;}
+#customerForm .customer-city-field{grid-column:1!important;}
+#customerForm .customer-state-field{grid-column:2!important;}
+#customerForm .customer-block>label:not(.customer-name-field):not(.customer-phone-field):not(.customer-city-field):not(.customer-state-field){grid-column:1/-1!important;}
+
+/* Light theme: keep the solid home cards/header dark enough for high contrast. */
+html[data-theme="light"] .topbar.premium-brandbar,
+html[data-theme="light"] .home-modules .module-card{
+  background:#202733!important;
+  color:#fff!important;
+  border-color:#3d4a5b!important;
+}
+html[data-theme="light"] .home-modules .module-card *{color:#fff!important;}
+html[data-theme="light"] .home-modules .module-card .module-icon{background:#303b4b!important;color:#fff!important;}
+
+/* Native date controls: prevent the value/indicator from being cut off on iPhone. */
+#customerForm input[type="date"]{-webkit-appearance:auto!important;appearance:auto!important;overflow:visible!important;}
+@media(max-width:600px){
+  #appScreen>.topbar.premium-brandbar{width:calc(100% + 24px)!important;margin-left:-12px!important;margin-right:-12px!important;border-radius:0 0 20px 20px!important;}
+  #customerForm .entry-date-label{width:145px!important;}
+}
