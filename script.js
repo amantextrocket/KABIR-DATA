@@ -2763,126 +2763,7 @@ function smartMathFormat(n){
     return Number(rounded).toLocaleString('en-IN',{maximumFractionDigits:10});
 }
 
-/* =========================================================
-   KABIR AI BRAIN — NO-SETUP LOCAL AI STYLE ASSISTANT
-   General conversation + correction + website/database answers.
-   No Gemini/API key/settings required.
-========================================================= */
-let kabirAiBusy=false;
-let kabirAiHistory=[];
-function kabirAiStatus(text,type=""){return;}
-function kabirCleanQuestion(q){
-    // User input must remain exactly as typed. No auto-correction or rewriting.
-    return String(q||'').trim();
-}
-function kabirCorrectionNotice(original,corrected){
-    // Auto-correction UI intentionally disabled.
-    return '';
-}
-function kabirGeneralLocalAnswer(question){
-    const q=String(question||'').trim(), n=normalizeText(q);
-    const lang=smartLang(q);
-    const hi=(a,b)=>lang==='hi'?a:lang==='hinglish'?b:a;
-    if(!n)return hi('कृपया अपना सवाल पूछिए।','Apna sawaal poochiye.');
-    if(/^(hi|hello|hey|namaste|नमस्ते|हेलो|हाय)\b/i.test(q))return hi('नमस्ते! मैं Kabir AI हूँ। आप अपनी वेबसाइट, customer, repairing, inventory, profit या सामान्य सवाल पूछ सकते हैं।','Namaste! Main Kabir AI hoon. Aap website, customer, repairing, inventory, profit ya normal sawaal pooch sakte hain.');
-    if(/who are you|tum kaun|aap kaun|कौन हो|आप कौन/i.test(q))return hi('मैं Kabir AI हूँ, Kabir Mobile Data का voice और smart search assistant।','Main Kabir AI hoon, Kabir Mobile Data ka voice aur smart search assistant.');
-    if(/what can you do|kya kar sakte|क्या कर सकते|features|feature bata/i.test(q))return hi('मैं customer search, repairing, finance, second hand, accessories, inventory, sales, profit, history, date-wise reports और calculations में मदद कर सकता हूँ।','Main customer search, repairing, finance, second hand, accessories, inventory, sales, profit, history, date-wise reports aur calculations mein help kar sakta hoon.');
-    if(/website.*(kya|about|bare)|kabir data.*kya|kabir mobile data/i.test(n))return hi('Kabir Mobile Data में customer, finance, repairing, second hand, accessories, inventory, invoices और traffic analytics जैसे records manage किए जाते हैं।','Kabir Mobile Data mein customer, finance, repairing, second hand, accessories, inventory, invoices aur traffic analytics jaise records manage kiye jaate hain.');
-    if(/(thank|thanks|धन्यवाद|शुक्रिया)/i.test(q))return hi('आपका स्वागत है।','Aapka swagat hai.');
-    if(/(time|समय|baje|kitne baje)/i.test(q)&&/(abhi|now|current|अभी)/i.test(q))return hi(`अभी समय ${new Date().toLocaleTimeString('hi-IN',{hour:'numeric',minute:'2-digit'})} है।`,`Abhi time ${new Date().toLocaleTimeString('en-IN',{hour:'numeric',minute:'2-digit'})} hai.`);
-    if(/(date|tarikh|तारीख|आज कौन)/i.test(q)&&/(today|aaj|आज|current|अभी)/i.test(q))return hi(`आज ${new Date().toLocaleDateString('hi-IN',{day:'numeric',month:'long',year:'numeric'})} है।`,`Aaj ${new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'})} hai.`);
-    if(/^(who|what|when|where|why|how|क्या|कौन|कब|कहाँ|क्यों|कैसे)\b/i.test(q)) return null;
-    return null;
-}
-async function kabirWikipediaAnswer(question){
-    try{
-      const term=String(question).replace(/\b(what is|who is|who was|what are|क्या है|कौन है|कौन थे|बताओ|batao|dikhao|show me|explain|explain karo|के बारे में|ke bare mein)\b/gi,' ').replace(/[?؟]/g,' ').trim();
-      if(!term||term.length<2)return null;
-      const url=`https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(term)}&srlimit=1&format=json&origin=*`;
-      const res=await fetch(url,{cache:'no-store'}); if(!res.ok)return null;
-      const j=await res.json(); const title=j?.query?.search?.[0]?.title; if(!title)return null;
-      const sum=await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`,{cache:'no-store'}); if(!sum.ok)return null;
-      const d=await sum.json(); const extract=String(d?.extract||'').trim(); if(!extract)return null;
-      const short=extract.length>650?extract.slice(0,647).replace(/\s+\S*$/,'')+'…':extract;
-      return `मुझे ${title} के बारे में यह जानकारी मिली: ${short}`;
-    }catch(e){return null;}
-}
-
-function kabirGenericDataAnswer(question){
-    const q=String(question||'').trim(), n=normalizeText(q), lang=smartLang(q), rows=smartRows();
-    const hi=(a,b)=>lang==='hi'?a:b;
-    if(!rows.length)return null;
-    // Customer/record detail questions: identify a name, phone, IMEI, KM code and requested fields.
-    const tokens=n.split(/\s+/).filter(Boolean);
-    const candidates=rows.filter(x=>normalizeText([x.customerName,x.customerCode,x.phone,x.customerPhone,x.imei,x.brand,x.model,x.device,x.problem,x.name,x.category,x.sn,x.financeCompany,x.repairBy].join(' ')).split(' ').some(t=>tokens.includes(t)));
-    const wantsAll=/(पूरा data|पूरी जानकारी|complete data|all details|full details|सारी जानकारी|history|इतिहास|पूरा record)/i.test(q);
-    const fieldMap=[
-      [/mobile|phone number|मोबाइल|फोन नंबर/i,['phone','customerPhone']],
-      [/imei/i,['imei']],[/model|मॉडल/i,['model','device']],[/brand|ब्रांड/i,['brand']],
-      [/problem|समस्या/i,['problem']],[/technician|repair by|किसने repair/i,['repairBy']],
-      [/finance company|financer|फाइनेंस कंपनी/i,['financeCompany']],
-      [/amount|कितने रुपये|कितना पैसा|price|कीमत/i,['total','payment','phoneAmount','salePrice','price']],
-      [/profit|मुनाफा|फायदा/i,['profit']],[/date|तारीख|कब/i,['date','createdAt','timestamp']],
-      [/status|स्थिति/i,['status']],[/address|पता/i,['address']],
-      [/ram/i,['ram']],[/storage|स्टोरेज/i,['storage']],[/colour|color|रंग/i,['colour','color']],
-      [/sn|serial/i,['sn']]
-    ];
-    if(wantsAll && candidates.length){
-      const x=candidates[0];
-      const parts=[]; for(const [re,keys] of fieldMap){let v; for(const k of keys){if(x[k]!=null&&x[k]!==''){v=x[k];break;}} if(v!=null)parts.push(`${kLabel(keys[0])}: ${v}`);}
-      if(!parts.length)Object.entries(x).filter(([k])=>!k.startsWith('__')&&k!=='id').slice(0,18).forEach(([k,v])=>{if(typeof v!=='object')parts.push(`${k}: ${v}`)});
-      return hi(`यह ${x.customerName||x.name||'record'} की उपलब्ध जानकारी है: ${parts.join(' • ')}`,`Ye ${x.customerName||x.name||'record'} ki available information hai: ${parts.join(' • ')}`);
-    }
-    if(candidates.length){
-      for(const [re,keys] of fieldMap){if(re.test(q)){const x=candidates[0];let v;for(const k of keys){if(x[k]!=null&&x[k]!==''){v=x[k];break;}}if(v!=null)return hi(`${kLabel(keys[0])}: ${v}`,`${kLabel(keys[0])}: ${v}`);}}
-    }
-    // Generic aggregate questions over any section.
-    const range=smartRangeFromQuery(q); const pool=range?rows.filter(x=>smartInRange(x,range[0],range[1])):rows;
-    const sectionWords=[['finance','Finance'],['repairing','Repairing'],['repair','Repairing'],['second hand','Second Hand'],['used phone','Second Hand'],['accessor','Accessories'],['inventory','Inventory']];
-    let section=null; for(const [w,v] of sectionWords){if(n.includes(w)){section=v;break;}}
-    let scoped=section&&section!=='Inventory'?pool.filter(x=>x.__section===section):pool;
-    if(/how many|कितने|कितनी|कितना|count|कुल|total|number of/i.test(q)){
-      const c=scoped.length;
-      const label=section||'कुल records';
-      return hi(`${range?range[2]+' में ':''}${label} के ${c} records हैं।`,`${range?range[2]+' mein ':''}${label} ke ${c} records hain.`);
-    }
-    if(/who|कौन|kaun/i.test(q)&&/(most|सबसे ज्यादा|सबसे अधिक|highest|top)/i.test(q)){
-      const m={};scoped.forEach(x=>{const k=x.customerName||x.repairBy||x.financeCompany||x.brand||x.model||'Unknown';m[k]=(m[k]||0)+1});
-      const e=Object.entries(m).sort((a,b)=>b[1]-a[1])[0]; if(e)return hi(`सबसे ज्यादा records ${e[0]} के हैं: ${e[1]}.`,`Sabse zyada records ${e[0]} ke hain: ${e[1]}.`);
-    }
-    return null;
-}
-function kLabel(k){const m={phone:'Mobile',customerPhone:'Mobile',imei:'IMEI',model:'Model',device:'Device',brand:'Brand',problem:'Problem',repairBy:'Repairing By',financeCompany:'Finance Company',total:'Amount',payment:'Amount',phoneAmount:'Phone Amount',salePrice:'Sale Price',price:'Price',profit:'Profit',date:'Date',createdAt:'Date',status:'Status',address:'Address',ram:'RAM',storage:'Storage',colour:'Colour',sn:'SN'};return m[k]||k;}
-async function kabirGeneralAiSearch(options={}){
-    const input=$("universalSearchInput"),a=$("smartSearchAnswer"),r=$("smartSearchResults"); if(!input||!a||!r)return;
-    const original=val("universalSearchInput"); if(!original)return;
-    if(kabirAiBusy)return; kabirAiBusy=true;
-    const corrected=kabirCleanQuestion(original);
-    a.innerHTML='<div class="smart-answer-text">🤖 समझ रहा हूँ…</div>'; r.innerHTML=""; kabirAiStatus("🤖 सवाल समझ रहा हूँ…","active");
-    try{
-      let answer=kabirGenericDataAnswer(corrected);
-      if(!answer) answer=kabirGeneralLocalAnswer(corrected);
-      if(!answer) answer=await kabirWikipediaAnswer(corrected);
-      if(!answer){
-        answer=smartAnswerText(smartLang(corrected),
-          'मैं इस सवाल का भरोसेमंद सामान्य जवाब अभी नहीं दे पा रहा हूँ। अगर यह Kabir Data के record से जुड़ा सवाल है, तो उसे थोड़ा स्पष्ट करके पूछिए—जैसे “आज कितने repair हुए?”',
-          'Main is sawaal ka reliable general answer abhi nahi de pa raha. Agar ye Kabir Data ke record se juda sawaal hai to thoda clear karke poochiye—jaise “Aaj kitne repair hue?”',
-          'I could not get a reliable general answer for that question. If it is about Kabir Data, ask it with the relevant record or date.'
-        );
-      }
-      kabirAiHistory.push({user:original,corrected,answer}); if(kabirAiHistory.length>12)kabirAiHistory.shift();
-      if(input)input.value=original;
-      a.innerHTML=`${kabirCorrectionNotice(original,corrected)}<div class="smart-answer-text">${esc(answer).replace(/\n/g,'<br>')}</div><div class="smart-ai-badge">KABIR AI</div>`;
-
-    }catch(e){
-      console.warn('Kabir AI local:',e);
-      const answer='अभी जवाब तैयार नहीं हो पाया। आप सवाल दोबारा पूछ सकते हैं।';
-      a.innerHTML=`${kabirCorrectionNotice(original,corrected)}<div class="smart-answer-text">${answer}</div><div class="smart-ai-badge">KABIR AI</div>`;
-
-    }finally{kabirAiBusy=false;}
-}
-
-async function smartSearchLocal(options={}){
+function smartSearch(){
     const q=val("universalSearchInput"),a=$("smartSearchAnswer"),r=$("smartSearchResults");if(!a||!r)return;
     const n=normalizeText(q);if(!n){a.innerHTML='<div class="empty">आप Hindi, Hinglish या English में कोई भी business question या mathematics calculation पूछ सकते हैं। जैसे: “आज का पूरा हिसाब बताओ”, “Aman की history दिखाओ”, “इस महीने profit कितना हुआ?”, “3000x30%”</div>';r.innerHTML="";return;}
     const math=smartMathExpression(q);
@@ -2980,19 +2861,6 @@ async function smartSearchLocal(options={}){
         filtered=todayRows;answer=smartAnswerText(lang,`आज की पूरी report: ${todayRows.length} records, Finance ${finance}, Repairing ${repair}, Second Hand ${second}, Accessories ${acc}, Sale/collection ${smartMoney(totalSale)}, Profit ${smartMoney(totalProfit)}।`,`Aaj ki puri report: ${todayRows.length} records, Finance ${finance}, Repairing ${repair}, Second Hand ${second}, Accessories ${acc}, Sale/collection ${smartMoney(totalSale)}, Profit ${smartMoney(totalProfit)}.`,`Today's complete report: ${todayRows.length} records, Finance ${finance}, Repairing ${repair}, Second Hand ${second}, Accessories ${acc}, Sales/collection ${smartMoney(totalSale)}, Profit ${smartMoney(totalProfit)}.`);
     }
     a.innerHTML=`<div class="smart-answer-text">${esc(answer)}</div>`;smartRenderRows(r,filtered);
-    if(options.speak)smartSpeak(answer);
-}
-
-
-async function smartSearch(options={}){
-    const q=val("universalSearchInput");
-    if(!q){return smartSearchLocal(options);}
-    await smartSearchLocal({speak:false});
-    const answer=String($("smartSearchAnswer")?.innerText||"");
-    const intent=smartIntent(q);
-    const noUseful=/कोई matching|no matching|कोई record|no record|data नहीं मिला|data nahi mila|पर्याप्त data नहीं|पर्याप्त data nahi|reliable general answer/i.test(answer);
-    // Unknown natural-language questions are interpreted locally; no API/key is required.
-    if(noUseful || intent==="search") await kabirGeneralAiSearch({});
 }
 
 function applyTheme(theme){
@@ -3038,8 +2906,7 @@ function featureNav(){
     $("closeDetailButton")?.addEventListener("click",e=>{e.preventDefault();e.stopPropagation();closeCustomerDetail();});
     $("homeSearchButton")?.addEventListener("click",()=>{show("smartSearchSection");$("universalSearchInput")?.focus();smartSearch();audit("customer_search",{section:"All Data",description:"Smart database search opened"});});
     $("recentDeletedButton")?.addEventListener("click",()=>{show("recentDeletedSection");renderRecentlyDeleted();});
-    $("universalSearchInput")?.addEventListener("input",()=>smartSearch());
-    $("universalSearchClear")?.addEventListener("click",()=>{const input=$("universalSearchInput");if(!input)return;input.value="";input.focus();$("smartSearchAnswer")&&( $("smartSearchAnswer").innerHTML=`<div class="empty">Apna question, business query या mathematics calculation यहाँ type करें.</div>`);$("smartSearchResults")&&( $("smartSearchResults").innerHTML="");});
+    $("universalSearchInput")?.addEventListener("input",smartSearch);
     $("closePdfSelectButton")?.addEventListener("click",()=>$("pdfSelectModal")?.classList.add("hidden"));
     $("pdfChoices")?.addEventListener("click",e=>{const b=e.target.closest("[data-pdf-section]");if(b)runPdfWithSelectedDate(b.dataset.pdfSection)});
 }
