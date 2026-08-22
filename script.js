@@ -1723,6 +1723,17 @@ function detailItem(a,b){return `<div class="detail-item"><small>${esc(a)}</smal
 let activeCustomerId=null;
 function showCustomerDetail(c){
     activeCustomerId=c.id;
+    // Keep the selected Finance customer as the active edit/delete target.
+    window.activeUnifiedCustomer={
+        phone:String(c.phone||"").replace(/\D/g,""),
+        name:c.customerName||"Customer",
+        financeId:c.id,
+        repairId:null,
+        secondId:null,
+        accessoryId:null,
+        actionSource:"finance",
+        actionId:c.id
+    };
     $("detailTitle").textContent=`${c.customerName||"Customer"} • ${c.customerCode||""}`;
     $("customerDetailBody").innerHTML=`<div class="detail-grid">
       ${detailItem("Customer Code",c.customerCode)}${detailItem("Date & Time",formatDateTime(c))}
@@ -1907,6 +1918,7 @@ function editCustomer(){
     const u=window.activeUnifiedCustomer;
     let row=null;
     if(u?.actionSource==="finance")row=customers.find(x=>x.id===u.actionId);
+    if(!row && activeCustomerId)row=customers.find(x=>x.id===activeCustomerId);
     else if(u?.actionSource==="repair")row=repairing.find(x=>x.id===u.actionId);
     else if(u?.actionSource==="second")row=secondHand.find(x=>x.id===u.actionId);
     else if(u?.actionSource==="accessory")row=accessories.find(x=>x.id===u.actionId);
