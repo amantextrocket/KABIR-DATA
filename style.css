@@ -1016,34 +1016,3 @@ html[data-theme="light"] .theme-grid button.selected{background:var(--solid-prim
 #deleteCustomerButton{background:#e53935!important}
 #editCustomerButton:disabled,#deleteCustomerButton:disabled{background:#555!important;color:#fff!important;opacity:.55!important}
 @media(max-width:430px){.customer-type-tab{min-height:45px;font-size:11px}}
-
-
-/* =========================================================
-   SMART SEARCH — VOICE AI ASSISTANT
-========================================================= */
-.smart-ai-search-box{display:flex!important;align-items:center;gap:8px;overflow:hidden}
-.smart-ai-search-box input{flex:1;min-width:0}
-.smart-search-icon{flex:0 0 auto}
-.smart-voice-button{width:46px!important;height:46px!important;min-width:46px!important;border-radius:15px!important;border:1px solid var(--border)!important;background:rgba(255,255,255,.08)!important;color:inherit!important;display:flex!important;align-items:center!important;justify-content:center!important;cursor:pointer!important;font-size:19px!important;padding:0!important;box-shadow:0 8px 22px rgba(0,0,0,.12)!important;transition:transform .18s ease,background .18s ease,box-shadow .18s ease!important}
-.smart-voice-button:active{transform:scale(.93)}
-.smart-voice-button.listening{animation:smartVoicePulse 1.15s ease-in-out infinite;border-color:rgba(255,90,90,.7)!important;background:rgba(255,70,70,.16)!important}
-.smart-voice-button.speaking{box-shadow:0 0 0 5px rgba(90,180,255,.12),0 8px 22px rgba(0,0,0,.12)!important}
-.smart-voice-status{min-height:18px;margin:7px 2px 9px;color:var(--muted);font-size:10px;line-height:1.45}
-.smart-voice-status.active{color:var(--text)}
-.smart-voice-status.error{color:#ff7a7a}
-@keyframes smartVoicePulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
-@media(max-width:430px){.smart-voice-button{width:42px!important;height:42px!important;min-width:42px!important;border-radius:14px!important}.smart-voice-status{font-size:9px}}
-
-/* ===== KABIR AI VOICE / GENERAL AI ===== */
-.smart-ai-badge{display:inline-flex;margin-top:10px;padding:5px 9px;border:1px solid var(--border);border-radius:999px;font-size:9px;letter-spacing:.08em;color:var(--muted)}
-.smart-ai-correction{margin-bottom:8px;padding:9px 11px;border:1px solid var(--border);border-radius:12px;background:rgba(255,255,255,.045);font-size:11px;color:var(--muted)}
-.search-clear-btn{border:0;background:transparent;color:var(--muted);font-size:22px;line-height:1;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;flex:0 0 34px;padding:0}
-.search-clear-btn:hover{background:rgba(255,255,255,.08);color:var(--text)}
-.smart-search-box{display:flex;align-items:center;gap:8px}
-.smart-search-box #universalSearchInput{flex:1;min-width:0}
-
-.smart-voice-status.active{animation:pulseVoice 1.3s ease-in-out infinite}
-@keyframes pulseVoice{50%{opacity:.55}}
-
-/* TEXT-ONLY AI SEARCH: voice controls intentionally disabled */
-.smart-voice-button,.smart-voice-status{display:none!important;}
