@@ -153,28 +153,31 @@
 <section id="addSection" data-page class="glass panel hidden app-page">
   <div class="section-head"><div><div class="eyebrow">NEW RECORD</div><h2>Add Customer</h2></div><button class="close" data-close="addSection">×</button></div>
   <form id="customerForm">
-    <div class="block"><b>Customer Details</b>
+    <div class="block customer-block"><b>Customer Details</b>
       <label class="entry-date-label">Entry Date<input id="entryDate" class="entry-date-field" type="date"></label>
       <label>Customer Name<input id="customerName" autocomplete="name"></label>
-      <input id="customerCode" type="hidden" aria-hidden="true">
+      <label class="customer-code-field">Customer Code<input id="customerCode" readonly placeholder="Automatic KM1234"></label>
       <label>Address<textarea id="address" rows="3"></textarea></label>
       <label>PIN Code<input id="pincode" inputmode="numeric" maxlength="6" placeholder="6 digit PIN code"><small id="pincodeStatus"></small></label>
-      <div class="cols"><label>City / Village<input id="city" placeholder="Auto from PIN"></label><label>State<input id="state" placeholder="Auto from PIN"></label></div>
+      <label>City / Village<input id="city" placeholder="Auto from PIN"></label>
+      <label>State<input id="state" placeholder="Auto from PIN"></label>
       <label>Mobile Number<input id="phone" type="tel" inputmode="tel" maxlength="10"></label>
     </div>
-    <div class="block"><b>Device Details</b>
+    <div class="block customer-block"><b>Device Details</b>
       <label>Phone Brand<select id="brand"><option value="">Select brand</option></select></label>
       <label>Phone Model<select id="model" disabled><option value="">Select brand first</option></select></label>
       <label>IMEI<div class="with-button"><input id="imei" inputmode="numeric" maxlength="15"><button id="scanImeiButton" type="button">▣ Scan</button></div><small>QR/barcode scan uses the phone camera when supported.</small></label>
       <label>Colour<select id="colour" disabled><option value="">Select model first</option></select></label>
       <label>RAM + Storage<select id="storage" disabled><option value="">Select model first</option></select></label>
       <label>Finance Company<select id="financeCompany"><option value="">Select Finance Company</option></select></label>
-      <div class="cols"><label>Phone Amount<input id="phoneAmount" type="number" inputmode="decimal" min="0" placeholder="₹"></label><label>Down Payment (DP)<input id="downPayment" type="number" inputmode="decimal" min="0" placeholder="₹"></label></div>
-      <label class="emi-combined">EMI Details<div class="emi-fields"><input id="emiAmount" type="number" inputmode="decimal" min="0" placeholder="EMI Amount ₹"><select id="emiMonths"><option value="">Select EMI Month</option><option value="3">3 Months</option><option value="6">6 Months</option><option value="9">9 Months</option><option value="12">12 Months</option><option value="18">18 Months</option><option value="24">24 Months</option><option value="36">36 Months</option></select></div></label>
-      <div class="cols"><label>Lock<input id="lockName" placeholder="Lock name"></label><label>Stock<input id="stock" placeholder="Purchase source"></label></div>
-      <div class="cols"><label>Counter<input id="counter"></label><label>Financer Name<input id="financerName"></label></div>
+      <label>Phone Amount<input id="phoneAmount" type="number" inputmode="decimal" min="0" placeholder="₹"></label>
+      <label>Down Payment (DP)<input id="downPayment" type="number" inputmode="decimal" min="0" placeholder="₹"></label>
+      <label class="emi-combined-field">EMI Details<div class="emi-combined"><input id="emiAmount" type="number" inputmode="decimal" min="0" placeholder="EMI Amount ₹"><select id="emiMonths"><option value="">EMI Month</option><option value="3">3 Months</option><option value="6">6 Months</option><option value="9">9 Months</option><option value="12">12 Months</option><option value="18">18 Months</option><option value="24">24 Months</option><option value="30">30 Months</option><option value="36">36 Months</option></select></div></label>
+      <label>Lock<input id="lockName" placeholder="Lock name"></label>
+      <label>Stock<input id="stock" placeholder="Purchase source"></label>
+      <label>Counter<input id="counter"></label>
+      <label>Financer Name<input id="financerName"></label>
     </div>
-    
     <button id="saveCustomerButton" class="save" type="submit">SAVE CUSTOMER <span id="saveSpinner" class="spinner hidden"></span></button>
     <p id="formMessage" class="message"></p>
   </form>
