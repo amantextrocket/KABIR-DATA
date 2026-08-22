@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#08090d">
 <title>Kabir Mobile Data</title>
 <link rel="stylesheet" href="style.css">
@@ -35,7 +35,6 @@
     <button id="financeModule" class="glass module-card" type="button"><span class="module-icon">💳</span><span><b>FINANCE</b><small>Customer finance & mobile data</small></span><em>›</em></button>
     <button id="repairingModule" class="glass module-card" type="button"><span class="module-icon">🛠️</span><span><b>REPAIRING</b><small>Repairing customer & device data</small></span><em>›</em></button>
     <button id="customerModule" class="glass module-card" type="button"><span class="module-icon">👤</span><span><b>CUSTOMER</b><small>All customers & complete history</small><strong class="home-customer-count" id="homeCustomerCount">0 Customers</strong></span><em>›</em></button>
-    <button id="inventoryModule" class="glass module-card inventory-home-button" type="button"><span class="module-icon">📦</span><span><b>INVENTORY</b><small>New / Used phone stock, parties & invoices</small></span><em>›</em></button>
   </section>
   <div class="home-bottom-actions"><button id="homeSearchButton" class="home-search-fab" type="button" title="Smart Search"><span>⌕</span><b>SEARCH</b></button><button id="recentDeletedButton" class="home-search-fab recently-deleted-fab" type="button" title="Recently Deleted"><span>♻</span><b>RECENTLY DELETED</b></button></div>
 </section>
@@ -128,7 +127,7 @@
   <div class="module-grid"><button id="accessoryListCard" class="glass action" type="button"><span class="icon">📋</span><strong>Item List</strong><small>All accessories records</small></button><button id="accessoryStockCard" class="glass stat" type="button"><span class="icon">📦</span><span>Total Stock</span><strong id="accessoryStockCount">0</strong></button><button id="accessorySearchCard" class="glass action" type="button"><span class="icon">⌕</span><strong>Search</strong><small>Name, category, stock…</small></button><button id="accessoryAddCard" class="glass action" type="button"><span class="icon">＋</span><strong>Add Accessory</strong><small>Add new accessory stock</small></button></div>
 </section>
 
-<section id="customerPage" data-page class="glass panel hidden app-page"><div class="section-head"><div><div class="eyebrow">CUSTOMER DATABASE</div><h2>All Customers</h2><small class="section-subtitle">Finance, repairing, second-hand और accessories से जुड़े customer</small></div><button class="close" data-page-back="homeView">×</button></div><div class="search"><span>⌕</span><input id="allCustomerSearchInput" type="search" placeholder="Name, phone, IMEI, customer code…" autocomplete="off"></div><div id="allCustomerResults" class="results"></div></section>
+<section id="customerPage" data-page class="glass panel hidden app-page"><div class="section-head"><div><div class="eyebrow">CUSTOMER DATABASE</div><h2>All Customers</h2><small class="section-subtitle">Finance, repairing, second-hand और accessories से जुड़े customer</small></div><button class="close" data-page-back="homeView">×</button></div><div class="customer-type-switch" role="tablist" aria-label="Customer type"><button id="customerTypeRepair" class="customer-type-tab customer-type-repair" type="button" data-customer-type="repair" role="tab" aria-selected="false"><span>REPAIR</span><b id="repairCustomerCount">0</b></button><button id="customerTypeFinance" class="customer-type-tab customer-type-finance active" type="button" data-customer-type="finance" role="tab" aria-selected="true"><span>FINANCE</span><b id="financeCustomerCount">0</b></button></div><div class="search"><span>⌕</span><input id="allCustomerSearchInput" type="search" placeholder="Name, phone, IMEI, customer code…" autocomplete="off"></div><div id="allCustomerResults" class="results"></div></section>
 
 <section id="secondAddSection" data-page class="glass panel hidden app-page"><div class="section-head"><div><div class="eyebrow">SECOND HAND</div><h2>Add Second Hand Phone</h2></div><button class="close" data-page-back="secondPage">×</button></div>
 <form id="secondHandForm">
@@ -153,34 +152,36 @@
 <section id="addSection" data-page class="glass panel hidden app-page">
   <div class="section-head"><div><div class="eyebrow">NEW RECORD</div><h2>Add Customer</h2></div><button class="close" data-close="addSection">×</button></div>
   <form id="customerForm">
-    <div class="block"><b>Customer Details</b>
-      <label class="entry-date-label">1. Entry Date<input id="entryDate" class="entry-date-field" type="date" required></label>
-      <label>2. Customer Name<input id="customerName" required autocomplete="name"></label>
-      <label>Customer Code<input id="customerCode" readonly placeholder="Automatic KM1234"></label>
-      <label>3. Address<textarea id="address" rows="3" required></textarea></label>
-      <label>4. PIN Code<input id="pincode" inputmode="numeric" maxlength="6" required placeholder="6 digit PIN code"><small id="pincodeStatus"></small></label>
-      <div class="cols"><label>5. City / Village<input id="city" required placeholder="Auto from PIN"></label><label>State<input id="state" required placeholder="Auto from PIN"></label></div>
-      <label>Mobile Number<input id="phone" type="tel" inputmode="tel" maxlength="10" required></label>
+    <div class="block customer-block"><b>Customer Details</b>
+      <label class="entry-date-label">Entry Date<input id="entryDate" class="entry-date-field" type="date"></label>
+      <div class="customer-pair customer-name-phone-pair">
+        <label class="customer-name-field">Customer Name<input id="customerName" autocomplete="name"></label>
+        <label class="customer-phone-field">Mobile Number<input id="phone" type="tel" inputmode="tel" maxlength="10"></label>
+      </div>
+      <label class="customer-code-field">Customer Code<input id="customerCode" readonly placeholder="Automatic KM1234"></label>
+      <label>Address<textarea id="address" rows="3"></textarea></label>
+      <label>PIN Code<input id="pincode" inputmode="numeric" maxlength="6" placeholder="6 digit PIN code"><small id="pincodeStatus"></small></label>
+      <div class="customer-pair customer-city-state-pair">
+        <label class="customer-city-field">City / Village<input id="city" placeholder="Auto from PIN"></label>
+        <label class="customer-state-field">State<input id="state" placeholder="Auto from PIN"></label>
+      </div>
     </div>
-    <div class="block"><b>Device Details</b>
-      <label>6. Phone Brand<select id="brand" required><option value="">Select brand</option></select></label>
-      <label>7. Phone Model<select id="model" required disabled><option value="">Select brand first</option></select></label>
-      <label>8. IMEI<div class="with-button"><input id="imei" inputmode="numeric" maxlength="15" required><button id="scanImeiButton" type="button">▣ Scan</button></div><small>QR/barcode scan uses the phone camera when supported.</small></label>
-      <label>9. Colour<select id="colour" required disabled><option value="">Select model first</option></select></label>
-      <label>10. RAM + Storage<select id="storage" required disabled><option value="">Select model first</option></select></label>
-      <label>11. Finance Company<select id="financeCompany"><option value="">Select Finance Company</option></select></label>
-      <div class="cols"><label>12. Phone Amount<input id="phoneAmount" type="number" inputmode="decimal" min="0" required placeholder="₹"></label><label>13. Down Payment (DP)<input id="downPayment" type="number" inputmode="decimal" min="0" required placeholder="₹"></label></div>
-      <div class="cols"><label>14. EMI Amount<input id="emiAmount" type="number" inputmode="decimal" min="0" placeholder="₹"></label><label>EMI Months<input id="emiMonths" type="number" inputmode="numeric" min="0" placeholder="Months"></label></div>
-      <div class="cols"><label>15. Lock<input id="lockName" placeholder="Lock name"></label><label>16. Stock<input id="stock" placeholder="Purchase source"></label></div>
-      <div class="cols"><label>17. Counter<input id="counter"></label><label>18. Financer Name<input id="financerName"></label></div>
+    <div class="block customer-block"><b>Device Details</b>
+      <label>Phone Brand<select id="brand"><option value="">Select brand</option></select></label>
+      <label class="model-field">Phone Model<input id="modelType" type="text" autocomplete="off" placeholder="Type / search model"><select id="model" disabled><option value="">Select brand first</option></select></label>
+      <label class="imei-field">IMEI<div class="with-button"><input id="imei" inputmode="numeric" maxlength="15"><button id="scanImeiButton" type="button">▣ Scan</button></div><small>QR/barcode scan uses the phone camera when supported.</small></label>
+      <label>Colour<select id="colour" disabled><option value="">Select model first</option></select></label>
+      <div class="ram-storage-pair"><label id="ramField">RAM<select id="ram" disabled><option value="">Select model first</option></select></label><label>Storage<select id="storage" disabled><option value="">Select model first</option></select></label></div>
+      <label>Finance Company<select id="financeCompany"><option value="">Select Finance Company</option></select></label>
+      <label>Phone Amount<input id="phoneAmount" type="number" inputmode="decimal" min="0" placeholder="₹"></label>
+      <label>Down Payment (DP)<input id="downPayment" type="number" inputmode="decimal" min="0" placeholder="₹"></label>
+      <label class="emi-combined-field">EMI Amount<div class="emi-combined"><input id="emiAmount" type="number" inputmode="decimal" min="0" placeholder="EMI Amount ₹"><select id="emiMonths"><option value="">EMI Month</option><option value="1">1 Month</option><option value="2">2 Months</option><option value="3">3 Months</option><option value="4">4 Months</option><option value="5">5 Months</option><option value="6">6 Months</option><option value="7">7 Months</option><option value="8">8 Months</option><option value="9">9 Months</option><option value="10">10 Months</option><option value="11">11 Months</option><option value="12">12 Months</option><option value="13">13 Months</option><option value="14">14 Months</option><option value="15">15 Months</option><option value="16">16 Months</option><option value="17">17 Months</option><option value="18">18 Months</option><option value="19">19 Months</option><option value="20">20 Months</option><option value="21">21 Months</option><option value="22">22 Months</option><option value="23">23 Months</option><option value="24">24 Months</option></select></div></label>
+      <label>Lock<input id="lockName" placeholder="Lock name"></label>
+      <label>Stock<input id="stock" placeholder="Purchase source"></label>
+      <label>Counter<input id="counter"></label>
+      <label>Financer Name<input id="financerName"></label>
     </div>
-    <div class="block"><b>Bill & Documents</b>
-      <label>19. Bill (After 3 Months)<div class="bill-box"><span><strong>Bill</strong><small id="billDueText"></small></span><em>NO</em></div></label>
-      <label>20. Aadhaar Card<input id="aadhaarFile" type="file" accept="image/*,.pdf" capture="environment"><small>Camera or photo/library.</small></label>
-      <label>21. PAN Card<input id="panFile" type="file" accept="image/*,.pdf" capture="environment"><small>Camera or photo/library.</small></label>
-      <label>22. Customer Photo<input id="customerPhoto" type="file" accept="image/*" capture="user"><small>Direct front camera on supported phones.</small></label>
-    </div>
-    <button id="saveCustomerButton" class="save" type="submit">23. SAVE CUSTOMER <span id="saveSpinner" class="spinner hidden"></span></button>
+    <button id="saveCustomerButton" class="save" type="submit">SAVE CUSTOMER <span id="saveSpinner" class="spinner hidden"></span></button>
     <p id="formMessage" class="message"></p>
   </form>
 </section>
@@ -225,6 +226,7 @@
     <div id="pdfChoices" class="pdf-choice-grid">
       <button type="button" data-pdf-section="finance"><span>💳</span><b>Finance</b><small>Customer + finance records</small></button>
       <button type="button" data-pdf-section="repairing"><span>🛠️</span><b>Repairing</b><small>Complete repairing records</small></button>
+      <button type="button" data-pdf-section="inventory"><span>📦</span><b>Inventory</b><small>Phone stock, sold & invoices</small></button>
       <button type="button" data-pdf-section="customers"><span>👥</span><b>Customers</b><small>Complete customer directory</small></button>
     </div>
   </div>
