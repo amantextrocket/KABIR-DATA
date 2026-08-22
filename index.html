@@ -171,7 +171,7 @@
       <label class="model-field">Phone Model<input id="modelType" type="text" autocomplete="off" placeholder="Type / search model"><select id="model" disabled><option value="">Select brand first</option></select></label>
       <label class="imei-field">IMEI<div class="with-button"><input id="imei" inputmode="numeric" maxlength="15"><button id="scanImeiButton" type="button">▣ Scan</button></div><small>QR/barcode scan uses the phone camera when supported.</small></label>
       <label>Colour<select id="colour" disabled><option value="">Select model first</option></select></label>
-      <label>RAM + Storage<select id="storage" disabled><option value="">Select model first</option></select></label>
+      <div class="ram-storage-pair"><label id="ramField">RAM<select id="ram" disabled><option value="">Select model first</option></select></label><label>Storage<select id="storage" disabled><option value="">Select model first</option></select></label></div>
       <label>Finance Company<select id="financeCompany"><option value="">Select Finance Company</option></select></label>
       <label>Phone Amount<input id="phoneAmount" type="number" inputmode="decimal" min="0" placeholder="₹"></label>
       <label>Down Payment (DP)<input id="downPayment" type="number" inputmode="decimal" min="0" placeholder="₹"></label>
