@@ -2772,19 +2772,12 @@ let kabirAiBusy=false;
 let kabirAiHistory=[];
 function kabirAiStatus(text,type=""){return;}
 function kabirCleanQuestion(q){
-    let s=String(q||'').trim();
-    const fixes={
-      'repearing':'repairing','repeir':'repair','repiering':'repairing','repiring':'repairing','reparing':'repairing',
-      'custmer':'customer','custmor':'customer','costumer':'customer','finence':'finance','finanse':'finance',
-      'invetory':'inventory','inventry':'inventory','accesory':'accessory','accesories':'accessories',
-      'secon hand':'second hand','profitt':'profit','sal':'sale','saled':'sold','moblie':'mobile','iphon':'iphone',
-      'kitnae':'kitne','kitniii':'kitni','kitn':'kitne','batao na':'batao'
-    };
-    Object.keys(fixes).forEach(k=>{s=s.replace(new RegExp('\\b'+k.replace(/ /g,'\\s+')+'\\b','gi'),fixes[k]);});
-    return s.replace(/\s+/g,' ').trim();
+    // User input must remain exactly as typed. No auto-correction or rewriting.
+    return String(q||'').trim();
 }
 function kabirCorrectionNotice(original,corrected){
-    return normalizeText(original)!==normalizeText(corrected)?`<div class="smart-ai-correction">✦ शायद आपका मतलब: <b>${esc(corrected)}</b></div>`:'';
+    // Auto-correction UI intentionally disabled.
+    return '';
 }
 function kabirGeneralLocalAnswer(question){
     const q=String(question||'').trim(), n=normalizeText(q);
@@ -2987,7 +2980,7 @@ async function smartSearchLocal(options={}){
         filtered=todayRows;answer=smartAnswerText(lang,`आज की पूरी report: ${todayRows.length} records, Finance ${finance}, Repairing ${repair}, Second Hand ${second}, Accessories ${acc}, Sale/collection ${smartMoney(totalSale)}, Profit ${smartMoney(totalProfit)}।`,`Aaj ki puri report: ${todayRows.length} records, Finance ${finance}, Repairing ${repair}, Second Hand ${second}, Accessories ${acc}, Sale/collection ${smartMoney(totalSale)}, Profit ${smartMoney(totalProfit)}.`,`Today's complete report: ${todayRows.length} records, Finance ${finance}, Repairing ${repair}, Second Hand ${second}, Accessories ${acc}, Sales/collection ${smartMoney(totalSale)}, Profit ${smartMoney(totalProfit)}.`);
     }
     a.innerHTML=`<div class="smart-answer-text">${esc(answer)}</div>`;smartRenderRows(r,filtered);
-
+    if(options.speak)smartSpeak(answer);
 }
 
 
@@ -3046,6 +3039,7 @@ function featureNav(){
     $("homeSearchButton")?.addEventListener("click",()=>{show("smartSearchSection");$("universalSearchInput")?.focus();smartSearch();audit("customer_search",{section:"All Data",description:"Smart database search opened"});});
     $("recentDeletedButton")?.addEventListener("click",()=>{show("recentDeletedSection");renderRecentlyDeleted();});
     $("universalSearchInput")?.addEventListener("input",()=>smartSearch());
+    $("universalSearchClear")?.addEventListener("click",()=>{const input=$("universalSearchInput");if(!input)return;input.value="";input.focus();$("smartSearchAnswer")&&( $("smartSearchAnswer").innerHTML=`<div class="empty">Apna question, business query या mathematics calculation यहाँ type करें.</div>`);$("smartSearchResults")&&( $("smartSearchResults").innerHTML="");});
     $("closePdfSelectButton")?.addEventListener("click",()=>$("pdfSelectModal")?.classList.add("hidden"));
     $("pdfChoices")?.addEventListener("click",e=>{const b=e.target.closest("[data-pdf-section]");if(b)runPdfWithSelectedDate(b.dataset.pdfSection)});
 }
