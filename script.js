@@ -2764,116 +2764,13 @@ function smartMathFormat(n){
 }
 
 /* =========================================================
-   SMART VOICE ASSISTANT
-   Uses the browser's built-in Speech Recognition + Speech Synthesis.
-   No API key is required. The recognized text is passed to the existing
-   Smart Search engine so voice and typing always use the same database logic.
-========================================================= */
-let smartSpeechRecognition=null;
-let smartVoiceListening=false;
-let smartVoiceSpeaking=false;
-let smartVoiceReady=false;
-
-function smartVoiceStatus(text,type=""){
-    const el=$("smartVoiceStatus");
-    if(!el)return;
-    el.textContent=text;
-    el.className=`smart-voice-status ${type}`.trim();
-}
-function smartVoiceSetButton(mode){
-    const b=$("smartVoiceButton"),i=$("smartVoiceIcon");
-    if(!b||!i)return;
-    b.classList.toggle("listening",mode==="listening");
-    b.classList.toggle("speaking",mode==="speaking");
-    if(mode==="listening"){i.textContent="⏹️";b.title="Stop listening";b.setAttribute("aria-label","Stop listening");}
-    else if(mode==="speaking"){i.textContent="🔊";b.title="Stop voice answer";b.setAttribute("aria-label","Stop voice answer");}
-    else{i.textContent="🎙️";b.title="Voice Assistant";b.setAttribute("aria-label","Voice Assistant");}
-}
-function smartStopSpeaking(){
-    try{window.speechSynthesis?.cancel();}catch(e){}
-    smartVoiceSpeaking=false;
-    if(!smartVoiceListening)smartVoiceSetButton("idle");
-}
-function smartSpeak(text){
-    const clean=String(text||"").replace(/<[^>]*>/g," ").replace(/&nbsp;/gi," ").replace(/\s+/g," ").trim();
-    if(!clean||!("speechSynthesis" in window)){smartVoiceStatus("Voice answer आपके browser में available नहीं है.","error");return false;}
-    try{
-        window.speechSynthesis.cancel();
-        const u=new SpeechSynthesisUtterance(clean);
-        const lang=smartAnswerLanguage(clean)==="hi"?"hi-IN":(/\b(kya|kitne|kaun|dikhao|batao|hai|hain|aaj|kal|customer|data)\b/i.test(normalizeText(clean))?"hi-IN":"en-IN");
-        u.lang=lang;u.rate=.96;u.pitch=1;
-        const voices=window.speechSynthesis.getVoices?.()||[];
-        const preferred=voices.find(v=>v.lang?.toLowerCase().startsWith(lang.toLowerCase().slice(0,2)))||voices.find(v=>v.lang?.toLowerCase().includes("en-in"));
-        if(preferred)u.voice=preferred;
-        u.onstart=()=>{smartVoiceSpeaking=true;smartVoiceSetButton("speaking");smartVoiceStatus("🔊 Answer बोल रहा हूँ…","active");};
-        u.onend=()=>{smartVoiceSpeaking=false;smartVoiceSetButton("idle");smartVoiceStatus("Voice Assistant: Tap 🎙️ और अगला सवाल बोलें");};
-        u.onerror=()=>{smartVoiceSpeaking=false;smartVoiceSetButton("idle");smartVoiceStatus("Voice answer नहीं बोल पाया. आप answer screen पर पढ़ सकते हैं.","error");};
-        window.speechSynthesis.speak(u);
-        return true;
-    }catch(e){console.warn("Speech synthesis:",e);return false;}
-}
-function smartVoiceGetRecognition(){
-    const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-    if(!SR)return null;
-    const r=new SR();
-    r.continuous=false;r.interimResults=true;r.maxAlternatives=1;
-    r.lang="en-IN";
-    r.onstart=()=>{smartVoiceListening=true;smartVoiceSetButton("listening");smartVoiceStatus("🎙️ सुन रहा हूँ… अपना सवाल बोलें","active");};
-    r.onresult=e=>{
-        let finalText="",interim="";
-        for(let i=e.resultIndex;i<e.results.length;i++){
-            const t=e.results[i][0]?.transcript||"";
-            if(e.results[i].isFinal)finalText+=t;else interim+=t;
-        }
-        const input=$("universalSearchInput");
-        if(input&&(finalText||interim))input.value=(finalText||interim).trim();
-        if(interim&&!finalText)smartVoiceStatus(`🎙️ “${interim.trim()}”`,"active");
-        if(finalText){
-            const q=finalText.trim();
-            if(input)input.value=q;
-            smartSearch({speak:true});
-        }
-    };
-    r.onerror=e=>{
-        smartVoiceListening=false;smartVoiceSetButton("idle");
-        const msg=e?.error==="not-allowed"||e?.error==="service-not-allowed"?"Microphone permission allow करें.":e?.error==="no-speech"?"आवाज़ सुनाई नहीं दी. फिर से 🎙️ दबाएँ.":"Voice recognition शुरू नहीं हो पाया.";
-        smartVoiceStatus(msg,"error");
-    };
-    r.onend=()=>{smartVoiceListening=false;if(!smartVoiceSpeaking)smartVoiceSetButton("idle");if(!smartVoiceSpeaking&&$("smartVoiceStatus")?.classList.contains("active"))smartVoiceStatus("Voice Assistant: Tap 🎙️ और अगला सवाल बोलें");};
-    return r;
-}
-function smartStartVoice(){
-    if(smartVoiceSpeaking){smartStopSpeaking();return;}
-    if(smartVoiceListening){try{smartSpeechRecognition?.stop();}catch(e){}return;}
-    if(!smartSpeechRecognition)smartSpeechRecognition=smartVoiceGetRecognition();
-    if(!smartSpeechRecognition){smartVoiceStatus("इस browser में voice recognition उपलब्ध नहीं है. iPhone पर Safari/Chrome में microphone permission check करें.","error");return;}
-    try{
-        smartSpeechRecognition.lang="en-IN";
-        smartSpeechRecognition.start();
-    }catch(e){
-        try{smartSpeechRecognition.stop();}catch(_e){}
-        setTimeout(()=>{try{smartSpeechRecognition.start();}catch(_e){smartVoiceStatus("Voice recognition अभी start नहीं हुआ. फिर से 🎙️ दबाएँ.","error");}},180);
-    }
-}
-function smartVoiceAssistant(){
-    const b=$("smartVoiceButton");if(!b)return;
-    if(!smartVoiceReady){
-        smartVoiceReady=true;
-        if("speechSynthesis" in window){try{window.speechSynthesis.getVoices();}catch(e){}}
-    }
-    b.addEventListener("click",smartStartVoice);
-    $("smartVoiceStatus")?.addEventListener("click",()=>{if(smartVoiceSpeaking)smartStopSpeaking();});
-}
-
-
-/* =========================================================
    KABIR AI BRAIN — NO-SETUP LOCAL AI STYLE ASSISTANT
    General conversation + correction + website/database answers.
    No Gemini/API key/settings required.
 ========================================================= */
 let kabirAiBusy=false;
 let kabirAiHistory=[];
-function kabirAiStatus(text,type=""){smartVoiceStatus(text,type);}
+function kabirAiStatus(text,type=""){return;}
 function kabirCleanQuestion(q){
     let s=String(q||'').trim();
     const fixes={
@@ -2917,6 +2814,52 @@ async function kabirWikipediaAnswer(question){
       return `मुझे ${title} के बारे में यह जानकारी मिली: ${short}`;
     }catch(e){return null;}
 }
+
+function kabirGenericDataAnswer(question){
+    const q=String(question||'').trim(), n=normalizeText(q), lang=smartLang(q), rows=smartRows();
+    const hi=(a,b)=>lang==='hi'?a:b;
+    if(!rows.length)return null;
+    // Customer/record detail questions: identify a name, phone, IMEI, KM code and requested fields.
+    const tokens=n.split(/\s+/).filter(Boolean);
+    const candidates=rows.filter(x=>normalizeText([x.customerName,x.customerCode,x.phone,x.customerPhone,x.imei,x.brand,x.model,x.device,x.problem,x.name,x.category,x.sn,x.financeCompany,x.repairBy].join(' ')).split(' ').some(t=>tokens.includes(t)));
+    const wantsAll=/(पूरा data|पूरी जानकारी|complete data|all details|full details|सारी जानकारी|history|इतिहास|पूरा record)/i.test(q);
+    const fieldMap=[
+      [/mobile|phone number|मोबाइल|फोन नंबर/i,['phone','customerPhone']],
+      [/imei/i,['imei']],[/model|मॉडल/i,['model','device']],[/brand|ब्रांड/i,['brand']],
+      [/problem|समस्या/i,['problem']],[/technician|repair by|किसने repair/i,['repairBy']],
+      [/finance company|financer|फाइनेंस कंपनी/i,['financeCompany']],
+      [/amount|कितने रुपये|कितना पैसा|price|कीमत/i,['total','payment','phoneAmount','salePrice','price']],
+      [/profit|मुनाफा|फायदा/i,['profit']],[/date|तारीख|कब/i,['date','createdAt','timestamp']],
+      [/status|स्थिति/i,['status']],[/address|पता/i,['address']],
+      [/ram/i,['ram']],[/storage|स्टोरेज/i,['storage']],[/colour|color|रंग/i,['colour','color']],
+      [/sn|serial/i,['sn']]
+    ];
+    if(wantsAll && candidates.length){
+      const x=candidates[0];
+      const parts=[]; for(const [re,keys] of fieldMap){let v; for(const k of keys){if(x[k]!=null&&x[k]!==''){v=x[k];break;}} if(v!=null)parts.push(`${kLabel(keys[0])}: ${v}`);}
+      if(!parts.length)Object.entries(x).filter(([k])=>!k.startsWith('__')&&k!=='id').slice(0,18).forEach(([k,v])=>{if(typeof v!=='object')parts.push(`${k}: ${v}`)});
+      return hi(`यह ${x.customerName||x.name||'record'} की उपलब्ध जानकारी है: ${parts.join(' • ')}`,`Ye ${x.customerName||x.name||'record'} ki available information hai: ${parts.join(' • ')}`);
+    }
+    if(candidates.length){
+      for(const [re,keys] of fieldMap){if(re.test(q)){const x=candidates[0];let v;for(const k of keys){if(x[k]!=null&&x[k]!==''){v=x[k];break;}}if(v!=null)return hi(`${kLabel(keys[0])}: ${v}`,`${kLabel(keys[0])}: ${v}`);}}
+    }
+    // Generic aggregate questions over any section.
+    const range=smartRangeFromQuery(q); const pool=range?rows.filter(x=>smartInRange(x,range[0],range[1])):rows;
+    const sectionWords=[['finance','Finance'],['repairing','Repairing'],['repair','Repairing'],['second hand','Second Hand'],['used phone','Second Hand'],['accessor','Accessories'],['inventory','Inventory']];
+    let section=null; for(const [w,v] of sectionWords){if(n.includes(w)){section=v;break;}}
+    let scoped=section&&section!=='Inventory'?pool.filter(x=>x.__section===section):pool;
+    if(/how many|कितने|कितनी|कितना|count|कुल|total|number of/i.test(q)){
+      const c=scoped.length;
+      const label=section||'कुल records';
+      return hi(`${range?range[2]+' में ':''}${label} के ${c} records हैं।`,`${range?range[2]+' mein ':''}${label} ke ${c} records hain.`);
+    }
+    if(/who|कौन|kaun/i.test(q)&&/(most|सबसे ज्यादा|सबसे अधिक|highest|top)/i.test(q)){
+      const m={};scoped.forEach(x=>{const k=x.customerName||x.repairBy||x.financeCompany||x.brand||x.model||'Unknown';m[k]=(m[k]||0)+1});
+      const e=Object.entries(m).sort((a,b)=>b[1]-a[1])[0]; if(e)return hi(`सबसे ज्यादा records ${e[0]} के हैं: ${e[1]}.`,`Sabse zyada records ${e[0]} ke hain: ${e[1]}.`);
+    }
+    return null;
+}
+function kLabel(k){const m={phone:'Mobile',customerPhone:'Mobile',imei:'IMEI',model:'Model',device:'Device',brand:'Brand',problem:'Problem',repairBy:'Repairing By',financeCompany:'Finance Company',total:'Amount',payment:'Amount',phoneAmount:'Phone Amount',salePrice:'Sale Price',price:'Price',profit:'Profit',date:'Date',createdAt:'Date',status:'Status',address:'Address',ram:'RAM',storage:'Storage',colour:'Colour',sn:'SN'};return m[k]||k;}
 async function kabirGeneralAiSearch(options={}){
     const input=$("universalSearchInput"),a=$("smartSearchAnswer"),r=$("smartSearchResults"); if(!input||!a||!r)return;
     const original=val("universalSearchInput"); if(!original)return;
@@ -2924,7 +2867,8 @@ async function kabirGeneralAiSearch(options={}){
     const corrected=kabirCleanQuestion(original);
     a.innerHTML='<div class="smart-answer-text">🤖 समझ रहा हूँ…</div>'; r.innerHTML=""; kabirAiStatus("🤖 सवाल समझ रहा हूँ…","active");
     try{
-      let answer=kabirGeneralLocalAnswer(corrected);
+      let answer=kabirGenericDataAnswer(corrected);
+      if(!answer) answer=kabirGeneralLocalAnswer(corrected);
       if(!answer) answer=await kabirWikipediaAnswer(corrected);
       if(!answer){
         answer=smartAnswerText(smartLang(corrected),
@@ -2936,13 +2880,12 @@ async function kabirGeneralAiSearch(options={}){
       kabirAiHistory.push({user:original,corrected,answer}); if(kabirAiHistory.length>12)kabirAiHistory.shift();
       if(input)input.value=original;
       a.innerHTML=`${kabirCorrectionNotice(original,corrected)}<div class="smart-answer-text">${esc(answer).replace(/\n/g,'<br>')}</div><div class="smart-ai-badge">KABIR AI</div>`;
-      kabirAiStatus('🤖 जवाब तैयार है — 🎙️ दबाकर अगला सवाल पूछें');
-      if(options.speak)smartSpeak(answer);
+
     }catch(e){
       console.warn('Kabir AI local:',e);
       const answer='अभी जवाब तैयार नहीं हो पाया। आप सवाल दोबारा पूछ सकते हैं।';
       a.innerHTML=`${kabirCorrectionNotice(original,corrected)}<div class="smart-answer-text">${answer}</div><div class="smart-ai-badge">KABIR AI</div>`;
-      kabirAiStatus('जवाब नहीं मिल पाया.','error'); if(options.speak)smartSpeak(answer);
+
     }finally{kabirAiBusy=false;}
 }
 
@@ -2956,7 +2899,6 @@ async function smartSearchLocal(options={}){
         const answer=smartAnswerText(lang,`उत्तर: ${formatted}`,`Answer: ${formatted}`,`Answer: ${formatted}`);
         a.innerHTML=`<div class="smart-answer-text">${esc(answer)}</div><div class="smart-answer-math">${esc(q.trim())} = <b>${esc(formatted)}</b></div>`;
         r.innerHTML="";
-        if(options.speak)smartSpeak(answer);
         return;
     }
     const lang=smartLang(q), rows=smartRows(), intent=smartIntent(q), range=smartRangeFromQuery(q), [start,end,label]=range||[null,null,""];
@@ -3045,21 +2987,19 @@ async function smartSearchLocal(options={}){
         filtered=todayRows;answer=smartAnswerText(lang,`आज की पूरी report: ${todayRows.length} records, Finance ${finance}, Repairing ${repair}, Second Hand ${second}, Accessories ${acc}, Sale/collection ${smartMoney(totalSale)}, Profit ${smartMoney(totalProfit)}।`,`Aaj ki puri report: ${todayRows.length} records, Finance ${finance}, Repairing ${repair}, Second Hand ${second}, Accessories ${acc}, Sale/collection ${smartMoney(totalSale)}, Profit ${smartMoney(totalProfit)}.`,`Today's complete report: ${todayRows.length} records, Finance ${finance}, Repairing ${repair}, Second Hand ${second}, Accessories ${acc}, Sales/collection ${smartMoney(totalSale)}, Profit ${smartMoney(totalProfit)}.`);
     }
     a.innerHTML=`<div class="smart-answer-text">${esc(answer)}</div>`;smartRenderRows(r,filtered);
-    if(options.speak)smartSpeak(answer);
+
 }
 
 
 async function smartSearch(options={}){
     const q=val("universalSearchInput");
     if(!q){return smartSearchLocal(options);}
-    // First use the existing deterministic database engine.
-    await smartSearchLocal({...options,speak:false});
+    await smartSearchLocal({speak:false});
     const answer=String($("smartSearchAnswer")?.innerText||"");
     const intent=smartIntent(q);
-    // Unknown / unmatched / general questions go to the AI brain.
-    const needsAI=!intent || /no matching|कोई matching|कोई record|no record|data नहीं मिला|data nahi mila|पर्याप्त data नहीं|पर्याप्त data nahi/i.test(answer);
-    if(needsAI){await kabirGeneralAiSearch(options);}
-    else if(options.speak){smartSpeak(answer);}
+    const noUseful=/कोई matching|no matching|कोई record|no record|data नहीं मिला|data nahi mila|पर्याप्त data नहीं|पर्याप्त data nahi|reliable general answer/i.test(answer);
+    // Unknown natural-language questions are interpreted locally; no API/key is required.
+    if(noUseful || intent==="search") await kabirGeneralAiSearch({});
 }
 
 function applyTheme(theme){
@@ -3106,7 +3046,6 @@ function featureNav(){
     $("homeSearchButton")?.addEventListener("click",()=>{show("smartSearchSection");$("universalSearchInput")?.focus();smartSearch();audit("customer_search",{section:"All Data",description:"Smart database search opened"});});
     $("recentDeletedButton")?.addEventListener("click",()=>{show("recentDeletedSection");renderRecentlyDeleted();});
     $("universalSearchInput")?.addEventListener("input",()=>smartSearch());
-    smartVoiceAssistant();
     $("closePdfSelectButton")?.addEventListener("click",()=>$("pdfSelectModal")?.classList.add("hidden"));
     $("pdfChoices")?.addEventListener("click",e=>{const b=e.target.closest("[data-pdf-section]");if(b)runPdfWithSelectedDate(b.dataset.pdfSection)});
 }
