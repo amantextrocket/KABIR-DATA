@@ -2192,10 +2192,13 @@ function getCustomerDirectoryForType(type){
         const phone=String(x.phone||x.customerPhone||"").replace(/\D/g,"");
         if(!name&&!phone)return;
         const key=phone||name.toLowerCase();
-        if(!map.has(key))map.set(key,{name:name||"Customer",phone,records:0,type:type==="repair"?"Repair":"Finance"});
-        map.get(key).records++;
+        const created=getRecordCreatedDate(x);
+        if(!map.has(key))map.set(key,{name:name||"Customer",phone,records:0,type:type==="repair"?"Repair":"Finance",latestCreatedAt:created});
+        const item=map.get(key);
+        item.records++;
+        if(created && (!item.latestCreatedAt || created.getTime()>item.latestCreatedAt.getTime())) item.latestCreatedAt=created;
     });
-    return [...map.values()];
+    return [...map.values()].sort((a,b)=>(b.latestCreatedAt?.getTime()||0)-(a.latestCreatedAt?.getTime()||0));
 }
 function updateCustomerTypeSwitch(){
     const financeCount=getCustomerDirectoryForType("finance").length;
@@ -2215,7 +2218,7 @@ function renderAllCustomers(){
     const count=getLifetimeCustomerDirectory().length;
     $("homeCustomerCount")&&($("homeCustomerCount").textContent=`${count} Customers`);
     updateCustomerTypeSwitch();
-    box.innerHTML=rows.length?rows.map(x=>`<article class="result all-customer-result" data-phone="${esc(x.phone)}" data-name="${esc(x.name)}"><div class="result-top"><div><div class="result-name">${esc(x.name)}</div><div class="result-meta">${esc(x.phone||"Phone not available")} • ${x.records} record${x.records===1?"":"s"}</div></div><div class="work-log-tag">${esc(x.type)}</div></div><div class="result-open-hint">Tap करके आज तक का पूरा data देखें</div></article>`).join(""):"<div class=\"empty\">No customer found.</div>";
+    box.innerHTML=rows.length?rows.map(x=>`<article class="result all-customer-result" data-phone="${esc(x.phone)}" data-name="${esc(x.name)}"><div class="result-top"><div><div class="result-name">${esc(x.name)}</div><div class="result-meta">${esc(x.phone||"Phone not available")} • ${x.records} record${x.records===1?"":"s"}</div><div class="result-date">${esc(x.latestCreatedAt?formatDateTime({createdAt:{toDate:()=>x.latestCreatedAt}}):"Date pending")}</div></div><div class="work-log-tag">${esc(x.type)}</div></div><div class="result-open-hint">Tap करके आज तक का पूरा data देखें</div></article>`).join(""):"<div class=\"empty\">No customer found.</div>";
     box.querySelectorAll(".all-customer-result").forEach(card=>card.addEventListener("click",()=>showUnifiedCustomerHistory(card.dataset.phone,card.dataset.name)));
 }
 function getRecordCreatedDate(row){
@@ -2287,18 +2290,16 @@ function showUnifiedCustomerHistory(phone,name){
     };
 
     const editBtn=$("editCustomerButton"),deleteBtn=$("deleteCustomerButton");
-    const editable=!!primary;
+    const within24h=!!primary && canEditRecord(primary);
     if(editBtn){
-        editBtn.disabled=!editable;
-        editBtn.title=primary?(
-            editable?`Edit ${primary.__source} record (24-hour window active)`:editLockMessage(primary)
-        ):"No customer record found";
-        editBtn.textContent=editable?"EDIT CUSTOMER":"EDIT LOCKED";
+        editBtn.disabled=!within24h;
+        editBtn.title=primary?(within24h?"Edit available for 24 hours after add":editLockMessage(primary)):"No customer record found";
+        editBtn.textContent=within24h?"EDIT CUSTOMER":"EDIT LOCKED";
     }
     if(deleteBtn){
-        deleteBtn.disabled=!primary;
-        deleteBtn.title=primary?"Delete the latest customer record":"No customer record found";
-        deleteBtn.textContent="DELETE CUSTOMER";
+        deleteBtn.disabled=!within24h;
+        deleteBtn.title=primary?(within24h?"Delete available for 24 hours after add":editLockMessage(primary)):"No customer record found";
+        deleteBtn.textContent=within24h?"DELETE CUSTOMER":"DELETE LOCKED";
     }
 
     const rows=[];
