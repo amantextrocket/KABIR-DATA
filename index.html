@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#08090d">
 <title>Kabir Mobile Data</title>
 <link rel="stylesheet" href="style.css">
@@ -35,7 +35,6 @@
     <button id="financeModule" class="glass module-card" type="button"><span class="module-icon">💳</span><span><b>FINANCE</b><small>Customer finance & mobile data</small></span><em>›</em></button>
     <button id="repairingModule" class="glass module-card" type="button"><span class="module-icon">🛠️</span><span><b>REPAIRING</b><small>Repairing customer & device data</small></span><em>›</em></button>
     <button id="customerModule" class="glass module-card" type="button"><span class="module-icon">👤</span><span><b>CUSTOMER</b><small>All customers & complete history</small><strong class="home-customer-count" id="homeCustomerCount">0 Customers</strong></span><em>›</em></button>
-    <button id="inventoryModule" class="glass module-card inventory-home-button" type="button"><span class="module-icon">📦</span><span><b>INVENTORY</b><small>New / Used phone stock, parties & invoices</small></span><em>›</em></button>
   </section>
   <div class="home-bottom-actions"><button id="homeSearchButton" class="home-search-fab" type="button" title="Smart Search"><span>⌕</span><b>SEARCH</b></button><button id="recentDeletedButton" class="home-search-fab recently-deleted-fab" type="button" title="Recently Deleted"><span>♻</span><b>RECENTLY DELETED</b></button></div>
 </section>
@@ -165,14 +164,14 @@
     </div>
     <div class="block customer-block"><b>Device Details</b>
       <label>Phone Brand<select id="brand"><option value="">Select brand</option></select></label>
-      <label>Phone Model<select id="model" disabled><option value="">Select brand first</option></select></label>
+      <label class="model-field">Phone Model<input id="modelType" type="text" autocomplete="off" placeholder="Type / search model"><select id="model" disabled><option value="">Select brand first</option></select></label>
       <label>IMEI<div class="with-button"><input id="imei" inputmode="numeric" maxlength="15"><button id="scanImeiButton" type="button">▣ Scan</button></div><small>QR/barcode scan uses the phone camera when supported.</small></label>
       <label>Colour<select id="colour" disabled><option value="">Select model first</option></select></label>
       <label>RAM + Storage<select id="storage" disabled><option value="">Select model first</option></select></label>
       <label>Finance Company<select id="financeCompany"><option value="">Select Finance Company</option></select></label>
       <label>Phone Amount<input id="phoneAmount" type="number" inputmode="decimal" min="0" placeholder="₹"></label>
       <label>Down Payment (DP)<input id="downPayment" type="number" inputmode="decimal" min="0" placeholder="₹"></label>
-      <label class="emi-combined-field">EMI Details<div class="emi-combined"><input id="emiAmount" type="number" inputmode="decimal" min="0" placeholder="EMI Amount ₹"><select id="emiMonths"><option value="">EMI Month</option><option value="3">3 Months</option><option value="6">6 Months</option><option value="9">9 Months</option><option value="12">12 Months</option><option value="18">18 Months</option><option value="24">24 Months</option><option value="30">30 Months</option><option value="36">36 Months</option></select></div></label>
+      <label class="emi-combined-field">EMI Amount<div class="emi-combined"><input id="emiAmount" type="number" inputmode="decimal" min="0" placeholder="EMI Amount ₹"><select id="emiMonths"><option value="">EMI Month</option><option value="1">1 Month</option><option value="2">2 Months</option><option value="3">3 Months</option><option value="4">4 Months</option><option value="5">5 Months</option><option value="6">6 Months</option><option value="7">7 Months</option><option value="8">8 Months</option><option value="9">9 Months</option><option value="10">10 Months</option><option value="11">11 Months</option><option value="12">12 Months</option><option value="13">13 Months</option><option value="14">14 Months</option><option value="15">15 Months</option><option value="16">16 Months</option><option value="17">17 Months</option><option value="18">18 Months</option><option value="19">19 Months</option><option value="20">20 Months</option><option value="21">21 Months</option><option value="22">22 Months</option><option value="23">23 Months</option><option value="24">24 Months</option></select></div></label>
       <label>Lock<input id="lockName" placeholder="Lock name"></label>
       <label>Stock<input id="stock" placeholder="Purchase source"></label>
       <label>Counter<input id="counter"></label>
