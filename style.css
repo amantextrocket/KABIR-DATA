@@ -870,3 +870,89 @@ html[data-theme="light"] .home-modules .module-card .module-icon{background:#303
   #appScreen>.topbar.premium-brandbar{width:calc(100% + 24px)!important;margin-left:-12px!important;margin-right:-12px!important;border-radius:0 0 20px 20px!important;}
   #customerForm .entry-date-label{width:145px!important;}
 }
+
+
+/* ===== V5 FINAL USER REQUEST: CUSTOMER ORDER + HEADER LAYER + LIGHT HOME ACTIONS ===== */
+#customerForm .customer-pair{
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;
+  gap:0 10px!important;
+  grid-column:1/-1!important;
+  min-width:0!important;
+}
+#customerForm .customer-pair>label{
+  grid-column:auto!important;
+  min-width:0!important;
+  margin:8px 0!important;
+}
+#customerForm .entry-date-label{
+  grid-column:1/-1!important;
+  width:155px!important;
+  max-width:155px!important;
+  margin:8px 0 10px!important;
+}
+#customerForm .entry-date-field{
+  width:100%!important;
+  height:40px!important;
+  min-height:40px!important;
+  box-sizing:border-box!important;
+  padding:0 9px!important;
+  border-radius:13px!important;
+  overflow:visible!important;
+}
+
+/* Header gets its own premium solid layer and never allows home content to paint above it. */
+#appScreen>.topbar.premium-brandbar{
+  position:sticky!important;
+  top:0!important;
+  z-index:10000!important;
+  flex:0 0 auto!important;
+  isolation:isolate!important;
+  background:var(--solid-primary)!important;
+  background-image:none!important;
+  border:0!important;
+  border-radius:0 0 30px 30px!important;
+  box-shadow:0 18px 45px rgba(0,0,0,.30),0 3px 0 rgba(255,255,255,.10) inset!important;
+  overflow:hidden!important;
+}
+#appScreen>.topbar.premium-brandbar:after{
+  content:"";
+  position:absolute;
+  left:10%;right:10%;bottom:0;height:3px;
+  border-radius:99px 99px 0 0;
+  background:rgba(255,255,255,.42);
+  pointer-events:none;
+}
+.home-view{
+  position:relative!important;
+  z-index:1!important;
+  padding-top:24px!important;
+}
+.home-modules{
+  position:relative!important;
+  z-index:1!important;
+  margin-top:0!important;
+}
+.home-modules .module-card{z-index:1!important;}
+
+/* Light theme: bottom Search / Recently Deleted must be dark like the other home cards. */
+html[data-theme="light"] .home-bottom-actions .home-search-fab,
+html[data-theme="light"] .home-bottom-actions .recently-deleted-fab,
+html[data-theme="light"] #homeSearchButton,
+html[data-theme="light"] #recentDeletedButton{
+  background:#202733!important;
+  color:#fff!important;
+  border-color:#3d4a5b!important;
+  box-shadow:0 14px 30px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.10)!important;
+}
+html[data-theme="light"] #homeSearchButton span,
+html[data-theme="light"] #homeSearchButton b,
+html[data-theme="light"] #recentDeletedButton span,
+html[data-theme="light"] #recentDeletedButton b{color:#fff!important;}
+
+@media(max-width:430px){
+  #customerForm .customer-pair{gap:0 8px!important;}
+  #customerForm .entry-date-label{width:145px!important;max-width:145px!important;}
+  #appScreen>.topbar.premium-brandbar{border-radius:0 0 24px 24px!important;}
+  .home-view{padding-top:22px!important;}
+}
