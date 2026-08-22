@@ -1300,64 +1300,22 @@ async function save(e){
     }
 
 
-    /* Required fields */
-
-    let ids=[
-        "customerName",
-        "address",
-        "pincode",
-        "city",
-        "state",
-        "phone",
-        "brand",
-        "model",
-        "imei",
-        "colour",
-        "storage",
-        "phoneAmount",
-        "downPayment"
-    ];
-
-
-    for(let id of ids){
-
-        if(!val(id)){
-
-            $(id)?.focus();
-
-            msg(
-                "formMessage",
-                "सभी जरूरी fields भरें."
-            );
-
-            return;
-        }
-    }
-
-
-    /* Mobile */
-
-    let phone=
-        val("phone")
-        .replace(/\D/g,"");
-
-
-    /* IMEI */
-
-    let imei=
-        val("imei")
-        .replace(/\D/g,"");
-
-
+    /*
+     * Customer fields are intentionally OPTIONAL.
+     * Empty fields are saved as empty values instead of blocking the save.
+     * Phone/IMEI are still cleaned when entered, but are not required.
+     */
+    let phone=val("phone").replace(/\D/g,"");
+    let imei=val("imei").replace(/\D/g,"");
     const editIdForDup=$("customerForm").dataset.editId||"";
-    const duplicatePhone=/^\d{10}$/.test(phone) ? findMatchingCustomerByPhone(phone,editIdForDup) : null;
+    const duplicatePhone=phone?findMatchingCustomerByPhone(phone,editIdForDup):null;
     if(duplicatePhone){
         $("customerName").value=duplicatePhone.customerName||"";
         $("customerName").readOnly=true;
         msg("formMessage","THIS MOBILE NUMBER ALREADY EXISTS. Existing customer details auto-filled.");
         return;
     }
-    if(imei && /^\d{15}$/.test(imei) && inventoryImeiExists(imei,"",editIdForDup)){msg("formMessage","THIS IMEI ALREADY IN STOCK");return;}
+    if(imei && inventoryImeiExists(imei,"",editIdForDup)){msg("formMessage","THIS IMEI ALREADY IN STOCK");return;}
 
 
     $("saveCustomerButton").disabled=true;
@@ -1506,11 +1464,14 @@ async function save(e){
          */
 
         $("customerForm").reset();
-        document.querySelectorAll("#customerForm .field-filled").forEach(el=>el.classList.remove("field-filled"));
         if($("entryDate"))$("entryDate").value=todayISO();
         delete $("customerForm").dataset.editId;
         if($("customerCode")) $("customerCode").value="";
         if($("saveCustomerButton")) $("saveCustomerButton").textContent="SAVE CUSTOMER";
+        $("customerForm")?.querySelectorAll("input,textarea,select").forEach(el=>{
+            el.classList.remove("field-filled");
+            el.closest("label")?.classList.remove("field-filled-label");
+        });
 
         if($("financeCompany"))
             $("financeCompany").value="";
@@ -3277,6 +3238,26 @@ async function saveInventoryParty(e){
     e.preventDefault();if(enforceWriteLock("inventoryPartyMessage"))return;const phone=val("inventoryPartyPhone").replace(/\D/g,"");if(!/^\d{10}$/.test(phone)){msg("inventoryPartyMessage","10 digit mobile number डालें.");return;}const data={type:val("inventoryPartyType"),name:val("inventoryPartyName"),phone,createdAt:serverTimestamp(),createdBy:user?.uid||null};try{await addDoc(collection(db,INVENTORY_PARTY_COL),data);await audit("inventory_party_add",{section:"Inventory Party",customerName:data.name,description:`${data.type} party added: ${data.name}`,extra:{phone}});e.target.reset();$("inventoryPartyModal")?.classList.add("hidden");showSuccessToast("Party Saved","Customer / Vendor saved successfully");}catch(err){console.error(err);msg("inventoryPartyMessage",err?.message||"Party save failed.");}}
 
 /* =========================================================
+   CUSTOMER FORM: FILLED FIELD STATE
+========================================================= */
+function setupCustomerFilledFields(){
+    const form=$("customerForm");
+    if(!form || form.dataset.filledReady==="1") return;
+    const update=el=>{
+        if(!el) return;
+        const filled=String(el.value||"").trim()!=="";
+        el.classList.toggle("field-filled",filled);
+        el.closest("label")?.classList.toggle("field-filled-label",filled);
+    };
+    form.querySelectorAll("input,textarea,select").forEach(el=>{
+        update(el);
+        el.addEventListener("input",()=>update(el));
+        el.addEventListener("change",()=>update(el));
+    });
+    form.dataset.filledReady="1";
+}
+
+/* =========================================================
    INITIALIZE
 ========================================================= */
 
@@ -3344,14 +3325,6 @@ async function init(){
         );
     $("phone")?.addEventListener("input",applyCustomerDuplicateState);
     $("customerName")?.addEventListener("input",applyCustomerDuplicateState);
-
-    // Add Customer: filled fields turn green. Empty fields return to normal.
-    document.querySelectorAll("#customerForm input:not([type=hidden]), #customerForm textarea, #customerForm select").forEach(el=>{
-        const mark=()=>el.classList.toggle("field-filled",String(el.value||"").trim()!=="");
-        el.addEventListener("input",mark);
-        el.addEventListener("change",mark);
-        mark();
-    });
 }
 
 
