@@ -2865,7 +2865,88 @@ function smartVoiceAssistant(){
     $("smartVoiceStatus")?.addEventListener("click",()=>{if(smartVoiceSpeaking)smartStopSpeaking();});
 }
 
-function smartSearch(options={}){
+
+/* =========================================================
+   KABIR AI BRAIN — NO-SETUP LOCAL AI STYLE ASSISTANT
+   General conversation + correction + website/database answers.
+   No Gemini/API key/settings required.
+========================================================= */
+let kabirAiBusy=false;
+let kabirAiHistory=[];
+function kabirAiStatus(text,type=""){smartVoiceStatus(text,type);}
+function kabirCleanQuestion(q){
+    let s=String(q||'').trim();
+    const fixes={
+      'repearing':'repairing','repeir':'repair','repiering':'repairing','repiring':'repairing','reparing':'repairing',
+      'custmer':'customer','custmor':'customer','costumer':'customer','finence':'finance','finanse':'finance',
+      'invetory':'inventory','inventry':'inventory','accesory':'accessory','accesories':'accessories',
+      'secon hand':'second hand','profitt':'profit','sal':'sale','saled':'sold','moblie':'mobile','iphon':'iphone',
+      'kitnae':'kitne','kitniii':'kitni','kitn':'kitne','batao na':'batao'
+    };
+    Object.keys(fixes).forEach(k=>{s=s.replace(new RegExp('\\b'+k.replace(/ /g,'\\s+')+'\\b','gi'),fixes[k]);});
+    return s.replace(/\s+/g,' ').trim();
+}
+function kabirCorrectionNotice(original,corrected){
+    return normalizeText(original)!==normalizeText(corrected)?`<div class="smart-ai-correction">✦ शायद आपका मतलब: <b>${esc(corrected)}</b></div>`:'';
+}
+function kabirGeneralLocalAnswer(question){
+    const q=String(question||'').trim(), n=normalizeText(q);
+    const lang=smartLang(q);
+    const hi=(a,b)=>lang==='hi'?a:lang==='hinglish'?b:a;
+    if(!n)return hi('कृपया अपना सवाल पूछिए।','Apna sawaal poochiye.');
+    if(/^(hi|hello|hey|namaste|नमस्ते|हेलो|हाय)\b/i.test(q))return hi('नमस्ते! मैं Kabir AI हूँ। आप अपनी वेबसाइट, customer, repairing, inventory, profit या सामान्य सवाल पूछ सकते हैं।','Namaste! Main Kabir AI hoon. Aap website, customer, repairing, inventory, profit ya normal sawaal pooch sakte hain.');
+    if(/who are you|tum kaun|aap kaun|कौन हो|आप कौन/i.test(q))return hi('मैं Kabir AI हूँ, Kabir Mobile Data का voice और smart search assistant।','Main Kabir AI hoon, Kabir Mobile Data ka voice aur smart search assistant.');
+    if(/what can you do|kya kar sakte|क्या कर सकते|features|feature bata/i.test(q))return hi('मैं customer search, repairing, finance, second hand, accessories, inventory, sales, profit, history, date-wise reports और calculations में मदद कर सकता हूँ।','Main customer search, repairing, finance, second hand, accessories, inventory, sales, profit, history, date-wise reports aur calculations mein help kar sakta hoon.');
+    if(/website.*(kya|about|bare)|kabir data.*kya|kabir mobile data/i.test(n))return hi('Kabir Mobile Data में customer, finance, repairing, second hand, accessories, inventory, invoices और traffic analytics जैसे records manage किए जाते हैं।','Kabir Mobile Data mein customer, finance, repairing, second hand, accessories, inventory, invoices aur traffic analytics jaise records manage kiye jaate hain.');
+    if(/(thank|thanks|धन्यवाद|शुक्रिया)/i.test(q))return hi('आपका स्वागत है।','Aapka swagat hai.');
+    if(/(time|समय|baje|kitne baje)/i.test(q)&&/(abhi|now|current|अभी)/i.test(q))return hi(`अभी समय ${new Date().toLocaleTimeString('hi-IN',{hour:'numeric',minute:'2-digit'})} है।`,`Abhi time ${new Date().toLocaleTimeString('en-IN',{hour:'numeric',minute:'2-digit'})} hai.`);
+    if(/(date|tarikh|तारीख|आज कौन)/i.test(q)&&/(today|aaj|आज|current|अभी)/i.test(q))return hi(`आज ${new Date().toLocaleDateString('hi-IN',{day:'numeric',month:'long',year:'numeric'})} है।`,`Aaj ${new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'})} hai.`);
+    if(/^(who|what|when|where|why|how|क्या|कौन|कब|कहाँ|क्यों|कैसे)\b/i.test(q)) return null;
+    return null;
+}
+async function kabirWikipediaAnswer(question){
+    try{
+      const term=String(question).replace(/\b(what is|who is|who was|what are|क्या है|कौन है|कौन थे|बताओ|batao|dikhao|show me|explain|explain karo|के बारे में|ke bare mein)\b/gi,' ').replace(/[?؟]/g,' ').trim();
+      if(!term||term.length<2)return null;
+      const url=`https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(term)}&srlimit=1&format=json&origin=*`;
+      const res=await fetch(url,{cache:'no-store'}); if(!res.ok)return null;
+      const j=await res.json(); const title=j?.query?.search?.[0]?.title; if(!title)return null;
+      const sum=await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`,{cache:'no-store'}); if(!sum.ok)return null;
+      const d=await sum.json(); const extract=String(d?.extract||'').trim(); if(!extract)return null;
+      const short=extract.length>650?extract.slice(0,647).replace(/\s+\S*$/,'')+'…':extract;
+      return `मुझे ${title} के बारे में यह जानकारी मिली: ${short}`;
+    }catch(e){return null;}
+}
+async function kabirGeneralAiSearch(options={}){
+    const input=$("universalSearchInput"),a=$("smartSearchAnswer"),r=$("smartSearchResults"); if(!input||!a||!r)return;
+    const original=val("universalSearchInput"); if(!original)return;
+    if(kabirAiBusy)return; kabirAiBusy=true;
+    const corrected=kabirCleanQuestion(original);
+    a.innerHTML='<div class="smart-answer-text">🤖 समझ रहा हूँ…</div>'; r.innerHTML=""; kabirAiStatus("🤖 सवाल समझ रहा हूँ…","active");
+    try{
+      let answer=kabirGeneralLocalAnswer(corrected);
+      if(!answer) answer=await kabirWikipediaAnswer(corrected);
+      if(!answer){
+        answer=smartAnswerText(smartLang(corrected),
+          'मैं इस सवाल का भरोसेमंद सामान्य जवाब अभी नहीं दे पा रहा हूँ। अगर यह Kabir Data के record से जुड़ा सवाल है, तो उसे थोड़ा स्पष्ट करके पूछिए—जैसे “आज कितने repair हुए?”',
+          'Main is sawaal ka reliable general answer abhi nahi de pa raha. Agar ye Kabir Data ke record se juda sawaal hai to thoda clear karke poochiye—jaise “Aaj kitne repair hue?”',
+          'I could not get a reliable general answer for that question. If it is about Kabir Data, ask it with the relevant record or date.'
+        );
+      }
+      kabirAiHistory.push({user:original,corrected,answer}); if(kabirAiHistory.length>12)kabirAiHistory.shift();
+      if(input)input.value=original;
+      a.innerHTML=`${kabirCorrectionNotice(original,corrected)}<div class="smart-answer-text">${esc(answer).replace(/\n/g,'<br>')}</div><div class="smart-ai-badge">KABIR AI</div>`;
+      kabirAiStatus('🤖 जवाब तैयार है — 🎙️ दबाकर अगला सवाल पूछें');
+      if(options.speak)smartSpeak(answer);
+    }catch(e){
+      console.warn('Kabir AI local:',e);
+      const answer='अभी जवाब तैयार नहीं हो पाया। आप सवाल दोबारा पूछ सकते हैं।';
+      a.innerHTML=`${kabirCorrectionNotice(original,corrected)}<div class="smart-answer-text">${answer}</div><div class="smart-ai-badge">KABIR AI</div>`;
+      kabirAiStatus('जवाब नहीं मिल पाया.','error'); if(options.speak)smartSpeak(answer);
+    }finally{kabirAiBusy=false;}
+}
+
+async function smartSearchLocal(options={}){
     const q=val("universalSearchInput"),a=$("smartSearchAnswer"),r=$("smartSearchResults");if(!a||!r)return;
     const n=normalizeText(q);if(!n){a.innerHTML='<div class="empty">आप Hindi, Hinglish या English में कोई भी business question या mathematics calculation पूछ सकते हैं। जैसे: “आज का पूरा हिसाब बताओ”, “Aman की history दिखाओ”, “इस महीने profit कितना हुआ?”, “3000x30%”</div>';r.innerHTML="";return;}
     const math=smartMathExpression(q);
@@ -2965,6 +3046,20 @@ function smartSearch(options={}){
     }
     a.innerHTML=`<div class="smart-answer-text">${esc(answer)}</div>`;smartRenderRows(r,filtered);
     if(options.speak)smartSpeak(answer);
+}
+
+
+async function smartSearch(options={}){
+    const q=val("universalSearchInput");
+    if(!q){return smartSearchLocal(options);}
+    // First use the existing deterministic database engine.
+    await smartSearchLocal({...options,speak:false});
+    const answer=String($("smartSearchAnswer")?.innerText||"");
+    const intent=smartIntent(q);
+    // Unknown / unmatched / general questions go to the AI brain.
+    const needsAI=!intent || /no matching|कोई matching|कोई record|no record|data नहीं मिला|data nahi mila|पर्याप्त data नहीं|पर्याप्त data nahi/i.test(answer);
+    if(needsAI){await kabirGeneralAiSearch(options);}
+    else if(options.speak){smartSpeak(answer);}
 }
 
 function applyTheme(theme){
