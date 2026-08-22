@@ -956,3 +956,29 @@ html[data-theme="light"] #recentDeletedButton b{color:#fff!important;}
   #appScreen>.topbar.premium-brandbar{border-radius:0 0 24px 24px!important;}
   .home-view{padding-top:22px!important;}
 }
+
+
+/* V6: RAM + Storage selection and robust theme contrast. */
+#customerForm .ram-storage-pair{display:grid!important;grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;gap:0 10px!important;grid-column:1/-1!important;min-width:0!important;}
+#customerForm .ram-storage-pair>label{min-width:0!important;margin:8px 0!important;}
+@media(max-width:430px){#customerForm .ram-storage-pair{gap:0 8px!important;}}
+
+/* Light theme is intentionally normal/light: dark text, visible borders, white cards/inputs. */
+html[data-theme="light"]{--bg:#f3f5f8!important;--text:#111827!important;--muted:#4b5563!important;--glass:#ffffff!important;--border:#b8c0cc!important;--solid-card:#ffffff!important;--solid-card-2:#e7ebf0!important;--solid-input:#ffffff!important;--solid-primary:#1769e0!important;--solid-success:#159447!important;--solid-danger:#c92f3a!important;}
+html[data-theme="light"] body{background:#f3f5f8!important;color:#111827!important;}
+html[data-theme="light"] body *{color:#111827!important;}
+html[data-theme="light"] .topbar.premium-brandbar,html[data-theme="light"] .topbar{background:var(--solid-primary)!important;color:#fff!important;}
+html[data-theme="light"] .topbar.premium-brandbar * ,html[data-theme="light"] .topbar *{color:#fff!important;}
+html[data-theme="light"] input,html[data-theme="light"] textarea,html[data-theme="light"] select{background:#fff!important;color:#111827!important;border-color:#9aa6b5!important;}
+html[data-theme="light"] input::placeholder,html[data-theme="light"] textarea::placeholder{color:#667085!important;}
+html[data-theme="light"] select option{background:#fff!important;color:#111827!important;}
+html[data-theme="light"] .glass,html[data-theme="light"] .panel,html[data-theme="light"] .block,html[data-theme="light"] .detail-item{background:#fff!important;color:#111827!important;border-color:#b8c0cc!important;}
+html[data-theme="light"] .home-modules .module-card{background:#fff!important;color:#111827!important;border-color:#9aa6b5!important;}
+html[data-theme="light"] .home-modules .module-card *{color:#111827!important;}
+html[data-theme="light"] .home-modules .module-card small{color:#4b5563!important;}
+html[data-theme="light"] .home-bottom-actions .home-search-fab,html[data-theme="light"] .home-bottom-actions .recently-deleted-fab,html[data-theme="light"] #homeSearchButton,html[data-theme="light"] #recentDeletedButton{background:#202733!important;color:#fff!important;border-color:#3d4a5b!important;}
+html[data-theme="light"] #homeSearchButton span,html[data-theme="light"] #homeSearchButton b,html[data-theme="light"] #recentDeletedButton span,html[data-theme="light"] #recentDeletedButton b{color:#fff!important;}
+html[data-theme="light"] .eyebrow,html[data-theme="light"] .section-subtitle,html[data-theme="light"] small,html[data-theme="light"] .muted{color:#4b5563!important;}
+html[data-theme="light"] .save,html[data-theme="light"] button{border-color:#9aa6b5;}
+html[data-theme="light"] .theme-grid button{background:#fff!important;color:#111827!important;border-color:#b8c0cc!important;}
+html[data-theme="light"] .theme-grid button.selected{background:var(--solid-primary)!important;color:#fff!important;}
