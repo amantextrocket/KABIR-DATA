@@ -1349,35 +1349,15 @@ async function save(e){
         .replace(/\D/g,"");
 
 
-    if(!/^\d{10}$/.test(phone)){
-
-        msg(
-            "formMessage",
-            "10 digit mobile number डालें."
-        );
-
-        return;
-    }
-
-
-    if(!/^\d{15}$/.test(imei)){
-
-        msg(
-            "formMessage",
-            "15 digit IMEI डालें."
-        );
-
-        return;
-    }
     const editIdForDup=$("customerForm").dataset.editId||"";
-    const duplicatePhone=findMatchingCustomerByPhone(phone,editIdForDup);
+    const duplicatePhone=/^\d{10}$/.test(phone) ? findMatchingCustomerByPhone(phone,editIdForDup) : null;
     if(duplicatePhone){
         $("customerName").value=duplicatePhone.customerName||"";
         $("customerName").readOnly=true;
         msg("formMessage","THIS MOBILE NUMBER ALREADY EXISTS. Existing customer details auto-filled.");
         return;
     }
-    if(inventoryImeiExists(imei,"",editIdForDup)){msg("formMessage","THIS IMEI ALREADY IN STOCK");return;}
+    if(imei && /^\d{15}$/.test(imei) && inventoryImeiExists(imei,"",editIdForDup)){msg("formMessage","THIS IMEI ALREADY IN STOCK");return;}
 
 
     $("saveCustomerButton").disabled=true;
@@ -1526,10 +1506,11 @@ async function save(e){
          */
 
         $("customerForm").reset();
+        document.querySelectorAll("#customerForm .field-filled").forEach(el=>el.classList.remove("field-filled"));
         if($("entryDate"))$("entryDate").value=todayISO();
         delete $("customerForm").dataset.editId;
         if($("customerCode")) $("customerCode").value="";
-        if($("saveCustomerButton")) $("saveCustomerButton").textContent="23. SAVE CUSTOMER";
+        if($("saveCustomerButton")) $("saveCustomerButton").textContent="SAVE CUSTOMER";
 
         if($("financeCompany"))
             $("financeCompany").value="";
@@ -3363,6 +3344,14 @@ async function init(){
         );
     $("phone")?.addEventListener("input",applyCustomerDuplicateState);
     $("customerName")?.addEventListener("input",applyCustomerDuplicateState);
+
+    // Add Customer: filled fields turn green. Empty fields return to normal.
+    document.querySelectorAll("#customerForm input:not([type=hidden]), #customerForm textarea, #customerForm select").forEach(el=>{
+        const mark=()=>el.classList.toggle("field-filled",String(el.value||"").trim()!=="");
+        el.addEventListener("input",mark);
+        el.addEventListener("change",mark);
+        mark();
+    });
 }
 
 
