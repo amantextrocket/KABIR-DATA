@@ -699,7 +699,7 @@ html[data-theme="light"] .eyebrow{color:#697384!important}
 
 
 /* =========================================================
-   ADD CUSTOMER — COMPACT 2-COLUMN PREMIUM FORM
+   ADD CUSTOMER — SELECTIVE 1x1 / 1x2 FORM LAYOUT
 ========================================================= */
 #customerForm .customer-block{
   display:grid;
@@ -707,68 +707,45 @@ html[data-theme="light"] .eyebrow{color:#697384!important}
   gap:0 10px;
   align-items:start;
 }
-#customerForm .customer-block>b{
-  grid-column:1/-1;
-  margin-bottom:8px;
-}
-#customerForm .customer-block>label{
-  min-width:0;
-  margin:8px 0;
-}
-#customerForm .customer-block .with-button{
-  min-width:0;
-}
-#customerForm .customer-code-field{
-  display:none!important;
-}
-#customerForm textarea{
-  min-height:48px;
-}
-#customerForm .emi-combined-field{
-  grid-column:1/-1;
-}
-#customerForm .emi-combined{
-  display:grid;
-  grid-template-columns:minmax(0,1fr) minmax(0,1fr);
-  gap:8px;
-  margin-top:7px;
-}
-#customerForm .emi-combined input,
-#customerForm .emi-combined select{
-  margin-top:0;
-  min-width:0;
-}
-#customerForm input.field-filled,
-#customerForm textarea.field-filled,
-#customerForm select.field-filled{
+#customerForm .customer-block>b{grid-column:1/-1;margin-bottom:8px;}
+#customerForm .customer-block>label{min-width:0;margin:8px 0;overflow:hidden;}
+#customerForm .customer-code-field{display:none!important;}
+#customerForm textarea{min-height:48px;}
+
+/* Default: every field occupies a full row (1x1). */
+#customerForm .customer-block>label{grid-column:1/-1;}
+
+/* Only the requested compact pairs share one row. */
+#customerForm .customer-name-field,
+#customerForm .customer-phone-field,
+#customerForm .customer-city-field,
+#customerForm .customer-state-field,
+#customerForm .model-field,
+#customerForm .imei-field{grid-column:span 1;}
+
+#customerForm .model-field input#modelType{margin-bottom:7px!important;}
+#customerForm .model-field select#model{margin-top:0!important;}
+#customerForm .with-button{min-width:0;}
+
+#customerForm .emi-combined-field{grid-column:1/-1;}
+#customerForm .emi-combined{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;margin-top:7px;}
+#customerForm .emi-combined input,#customerForm .emi-combined select{margin-top:0;min-width:0;}
+
+#customerForm input.field-filled,#customerForm textarea.field-filled,#customerForm select.field-filled{
   border-color:rgba(85,223,139,.72)!important;
   background:rgba(85,223,139,.10)!important;
   box-shadow:0 0 0 1px rgba(85,223,139,.10),0 0 18px rgba(85,223,139,.06);
 }
-#customerForm label.field-filled-label{
-  color:rgba(112,238,157,.86);
-}
-#customerForm .field-filled-label input,
-#customerForm .field-filled-label textarea,
-#customerForm .field-filled-label select{
-  color:var(--text);
-}
+#customerForm label.field-filled-label{color:rgba(112,238,157,.86);}
+#customerForm .field-filled-label input,#customerForm .field-filled-label textarea,#customerForm .field-filled-label select{color:var(--text);}
+
 @media(max-width:430px){
-  #customerForm .customer-block{
-    grid-template-columns:minmax(0,1fr) minmax(0,1fr);
-    gap:0 8px;
-  }
-  #customerForm .customer-block>label{
-    margin:6px 0;
-  }
-  #customerForm .emi-combined{
-    gap:6px;
-  }
+  #customerForm .customer-block{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 8px;}
+  #customerForm .customer-block>label{margin:6px 0;}
+  #customerForm .emi-combined{gap:6px;}
 }
 @media(max-width:340px){
-  #customerForm .customer-block{
-    grid-template-columns:minmax(0,1fr) minmax(0,1fr);
-  }
+  #customerForm .customer-block{grid-template-columns:minmax(0,1fr) minmax(0,1fr);}
 }
 
 /* =========================================================
@@ -776,10 +753,12 @@ html[data-theme="light"] .eyebrow{color:#697384!important}
 ========================================================= */
 html,body{touch-action:manipulation;-webkit-text-size-adjust:100%;text-size-adjust:100%;}
 
-/* Header stays in normal document flow so home cards can never hide behind it. */
-.topbar.premium-brandbar,.topbar{position:relative!important;top:auto!important;z-index:60!important;}
+/* Sticky Kabir Mobile header: always visible and content starts below it. */
+.app{padding-top:0!important;}
+.topbar.premium-brandbar,.topbar{position:sticky!important;top:0!important;z-index:1000!important;margin:0!important;border-radius:0 0 20px 20px!important;}
 .home-view{padding-top:18px!important;}
 .home-modules{margin-top:18px!important;padding-top:2px!important;}
+.app-page{scroll-margin-top:100px!important;}
 
 /* Solid Kabir Mobile header; theme primary colour changes it cleanly. */
 .topbar.premium-brandbar,.topbar{
@@ -830,3 +809,18 @@ input[type="date"]{font-size:16px!important;}
 html[data-theme="light"]{--solid-card:#303a48;--solid-card-2:#3b4757;--solid-input:#202a37;--border:#59697c;--glass:#303a48;}
 html[data-theme="light"] body *{color:#fff!important;}
 html[data-theme="light"] input::placeholder,html[data-theme="light"] textarea::placeholder{color:rgba(255,255,255,.55)!important;}
+
+
+/* ===== FINAL REQUEST: SOLID HOME CARDS + STICKY HEADER ===== */
+.home-modules .module-card{
+  background:var(--solid-card)!important;
+  background-image:none!important;
+  color:#fff!important;
+  border:1px solid var(--border)!important;
+  box-shadow:0 12px 28px rgba(0,0,0,.22)!important;
+}
+.home-modules .module-card *{color:#fff!important;}
+.home-modules .module-card small{color:rgba(255,255,255,.78)!important;}
+.home-modules .module-card .module-icon{background:var(--solid-card-2)!important;color:#fff!important;}
+.home-modules .module-card em{color:#fff!important;}
+.topbar.premium-brandbar,.topbar{position:sticky!important;top:0!important;z-index:1000!important;}
