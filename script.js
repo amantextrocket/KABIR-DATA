@@ -2309,7 +2309,7 @@ function showUnifiedCustomerHistory(phone,name){
     acc.forEach(x=>rows.push(`<article class="history-row"><b>🎧 Accessories</b><small>${esc(formatDateTime(x))}</small><span>${esc(x.name||"")} • SN ${esc(x.sn||"—")} • Profit ₹${Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))).toLocaleString("en-IN")}</span></article>`));
 
     const status=primary
-        ? (within24h
+        ? (editable
             ? `<div class="edit-window-note">✏️ Edit available for 24 hours after this record was added.</div>`
             : `<div class="edit-window-note locked">🔒 ${esc(editLockMessage(primary))}</div>`)
         : "";
