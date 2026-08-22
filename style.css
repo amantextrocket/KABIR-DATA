@@ -1033,3 +1033,9 @@ html[data-theme="light"] .theme-grid button.selected{background:var(--solid-prim
 .smart-voice-status.error{color:#ff7a7a}
 @keyframes smartVoicePulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
 @media(max-width:430px){.smart-voice-button{width:42px!important;height:42px!important;min-width:42px!important;border-radius:14px!important}.smart-voice-status{font-size:9px}}
+
+/* ===== KABIR AI VOICE / GENERAL AI ===== */
+.smart-ai-badge{display:inline-flex;margin-top:10px;padding:5px 9px;border:1px solid var(--border);border-radius:999px;font-size:9px;letter-spacing:.08em;color:var(--muted)}
+.smart-ai-correction{margin-bottom:8px;padding:9px 11px;border:1px solid var(--border);border-radius:12px;background:rgba(255,255,255,.045);font-size:11px;color:var(--muted)}
+.smart-voice-status.active{animation:pulseVoice 1.3s ease-in-out infinite}
+@keyframes pulseVoice{50%{opacity:.55}}
