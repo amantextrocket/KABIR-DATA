@@ -1087,25 +1087,76 @@ document.addEventListener("keydown",e=>{
    BRANDS / MODELS / COLOURS / STORAGE
 ========================================================= */
 
-function refreshRamStorage(brand, model){
-    const d=BRANDS?.[brand]||{};
-    const ram=$("ram"), storage=$("storage"), ramField=$("ramField");
-    const isIphone=/^iPhone\b/i.test(String(model||""));
-    const rams=["2 GB","3 GB","4 GB","6 GB","8 GB","12 GB","16 GB","18 GB","24 GB"];
-    if(ram){
-        ram.innerHTML='<option value="">Select RAM</option>';
-        rams.forEach(x=>{const o=document.createElement("option");o.value=x;o.textContent=x;ram.appendChild(o);});
-        ram.disabled=!brand || isIphone;
-        if(isIphone)ram.value="";
+function getDeviceSpecs(brand, model){
+    const b=String(brand||"").trim();
+    const m=String(model||"").trim();
+    const fallback={ram:["4 GB","6 GB","8 GB","12 GB","16 GB"],storage:["128 GB","256 GB","512 GB"]};
+
+    // iPhone: RAM selection is intentionally hidden; storage depends on model.
+    if(/^Apple$/i.test(b) && /^iPhone\b/i.test(m)){
+        const iphoneStorage={
+            "iPhone 17 Pro Max":["256 GB","512 GB","1 TB"],
+            "iPhone 17 Pro":["256 GB","512 GB","1 TB"],
+            "iPhone 17":["256 GB","512 GB"],
+            "iPhone Air":["256 GB","512 GB","1 TB"],
+            "iPhone 16 Pro Max":["256 GB","512 GB","1 TB"],
+            "iPhone 16 Pro":["128 GB","256 GB","512 GB","1 TB"],
+            "iPhone 16 Plus":["128 GB","256 GB","512 GB"],
+            "iPhone 16":["128 GB","256 GB","512 GB"],
+            "iPhone 15 Pro Max":["256 GB","512 GB","1 TB"],
+            "iPhone 15 Pro":["128 GB","256 GB","512 GB","1 TB"],
+            "iPhone 15 Plus":["128 GB","256 GB","512 GB"],
+            "iPhone 15":["128 GB","256 GB","512 GB"],
+            "iPhone 14 Pro Max":["128 GB","256 GB","512 GB","1 TB"],
+            "iPhone 14 Pro":["128 GB","256 GB","512 GB","1 TB"],
+            "iPhone 14 Plus":["128 GB","256 GB","512 GB"],
+            "iPhone 14":["128 GB","256 GB","512 GB"],
+            "iPhone 13 Pro Max":["128 GB","256 GB","512 GB","1 TB"],
+            "iPhone 13 Pro":["128 GB","256 GB","512 GB","1 TB"],
+            "iPhone 13":["128 GB","256 GB","512 GB"],
+            "iPhone 13 mini":["128 GB","256 GB","512 GB"],
+            "iPhone 12":["64 GB","128 GB","256 GB"],
+            "iPhone 11":["64 GB","128 GB","256 GB"]
+        };
+        return {ram:[],storage:iphoneStorage[m]||["128 GB","256 GB","512 GB"],iphone:true};
     }
-    if(ramField)ramField.style.display=isIphone?"none":"";
-    if(storage){
-        storage.innerHTML='<option value="">Select storage</option>';
-        (d?.storage||["64 GB","128 GB","256 GB","512 GB","1 TB"]).forEach(x=>{const o=document.createElement("option");o.value=x;o.textContent=x;storage.appendChild(o);});
-        storage.disabled=!brand || !model;
+
+    // Non-iPhone devices: both RAM and storage are selectable.
+    // Options are narrowed by the model family instead of using one list for every phone.
+    const ml=m.toLowerCase();
+    let ram=fallback.ram.slice(), storage=fallback.storage.slice();
+    if(/ultra|pro max|pro\+|rog|redmagic|gt 7|x200 pro|find x8 pro|s25 ultra|s24 ultra/i.test(ml)){
+        ram=["8 GB","12 GB","16 GB","24 GB"];
+        storage=["256 GB","512 GB","1 TB"];
+    }else if(/pro|plus|neo|edge 60 pro|p3 pro|note 50 pro|camon 40 pro|pova 7 pro|400 pro/i.test(ml)){
+        ram=["8 GB","12 GB","16 GB"];
+        storage=["128 GB","256 GB","512 GB"];
+    }else if(/a5|a26|a36|a56|m55|g85|y39|z10|z9|c32|s25 ultra|p55|blaze|c-series|narzo/i.test(ml)){
+        ram=["4 GB","6 GB","8 GB","12 GB"];
+        storage=["64 GB","128 GB","256 GB"];
     }
+    return {ram,storage,iphone:false};
 }
 
+function refreshRamStorage(brand, model){
+    const specs=getDeviceSpecs(brand,model);
+    const ram=$("ram"), storage=$("storage"), ramField=$("ramField");
+    if(ram){
+        const previous=ram.value;
+        ram.innerHTML='<option value="">Select RAM</option>';
+        specs.ram.forEach(x=>{const o=document.createElement("option");o.value=x;o.textContent=x;ram.appendChild(o);});
+        ram.disabled=!brand || !model || specs.iphone;
+        if(!specs.ram.includes(previous))ram.value=""; else ram.value=previous;
+    }
+    if(ramField)ramField.style.display=specs.iphone?"none":"";
+    if(storage){
+        const previous=storage.value;
+        storage.innerHTML='<option value="">Select storage</option>';
+        specs.storage.forEach(x=>{const o=document.createElement("option");o.value=x;o.textContent=x;storage.appendChild(o);});
+        storage.disabled=!brand || !model;
+        if(specs.storage.includes(previous))storage.value=previous; else storage.value="";
+    }
+}
 function brands(){
     const b=$("brand");
     const modelType=$("modelType");
@@ -1569,21 +1620,13 @@ async function save(e){
 
 
         /*
-         * Add customer screen close
+         * Keep Add Customer open after save.
+         * The form is already reset above, so it is immediately ready
+         * for the next customer. This also prevents a blank screen after save.
          */
-
-        setTimeout(()=>{
-
-            $("addSection")
-                ?.classList
-                .add("hidden");
-
-            msg(
-                "formMessage",
-                ""
-            );
-
-        },1200);
+        show("addSection");
+        window.scrollTo({top:0,behavior:"smooth"});
+        setTimeout(()=>msg("formMessage",""),1400);
 
 
     }catch(x){
