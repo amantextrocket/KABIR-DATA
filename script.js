@@ -1047,6 +1047,7 @@ function nav(){
     $("secondSearchInput")?.addEventListener("input",renderSecondHand);
     $("accessorySearchInput")?.addEventListener("input",renderAccessories);
     $("allCustomerSearchInput")?.addEventListener("input",renderAllCustomers);
+    document.querySelectorAll("[data-customer-type]").forEach(btn=>btn.addEventListener("click",()=>{activeCustomerType=btn.dataset.customerType||"finance";renderAllCustomers();}));
     $("secondHandForm")?.addEventListener("submit",saveSecondHand);
     $("accessoryForm")?.addEventListener("submit",saveAccessory);
     document.querySelectorAll("[data-close]").forEach(b=>b.addEventListener("click",()=>$(b.dataset.close)?.classList.add("hidden")));
@@ -2182,12 +2183,39 @@ function getLifetimeCustomerDirectory(){
     accessories.forEach(x=>add(x,"Accessories",x.customerName,x.customerPhone));
     return [...map.values()];
 }
+let activeCustomerType="finance";
+function getCustomerDirectoryForType(type){
+    const source=type==="repair"?repairing:customers;
+    const map=new Map();
+    source.forEach(x=>{
+        const name=String(x.customerName||x.name||"").trim();
+        const phone=String(x.phone||x.customerPhone||"").replace(/\D/g,"");
+        if(!name&&!phone)return;
+        const key=phone||name.toLowerCase();
+        if(!map.has(key))map.set(key,{name:name||"Customer",phone,records:0,type:type==="repair"?"Repair":"Finance"});
+        map.get(key).records++;
+    });
+    return [...map.values()];
+}
+function updateCustomerTypeSwitch(){
+    const financeCount=getCustomerDirectoryForType("finance").length;
+    const repairCount=getCustomerDirectoryForType("repair").length;
+    $("financeCustomerCount")&&($("financeCustomerCount").textContent=String(financeCount));
+    $("repairCustomerCount")&&($("repairCustomerCount").textContent=String(repairCount));
+    document.querySelectorAll(".customer-type-tab").forEach(btn=>{
+        const active=btn.dataset.customerType===activeCustomerType;
+        btn.classList.toggle("active",active);
+        btn.setAttribute("aria-selected",active?"true":"false");
+    });
+}
 function renderAllCustomers(){
-    const box=$("allCustomerResults");if(!box)return;const q=val("allCustomerSearchInput").toLowerCase();
-    const rows=getLifetimeCustomerDirectory().filter(x=>!q||[x.name,x.phone,[...x.types].join(" ")].join(" ").toLowerCase().includes(q));
+    const box=$("allCustomerResults");if(!box)return;
+    const q=val("allCustomerSearchInput").toLowerCase();
+    const rows=getCustomerDirectoryForType(activeCustomerType).filter(x=>!q||[x.name,x.phone,x.type].join(" ").toLowerCase().includes(q));
     const count=getLifetimeCustomerDirectory().length;
     $("homeCustomerCount")&&($("homeCustomerCount").textContent=`${count} Customers`);
-    box.innerHTML=rows.length?rows.map(x=>`<article class="result all-customer-result" data-phone="${esc(x.phone)}" data-name="${esc(x.name)}"><div class="result-top"><div><div class="result-name">${esc(x.name)}</div><div class="result-meta">${esc(x.phone||"Phone not available")} • ${x.records} record${x.records===1?"":"s"}</div></div><div class="work-log-tag">${esc([...x.types].join(" • "))}</div></div><div class="result-open-hint">Tap करके आज तक का पूरा data देखें</div></article>`).join(""):"<div class=\"empty\">No customer found.</div>";
+    updateCustomerTypeSwitch();
+    box.innerHTML=rows.length?rows.map(x=>`<article class="result all-customer-result" data-phone="${esc(x.phone)}" data-name="${esc(x.name)}"><div class="result-top"><div><div class="result-name">${esc(x.name)}</div><div class="result-meta">${esc(x.phone||"Phone not available")} • ${x.records} record${x.records===1?"":"s"}</div></div><div class="work-log-tag">${esc(x.type)}</div></div><div class="result-open-hint">Tap करके आज तक का पूरा data देखें</div></article>`).join(""):"<div class=\"empty\">No customer found.</div>";
     box.querySelectorAll(".all-customer-result").forEach(card=>card.addEventListener("click",()=>showUnifiedCustomerHistory(card.dataset.phone,card.dataset.name)));
 }
 function getRecordCreatedDate(row){
