@@ -1106,12 +1106,12 @@ function brands(){
         fillModelOptions(b.value,query);
         if(selected && [...m.options].some(o=>o.value===selected))m.value=selected;
         const activeModel=m?.value||"";
-        const cs=d?.models?.[activeModel]||[];
+        const cs=d?.models?.[activeModel]||["Black","White","Blue","Green","Red","Silver","Gold","Purple"];
         const c=$("colour"),s=$("storage");
         if(c){
             c.innerHTML='<option value="">Select colour</option>';
-            cs.forEach(x=>{const o=document.createElement("option");o.value=x;o.textContent=x;c.appendChild(o);});
-            c.disabled=!cs.length;
+            if(activeModel) cs.forEach(x=>{const o=document.createElement("option");o.value=x;o.textContent=x;c.appendChild(o);});
+            c.disabled=!activeModel;
         }
         if(s){
             s.innerHTML='<option value="">Select storage</option>';
@@ -1134,9 +1134,9 @@ function brands(){
     });
 
     m.onchange=()=>{
-        const d=BRANDS[b.value],cs=d?.models?.[m.value]||[],c=$("colour"),s=$("storage");
+        const d=BRANDS[b.value],cs=d?.models?.[m.value]||["Black","White","Blue","Green","Red","Silver","Gold","Purple"],c=$("colour"),s=$("storage");
         if(modelType && m.value)modelType.value=m.value;
-        if(c){c.innerHTML='<option value="">Select colour</option>';cs.forEach(x=>{const o=document.createElement("option");o.value=x;o.textContent=x;c.appendChild(o);});c.disabled=!cs.length;}
+        if(c){c.innerHTML='<option value="">Select colour</option>';if(m.value)cs.forEach(x=>{const o=document.createElement("option");o.value=x;o.textContent=x;c.appendChild(o);});c.disabled=!m.value;}
         if(s){s.innerHTML='<option value="">Select storage</option>';(d?.storage||["64 GB","128 GB","256 GB","512 GB","1 TB"]).forEach(x=>{const o=document.createElement("option");o.value=x;o.textContent=x;s.appendChild(o);});s.disabled=!d;}
     };
 }
