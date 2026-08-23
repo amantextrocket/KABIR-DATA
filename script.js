@@ -1019,6 +1019,7 @@ function nav(){
 
 
     $("customerModule")?.addEventListener("click",()=>{open("customerPage");renderAllCustomers();});
+    $("warrantyModule")?.addEventListener("click",()=>{open("warrantyPage");});
     $("inventoryModule")?.addEventListener("click",()=>open("inventoryPage"));
     document.querySelectorAll("[data-page-back]").forEach(b=>b.addEventListener("click",()=>{if(b.dataset.pageBack==="homeView")show("homeView",{back:true});else open(b.dataset.pageBack);}));
     document.querySelectorAll("[data-close]").forEach(b=>b.addEventListener("click",()=>{
@@ -1990,7 +1991,7 @@ async function startScan(targetId="imei"){
     const modal=$("scannerModal"),video=$("scannerVideo"),m=$("scannerMessage");
     if(!modal||!video)return;
     modal.classList.remove("hidden");
-    $("scannerTitle")&&( $("scannerTitle").textContent=scanTargetId==="accessorySn"?"Scan Serial Number":"Scan IMEI" );
+    $("scannerTitle")&&( $("scannerTitle").textContent=scanTargetId==="accessorySn"?"Scan Serial Number":scanTargetId==="warrantyImei"?"Scan Warranty IMEI":"Scan IMEI" );
     m.textContent="Camera start हो रही है…";
     try{
         if(!navigator.mediaDevices?.getUserMedia)throw Error("Camera API unavailable");
@@ -2056,6 +2057,58 @@ function scanner(){
     $("closeScannerButton")?.addEventListener("click",stopScan);
 }
 
+
+/* =========================================================
+   WARRANTY CHECK
+========================================================= */
+function setupWarrantyCheck(){
+    const brand=$('warrantyBrand');
+    const list=Object.keys(BRANDS||{});
+    if(brand && !brand.dataset.ready){
+        list.forEach(name=>{const o=document.createElement('option');o.value=name;o.textContent=name;brand.appendChild(o)});
+        brand.dataset.ready='1';
+    }
+    $('warrantyForm')?.addEventListener('submit',e=>{
+        e.preventDefault();
+        checkWarrantyInformation();
+    });
+    $('warrantyScanButton')?.addEventListener('click',()=>startScan('warrantyImei'));
+}
+function warrantyOfficialUrl(brand){
+    const b=String(brand||'').toLowerCase();
+    if(b==='apple')return 'https://checkcoverage.apple.com/';
+    if(b==='samsung')return 'https://www.samsung.com/in/support/your-service/main/';
+    if(b==='oneplus')return 'https://service.oneplus.com/in/warranty-check';
+    if(b==='xiaomi' || b==='redmi' || b==='poco')return 'https://www.mi.com/in/service/warranty/';
+    if(b==='oppo')return 'https://support.oppo.com/in/warranty-check/';
+    if(b==='vivo')return 'https://www.vivo.com/in/support/warranty';
+    if(b==='realme')return 'https://www.realme.com/in/support/phonecheck';
+    if(b==='motorola')return 'https://www.motorola.in/repair';
+    if(b==='google')return 'https://support.google.com/store/answer/6160400';
+    return '';
+}
+function checkWarrantyInformation(){
+    const imei=val('warrantyImei').replace(/\D/g,'').slice(0,15);
+    const brand=val('warrantyBrand');
+    const box=$('warrantyResult');
+    if(!box)return;
+    if(!/^\d{15}$/.test(imei)){
+        box.classList.remove('hidden');
+        box.innerHTML='<div class="warranty-error">कृपया valid 15 digit IMEI डालें.</div>';
+        return;
+    }
+    if(!brand){
+        box.classList.remove('hidden');
+        box.innerHTML='<div class="warranty-error">Phone Brand select करें.</div>';
+        return;
+    }
+    const url=warrantyOfficialUrl(brand);
+    box.classList.remove('hidden');
+    box.innerHTML=`<div class="warranty-result-head"><span>🛡️</span><div><b>Warranty Information</b><small>${esc(brand)} • IMEI ${esc(imei)}</small></div></div>
+      <div class="warranty-status unknown"><strong>Verification Required</strong><span>इस brand की live warranty information manufacturer के official system से verify करनी होगी.</span></div>
+      <div class="warranty-note">गलत warranty status दिखाने से बचने के लिए website कोई अनुमान नहीं लगाती. नीचे official verification खोलकर IMEI/serial से status check करें.</div>
+      ${url?`<button type="button" class="warranty-official-button" onclick="window.open('${url}','_blank','noopener,noreferrer')">OPEN OFFICIAL WARRANTY CHECK</button>`:'<div class="warranty-note">इस brand के लिए official online warranty verification link उपलब्ध नहीं है. Manufacturer support से IMEI verify करें.</div>'}`;
+}
 
 /* =========================================================
    CHANGE PIN
@@ -3445,6 +3498,7 @@ async function init(){
     brands();
 
     setupFinanceCompany();
+    setupWarrantyCheck();
     setupCustomerFilledFields();
     setupRepairFields();
     setupEntryDateFields();
