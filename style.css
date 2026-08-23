@@ -1046,3 +1046,11 @@ html[data-theme="light"] .home-modules .warranty-home-card *{color:#fff!importan
 html[data-theme="light"] .warranty-result{background:#fff!important;color:#111827!important;border-color:#b8c0cc!important;}
 html[data-theme="light"] .warranty-result-head small,html[data-theme="light"] .warranty-note{color:#4b5563!important;}
 @media(max-width:430px){.warranty-imei-row button{min-width:78px!important;padding:0 10px!important}.warranty-page{padding:17px!important;}}
+
+/* Warranty live lookup result states */
+.warranty-status.active{background:rgba(22,163,74,.13);border:1px solid rgba(22,163,74,.38);}
+.warranty-status.expired{background:rgba(220,38,38,.12);border:1px solid rgba(220,38,38,.36);}
+.warranty-data-grid{display:grid;gap:8px;margin-top:14px;}
+.warranty-data-row{display:flex;justify-content:space-between;gap:14px;padding:11px 12px;border:1px solid var(--border);border-radius:13px;background:var(--solid-card-2);}
+.warranty-data-row span{color:var(--muted);font-size:12px;}
+.warranty-data-row b{text-align:right;font-size:12px;word-break:break-word;}
