@@ -30,15 +30,6 @@ const INVENTORY_PARTY_COL="inventoryParties";
 const INVENTORY_INVOICE_COL="inventoryInvoices";
 const SETTINGS_COL="settings";
 const SETTINGS_DOC="security";
-
-/* WARRANTY LOOKUP PROVIDER
-   Set these two values to your licensed warranty/IMEI API proxy.
-   The browser must call YOUR HTTPS backend/proxy so API secrets are not exposed.
-   Expected JSON can contain: status, warrantyStatus, model, purchaseDate, activationDate,
-   warrantyStartDate, warrantyExpiryDate / warrantyTill, coverage, message.
-*/
-const WARRANTY_LOOKUP_ENDPOINT="";
-const WARRANTY_LOOKUP_API_KEY="";
 const REMOTE_DEVICES_URL="https://cdn.jsdelivr.net/gh/bsthen/device-models/devices.json";
 const isAdminPage=!!document.querySelector(".admin");
 
@@ -2071,121 +2062,40 @@ function scanner(){
    WARRANTY CHECK
 ========================================================= */
 function setupWarrantyCheck(){
-    const brand=$('warrantyBrand');
-    const list=Object.keys(BRANDS||{});
-    if(brand && !brand.dataset.ready){
-        list.forEach(name=>{const o=document.createElement('option');o.value=name;o.textContent=name;brand.appendChild(o)});
-        brand.dataset.ready='1';
-    }
-    $('warrantyForm')?.addEventListener('submit',e=>{
-        e.preventDefault();
-        checkWarrantyInformation();
+    const cards=document.querySelectorAll('.warranty-brand-card');
+    cards.forEach(card=>{
+        card.addEventListener('click',()=>{
+            const brand=card.dataset.brand||'';
+            const url=warrantyOfficialUrl(brand);
+            if(url) window.open(url,'_blank','noopener,noreferrer');
+        });
     });
-    $('warrantyScanButton')?.addEventListener('click',()=>startScan('warrantyImei'));
 }
 function warrantyOfficialUrl(brand){
-    const b=String(brand||'').toLowerCase();
-    if(b==='apple')return 'https://checkcoverage.apple.com/';
-    if(b==='samsung')return 'https://www.samsung.com/in/mypage/';
-    if(b==='oneplus')return 'https://service.oneplus.com/in/check';
-    if(b==='xiaomi' || b==='redmi' || b==='poco')return 'https://www.mi.com/in/support/';
-    if(b==='oppo')return 'https://support.oppo.com/in/warranty-check/';
-    if(b==='vivo')return 'https://www.vivo.com/in/support/warranty';
-    if(b==='realme')return 'https://www.realme.com/in/support/phonecheck';
-    if(b==='motorola')return 'https://www.motorola.in/repair';
-    if(b==='google')return 'https://support.google.com/store/answer/6160400';
-    if(b==='nokia' || b==='hmd')return 'https://www.hmd.com/en_in/support/topics/imei-checker';
-    return '';
-}
-function warrantyEsc(x){return esc(String(x??''));}
-function warrantyField(label,value){
-    if(value===undefined || value===null || value==='')return '';
-    return `<div class="warranty-data-row"><span>${warrantyEsc(label)}</span><b>${warrantyEsc(value)}</b></div>`;
-}
-function warrantyStatusClass(status){
-    const s=String(status||'').toLowerCase();
-    if(/active|valid|covered|in warranty/.test(s))return 'active';
-    if(/expired|out of warranty|no coverage|inactive/.test(s))return 'expired';
-    return 'unknown';
-}
-function warrantyOfficialButton(url){
-    return url?`<button type="button" class="warranty-official-button" id="warrantyOfficialButton">OPEN OFFICIAL WARRANTY CHECK</button>`:'';
-}
-function renderWarrantyResult(brand,imei,data){
-    const status=data?.warrantyStatus||data?.status||data?.coverageStatus||data?.warranty||'';
-    const model=data?.model||data?.Model||data?.deviceModel||'';
-    const purchase=data?.purchaseDate||data?.purchase_date||data?.estimatedPurchaseDate||data?.estimated_purchase_date||'';
-    const activation=data?.activationDate||data?.activation_date||data?.activatedDate||'';
-    const start=data?.warrantyStartDate||data?.warranty_start_date||data?.coverageStart||'';
-    const expiry=data?.warrantyExpiryDate||data?.warranty_expiry_date||data?.warrantyTill||data?.warranty_till||data?.coverageEnd||'';
-    const coverage=data?.coverage||data?.coverageType||data?.serviceCoverage||'';
-    const cls=warrantyStatusClass(status);
-    const box=$('warrantyResult');
-    if(!box)return;
-    box.classList.remove('hidden');
-    box.innerHTML=`<div class="warranty-result-head"><span>🛡️</span><div><b>Warranty Information</b><small>${warrantyEsc(brand)} • IMEI ${warrantyEsc(imei)}</small></div></div>
-      <div class="warranty-status ${cls}"><strong>${warrantyEsc(status||'Unable to Verify')}</strong><span>${warrantyEsc(data?.message||'Warranty information returned by the configured verification provider.')}</span></div>
-      <div class="warranty-data-grid">
-        ${warrantyField('Brand',brand)}
-        ${warrantyField('Model',model)}
-        ${warrantyField('Purchase Date',purchase)}
-        ${warrantyField('Activation Date',activation)}
-        ${warrantyField('Warranty Start',start)}
-        ${warrantyField('Warranty Expiry',expiry)}
-        ${warrantyField('Coverage',coverage)}
-      </div>`;
-}
-async function warrantyApiLookup(imei,brand){
-    if(!WARRANTY_LOOKUP_ENDPOINT)return null;
-    const headers={'Content-Type':'application/json'};
-    if(WARRANTY_LOOKUP_API_KEY)headers.Authorization=`Bearer ${WARRANTY_LOOKUP_API_KEY}`;
-    const controller=new AbortController();
-    const timer=setTimeout(()=>controller.abort(),15000);
-    try{
-        const r=await fetch(WARRANTY_LOOKUP_ENDPOINT,{method:'POST',headers,signal:controller.signal,body:JSON.stringify({imei,brand})});
-        if(!r.ok)throw Error(`Warranty API HTTP ${r.status}`);
-        const raw=await r.json();
-        const data=raw?.data?.data||raw?.data||raw?.result||raw;
-        if(!data || typeof data!=='object')throw Error('Invalid warranty API response');
-        return data;
-    }finally{clearTimeout(timer);}
-}
-async function checkWarrantyInformation(){
-    const imei=val('warrantyImei').replace(/\D/g,'').slice(0,15);
-    const brand=val('warrantyBrand');
-    const box=$('warrantyResult');
-    if(!box)return;
-    if(!/^\d{15}$/.test(imei)){
-        box.classList.remove('hidden');
-        box.innerHTML='<div class="warranty-error">कृपया valid 15 digit IMEI डालें.</div>';
-        return;
-    }
-    if(!brand){
-        box.classList.remove('hidden');
-        box.innerHTML='<div class="warranty-error">Phone Brand select करें.</div>';
-        return;
-    }
-    box.classList.remove('hidden');
-    box.innerHTML=`<div class="warranty-result-head"><span>🔎</span><div><b>Checking Warranty…</b><small>${warrantyEsc(brand)} • IMEI ${warrantyEsc(imei)}</small></div></div><div class="warranty-status unknown"><strong>Verifying</strong><span>Live warranty provider से information ली जा रही है.</span></div>`;
-    try{
-        const data=await warrantyApiLookup(imei,brand);
-        if(data){
-            renderWarrantyResult(brand,imei,data);
-            return;
-        }
-    }catch(e){
-        console.error('Warranty lookup failed:',e);
-    }
-    const url=warrantyOfficialUrl(brand);
-    box.innerHTML=`<div class="warranty-result-head"><span>🛡️</span><div><b>Official Verification Required</b><small>${warrantyEsc(brand)} • IMEI ${warrantyEsc(imei)}</small></div></div>
-      <div class="warranty-status unknown"><strong>Unable to Verify Automatically</strong><span>इस browser build में live warranty API configured नहीं है. गलत status दिखाने के बजाय official manufacturer checker खोला जा रहा है.</span></div>
-      <div class="warranty-note">IMEI को clipboard में copy किया गया है. Official page पर paste करके वास्तविक warranty status देखें.</div>
-      ${warrantyOfficialButton(url)}
-      ${!url?'<div class="warranty-note">इस brand के लिए official online checker उपलब्ध नहीं मिला.</div>':''}`;
-    try{await navigator.clipboard?.writeText(imei)}catch(_){ }
-    $('warrantyOfficialButton')?.addEventListener('click',()=>{
-        if(url)window.open(url,'_blank','noopener,noreferrer');
-    });
+    const b=String(brand||'').toLowerCase().trim();
+    const urls={
+      'apple':'https://checkcoverage.apple.com/',
+      'samsung':'https://www.samsung.com/in/mypage/',
+      'oneplus':'https://www.oneplus.in/support/protection-plan',
+      'xiaomi':'https://www.mi.com/in/support/',
+      'redmi':'https://www.mi.com/in/support/',
+      'poco':'https://www.mi.com/in/support/',
+      'oppo':'https://support.oppo.com/in/',
+      'vivo':'https://www.vivo.com/in/support/imei-check',
+      'realme':'https://www.realme.com/in/support/phonecheck',
+      'iqoo':'https://www.iqoo.com/in/support',
+      'motorola':'https://www.motorola.in/repair',
+      'nothing':'https://in.nothing.tech/pages/support',
+      'google pixel':'https://support.google.com/store/answer/6160400',
+      'nokia / hmd':'https://www.hmd.com/en_in/support',
+      'asus':'https://www.asus.com/in/support/',
+      'sony':'https://www.sony.co.in/electronics/support',
+      'infinix':'https://infinixmobility.com/support',
+      'tecno':'https://www.tecno-mobile.in/support',
+      'lava':'https://www.lavamobiles.com/support',
+      'honor':'https://www.honor.com/in/support/'
+    };
+    return urls[b]||'';
 }
 
 /* =========================================================
