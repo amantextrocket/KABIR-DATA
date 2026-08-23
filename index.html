@@ -35,6 +35,7 @@
     <button id="financeModule" class="glass module-card" type="button"><span class="module-icon">💳</span><span><b>FINANCE</b><small>Customer finance & mobile data</small></span><em>›</em></button>
     <button id="repairingModule" class="glass module-card" type="button"><span class="module-icon">🛠️</span><span><b>REPAIRING</b><small>Repairing customer & device data</small></span><em>›</em></button>
     <button id="customerModule" class="glass module-card" type="button"><span class="module-icon">👤</span><span><b>CUSTOMER</b><small>All customers & complete history</small><strong class="home-customer-count" id="homeCustomerCount">0 Customers</strong></span><em>›</em></button>
+    <button id="warrantyModule" class="glass module-card warranty-home-card" type="button"><span class="module-icon">🛡️</span><span><b>WARRANTY CHECK</b><small>IMEI + Brand warranty information</small></span><em>›</em></button>
   </section>
   <div class="home-bottom-actions"><button id="homeSearchButton" class="home-search-fab" type="button" title="Smart Search"><span>⌕</span><b>SEARCH</b></button><button id="recentDeletedButton" class="home-search-fab recently-deleted-fab" type="button" title="Recently Deleted"><span>♻</span><b>RECENTLY DELETED</b></button></div>
 </section>
@@ -110,6 +111,16 @@
 <section id="smartSearchSection" data-page class="glass panel hidden app-page smart-search-page"><div class="section-head"><div><div class="eyebrow">SMART DATABASE SEARCH</div><h2>Search Everything</h2><small class="section-subtitle">Hindi • English • Hinglish — data se direct answer</small></div><button class="close" data-page-back="homeView">×</button></div><div class="smart-search-box"><span>⌕</span><input id="universalSearchInput" type="search" placeholder="पूछें: आज कितने customer हैं? / Aman ka phone / 3000x30%…" autocomplete="off"></div><div id="smartSearchAnswer" class="smart-answer"><div class="empty">Apna question, business query या mathematics calculation यहाँ type करें.</div></div><div id="smartSearchResults" class="results"></div></section>
 
 <section id="recentDeletedSection" data-page class="glass panel hidden app-page"><div class="section-head"><div><div class="eyebrow">RECENTLY DELETED</div><h2>Recently Deleted</h2><small class="section-subtitle">Deleted data 30 days तक recover किया जा सकता है</small></div><button class="close" data-page-back="homeView">×</button></div><div id="recentDeletedResults" class="results"></div></section>
+<section id="warrantyPage" data-page class="glass panel hidden app-page warranty-page">
+  <div class="section-head"><div><div class="eyebrow">DEVICE SERVICE</div><h2>Warranty Check</h2><small class="section-subtitle">IMEI और brand डालकर warranty information देखें</small></div><button class="close" data-page-back="homeView">×</button></div>
+  <form id="warrantyForm" class="warranty-form">
+    <label>IMEI Number<div class="with-button warranty-imei-row"><input id="warrantyImei" inputmode="numeric" maxlength="15" autocomplete="off" placeholder="15 digit IMEI"><button id="warrantyScanButton" type="button">▣ Scan</button></div><small>IMEI manually type करें या camera scanner से scan करें.</small></label>
+    <label>Phone Brand<select id="warrantyBrand"><option value="">Select brand</option></select></label>
+    <button id="checkWarrantyButton" class="save warranty-check-button" type="submit">CHECK WARRANTY</button>
+  </form>
+  <div id="warrantyResult" class="warranty-result hidden"></div>
+</section>
+
 <section id="financePage" data-page class="glass panel hidden app-page"><div class="section-head"><div><div class="eyebrow">FINANCE</div><h2>Finance Management</h2></div><button class="close" data-page-back="homeView">×</button></div>
   <div class="module-grid"><button id="totalCustomersCard" class="glass stat" type="button"><span class="icon">👥</span><span>Total Customers</span><strong id="totalCustomers">0</strong></button><button id="totalDevicesCard" class="glass stat" type="button"><span class="icon">📱</span><span>Total Devices</span><strong id="totalDevices">0</strong></button><button id="searchCustomerCard" class="glass action" type="button"><span class="icon">⌕</span><strong>Search Customer</strong><small>Name, mobile, IMEI, date…</small></button><button id="addCustomerCard" class="glass action" type="button"><span class="icon">＋</span><strong>Add Customer</strong><small>Create a new customer record</small></button></div>
 </section>
