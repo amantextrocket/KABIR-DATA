@@ -1019,7 +1019,6 @@ function nav(){
 
 
     $("customerModule")?.addEventListener("click",()=>{open("customerPage");renderAllCustomers();});
-    $("warrantyModule")?.addEventListener("click",()=>{open("warrantyPage");});
     $("inventoryModule")?.addEventListener("click",()=>open("inventoryPage"));
     document.querySelectorAll("[data-page-back]").forEach(b=>b.addEventListener("click",()=>{if(b.dataset.pageBack==="homeView")show("homeView",{back:true});else open(b.dataset.pageBack);}));
     document.querySelectorAll("[data-close]").forEach(b=>b.addEventListener("click",()=>{
@@ -1991,7 +1990,7 @@ async function startScan(targetId="imei"){
     const modal=$("scannerModal"),video=$("scannerVideo"),m=$("scannerMessage");
     if(!modal||!video)return;
     modal.classList.remove("hidden");
-    $("scannerTitle")&&( $("scannerTitle").textContent=scanTargetId==="accessorySn"?"Scan Serial Number":scanTargetId==="warrantyImei"?"Scan Warranty IMEI":"Scan IMEI" );
+    $("scannerTitle")&&( $("scannerTitle").textContent=scanTargetId==="accessorySn"?"Scan Serial Number":"Scan IMEI" );
     m.textContent="Camera start हो रही है…";
     try{
         if(!navigator.mediaDevices?.getUserMedia)throw Error("Camera API unavailable");
@@ -2057,46 +2056,6 @@ function scanner(){
     $("closeScannerButton")?.addEventListener("click",stopScan);
 }
 
-
-/* =========================================================
-   WARRANTY CHECK
-========================================================= */
-function setupWarrantyCheck(){
-    const cards=document.querySelectorAll('.warranty-brand-card');
-    cards.forEach(card=>{
-        card.addEventListener('click',()=>{
-            const brand=card.dataset.brand||'';
-            const url=warrantyOfficialUrl(brand);
-            if(url) window.open(url,'_blank','noopener,noreferrer');
-        });
-    });
-}
-function warrantyOfficialUrl(brand){
-    const b=String(brand||'').toLowerCase().trim();
-    const urls={
-      'apple':'https://checkcoverage.apple.com/',
-      'samsung':'https://www.samsung.com/in/mypage/',
-      'oneplus':'https://www.oneplus.in/support/protection-plan',
-      'xiaomi':'https://www.mi.com/in/support/',
-      'redmi':'https://www.mi.com/in/support/',
-      'poco':'https://www.mi.com/in/support/',
-      'oppo':'https://support.oppo.com/in/',
-      'vivo':'https://www.vivo.com/in/support/imei-check',
-      'realme':'https://www.realme.com/in/support/phonecheck',
-      'iqoo':'https://www.iqoo.com/in/support',
-      'motorola':'https://www.motorola.in/repair',
-      'nothing':'https://in.nothing.tech/pages/support',
-      'google pixel':'https://support.google.com/store/answer/6160400',
-      'nokia / hmd':'https://www.hmd.com/en_in/support',
-      'asus':'https://www.asus.com/in/support/',
-      'sony':'https://www.sony.co.in/electronics/support',
-      'infinix':'https://infinixmobility.com/support',
-      'tecno':'https://www.tecno-mobile.in/support',
-      'lava':'https://www.lavamobiles.com/support',
-      'honor':'https://www.honor.com/in/support/'
-    };
-    return urls[b]||'';
-}
 
 /* =========================================================
    CHANGE PIN
@@ -3486,7 +3445,6 @@ async function init(){
     brands();
 
     setupFinanceCompany();
-    setupWarrantyCheck();
     setupCustomerFilledFields();
     setupRepairFields();
     setupEntryDateFields();
