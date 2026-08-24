@@ -1016,28 +1016,3 @@ html[data-theme="light"] .theme-grid button.selected{background:var(--solid-prim
 #deleteCustomerButton{background:#e53935!important}
 #editCustomerButton:disabled,#deleteCustomerButton:disabled{background:#555!important;color:#fff!important;opacity:.55!important}
 @media(max-width:430px){.customer-type-tab{min-height:45px;font-size:11px}}
-
-
-/* ===== WARRANTY CHECK ===== */
-.home-modules .warranty-home-card{
-  background:#0b8f62!important;
-  border-color:#28c992!important;
-  box-shadow:0 14px 34px rgba(0,0,0,.25),inset 0 1px 0 rgba(255,255,255,.18)!important;
-}
-.home-modules .warranty-home-card .module-icon{background:#08724f!important;color:#fff!important;}
-.warranty-page{overflow-x:hidden!important;}
-.warranty-brand-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:16px;}
-.warranty-brand-card{min-width:0;min-height:126px;padding:15px 12px;border:1px solid var(--border);border-radius:22px;background:var(--solid-card);color:var(--text);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:7px;cursor:pointer;box-shadow:0 10px 25px rgba(0,0,0,.12);transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease;}
-.warranty-brand-card:active{transform:scale(.97);}
-.warranty-brand-card:hover{transform:translateY(-2px);box-shadow:0 14px 30px rgba(0,0,0,.18);}
-.warranty-brand-card b{font-size:14px;font-weight:900;letter-spacing:.2px;}
-.warranty-brand-card small{font-size:9px;color:var(--muted);font-weight:700;line-height:1.2;}
-.warranty-logo{width:52px;height:52px;border-radius:16px;display:grid;place-items:center;background:var(--solid-card-2);border:1px solid var(--border);font-weight:950;font-size:18px;letter-spacing:-.5px;overflow:hidden;}
-.warranty-logo.apple{font-size:32px;line-height:1}.warranty-logo.samsung{font-size:31px;font-style:italic}.warranty-logo.oneplus{font-size:21px}.warranty-logo.xiaomi,.warranty-logo.redmi{font-size:21px}.warranty-logo.oppo,.warranty-logo.vivo{font-size:15px}.warranty-logo.realme{font-size:12px}.warranty-logo.iqoo{font-size:14px}.warranty-logo.motorola,.warranty-logo.google{font-size:28px}.warranty-logo.nothing,.warranty-logo.nokia{font-size:28px}.warranty-logo.asus,.warranty-logo.sony,.warranty-logo.tecno,.warranty-logo.honor{font-size:10px;letter-spacing:.4px}.warranty-logo.infinix{font-size:30px}.warranty-logo.lava{font-size:12px}
-.warranty-brand-note{margin-top:16px;padding:13px 14px;border:1px solid var(--border);border-radius:17px;background:var(--solid-card-2);color:var(--muted);font-size:11px;line-height:1.55;text-align:center;}
-html[data-theme="light"] .warranty-brand-card{background:#fff!important;color:#111827!important;border-color:#111827!important;box-shadow:0 8px 22px rgba(0,0,0,.12)!important;}
-html[data-theme="light"] .warranty-brand-card small{color:#4b5563!important;}
-html[data-theme="light"] .warranty-logo{background:#f3f4f6!important;color:#111827!important;border-color:#111827!important;}
-html[data-theme="light"] .warranty-brand-note{background:#fff!important;color:#374151!important;border-color:#111827!important;}
-@media(min-width:700px){.warranty-brand-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.warranty-brand-card{min-height:140px}.warranty-logo{width:58px;height:58px}}
-@media(max-width:430px){.warranty-brand-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.warranty-brand-card{min-height:116px;padding:12px 8px;border-radius:19px}.warranty-logo{width:48px;height:48px;border-radius:14px}.warranty-brand-card b{font-size:12px}.warranty-brand-card small{font-size:8px}}
