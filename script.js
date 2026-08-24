@@ -2309,7 +2309,7 @@ function showUnifiedCustomerHistory(phone,name){
     acc.forEach(x=>rows.push(`<article class="history-row"><b>🎧 Accessories</b><small>${esc(formatDateTime(x))}</small><span>${esc(x.name||"")} • SN ${esc(x.sn||"—")} • Profit ₹${Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))).toLocaleString("en-IN")}</span></article>`));
 
     const status=primary
-        ? (editable
+        ? (within24h
             ? `<div class="edit-window-note">✏️ Edit available for 24 hours after this record was added.</div>`
             : `<div class="edit-window-note locked">🔒 ${esc(editLockMessage(primary))}</div>`)
         : "";
@@ -2353,10 +2353,14 @@ function renderRepairing(){
     const s=val("repairSearchInput").toLowerCase();
     const arr=repairing.filter(r=>!s||[r.customerName,r.phone,r.device,r.problem,r.repairBy,r.total,r.partsPrice,r.profit,r.payment,formatDateTime(r)].join(" ").toLowerCase().includes(s));
     if(!arr.length){box.innerHTML=`<div class="empty">${s?"No repairing record found.":"No repairing records yet."}</div>`;return}
-    box.innerHTML=arr.map(r=>`<article class="result">
+    box.innerHTML=arr.map(r=>`<article class="result repair-result" data-phone="${esc(r.phone||"")}" data-name="${esc(r.customerName||"")}">
       <div class="result-name">${esc(r.customerName||"")}</div><div class="result-meta">${esc(r.phone||"")} • ${esc(formatDateTime(r))}</div>
       <div class="result-grid">${item("Brand / Model",r.device)}${item("Problem",r.problem)}${item("Repairing By",r.repairBy)}${item("Total",`₹${Number(r.total??r.payment??0).toLocaleString("en-IN")}`)}${item("Parts Price",`₹${Number(r.partsPrice||0).toLocaleString("en-IN")}`)}${item("Profit",`₹${Number(r.profit??(Number(r.total??r.payment??0)-Number(r.partsPrice||0))).toLocaleString("en-IN")}`)}</div>
     </article>`).join("");
+    box.querySelectorAll(".repair-result").forEach(card=>card.addEventListener("click",e=>{
+        if(e.target.closest("button,input,label,select,textarea,a"))return;
+        showUnifiedCustomerHistory(card.dataset.phone,card.dataset.name);
+    }));
     box.querySelectorAll(".repair-delete-btn").forEach(btn=>btn.onclick=async e=>{e.stopPropagation();const r=repairing.find(x=>x.id===btn.dataset.repairId);if(!r||!confirm(`Delete ${r.customerName||"this customer"} repairing record?`))return;try{await deleteWithRecycle(REPAIR_COL,r.id,r);await audit("customer_delete",{section:"Kabir Repairing Data",customerId:r.id,customerName:r.customerName,description:`Repairing customer ${r.customerName||r.id} moved to Recently Deleted`});renderRepairing();renderAllCustomers();showSuccessToast("Deleted","Repairing record moved to Recently Deleted");}catch(err){console.error(err);alert("Delete failed. Firebase Rules check करें.");}});
 }
 async function saveRepair(e){
