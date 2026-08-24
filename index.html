@@ -35,7 +35,6 @@
     <button id="financeModule" class="glass module-card" type="button"><span class="module-icon">💳</span><span><b>FINANCE</b><small>Customer finance & mobile data</small></span><em>›</em></button>
     <button id="repairingModule" class="glass module-card" type="button"><span class="module-icon">🛠️</span><span><b>REPAIRING</b><small>Repairing customer & device data</small></span><em>›</em></button>
     <button id="customerModule" class="glass module-card" type="button"><span class="module-icon">👤</span><span><b>CUSTOMER</b><small>All customers & complete history</small><strong class="home-customer-count" id="homeCustomerCount">0 Customers</strong></span><em>›</em></button>
-    <button id="warrantyModule" class="glass module-card warranty-home-card" type="button"><span class="module-icon">🛡️</span><span><b>WARRANTY CHECK</b><small>IMEI + Brand warranty information</small></span><em>›</em></button>
   </section>
   <div class="home-bottom-actions"><button id="homeSearchButton" class="home-search-fab" type="button" title="Smart Search"><span>⌕</span><b>SEARCH</b></button><button id="recentDeletedButton" class="home-search-fab recently-deleted-fab" type="button" title="Recently Deleted"><span>♻</span><b>RECENTLY DELETED</b></button></div>
 </section>
@@ -111,33 +110,6 @@
 <section id="smartSearchSection" data-page class="glass panel hidden app-page smart-search-page"><div class="section-head"><div><div class="eyebrow">SMART DATABASE SEARCH</div><h2>Search Everything</h2><small class="section-subtitle">Hindi • English • Hinglish — data se direct answer</small></div><button class="close" data-page-back="homeView">×</button></div><div class="smart-search-box"><span>⌕</span><input id="universalSearchInput" type="search" placeholder="पूछें: आज कितने customer हैं? / Aman ka phone / 3000x30%…" autocomplete="off"></div><div id="smartSearchAnswer" class="smart-answer"><div class="empty">Apna question, business query या mathematics calculation यहाँ type करें.</div></div><div id="smartSearchResults" class="results"></div></section>
 
 <section id="recentDeletedSection" data-page class="glass panel hidden app-page"><div class="section-head"><div><div class="eyebrow">RECENTLY DELETED</div><h2>Recently Deleted</h2><small class="section-subtitle">Deleted data 30 days तक recover किया जा सकता है</small></div><button class="close" data-page-back="homeView">×</button></div><div id="recentDeletedResults" class="results"></div></section>
-<section id="warrantyPage" data-page class="glass panel hidden app-page warranty-page">
-  <div class="section-head"><div><div class="eyebrow">DEVICE SERVICE</div><h2>Warranty Check</h2><small class="section-subtitle">अपनी phone company चुनें और official warranty check खोलें</small></div><button class="close" data-page-back="homeView">×</button></div>
-  <div class="warranty-brand-grid" id="warrantyBrandGrid" aria-label="Phone company warranty check">
-    <button class="warranty-brand-card" type="button" data-brand="Apple"><span class="warranty-logo apple"></span><b>Apple</b><small>Check Coverage</small></button>
-    <button class="warranty-brand-card" type="button" data-brand="Samsung"><span class="warranty-logo samsung">S</span><b>Samsung</b><small>Warranty / My Page</small></button>
-    <button class="warranty-brand-card" type="button" data-brand="OnePlus"><span class="warranty-logo oneplus">1+</span><b>OnePlus</b><small>IMEI Warranty Check</small></button>
-    <button class="warranty-brand-card" type="button" data-brand="Xiaomi"><span class="warranty-logo xiaomi">mi</span><b>Xiaomi</b><small>Official Support</small></button>
-    <button class="warranty-brand-card" type="button" data-brand="Redmi"><span class="warranty-logo redmi">mi</span><b>Redmi</b><small>Official Support</small></button>
-    <button class="warranty-brand-card" type="button" data-brand="POCO"><span class="warranty-logo poco">POCO</span><b>POCO</b><small>Official Support</small></button>
-    <button class="warranty-brand-card" type="button" data-brand="OPPO"><span class="warranty-logo oppo">OPPO</span><b>OPPO</b><small>Official Support</small></button>
-    <button class="warranty-brand-card" type="button" data-brand="vivo"><span class="warranty-logo vivo">vivo</span><b>vivo</b><small>IMEI Check</small></button>
-    <button class="warranty-brand-card" type="button" data-brand="realme"><span class="warranty-logo realme">realme</span><b>realme</b><small>Warranty Status</small></button>
-    <button class="warranty-brand-card" type="button" data-brand="iQOO"><span class="warranty-logo iqoo">iQOO</span><b>iQOO</b><small>Official Support</small></button>
-    <button class="warranty-brand-card" type="button" data-brand="Motorola"><span class="warranty-logo motorola">M</span><b>Motorola</b><small>Repair / Warranty</small></button>
-    <button class="warranty-brand-card" type="button" data-brand="Nothing"><span class="warranty-logo nothing">N</span><b>Nothing</b><small>Official Support</small></button>
-    <button class="warranty-brand-card" type="button" data-brand="Google Pixel"><span class="warranty-logo google">G</span><b>Google Pixel</b><small>Warranty Support</small></button>
-    <button class="warranty-brand-card" type="button" data-brand="Nokia / HMD"><span class="warranty-logo nokia">N</span><b>Nokia / HMD</b><small>Support</small></button>
-    <button class="warranty-brand-card" type="button" data-brand="ASUS"><span class="warranty-logo asus">ASUS</span><b>ASUS</b><small>Warranty Support</small></button>
-    <button class="warranty-brand-card" type="button" data-brand="Sony"><span class="warranty-logo sony">SONY</span><b>Sony</b><small>Support</small></button>
-    <button class="warranty-brand-card" type="button" data-brand="Infinix"><span class="warranty-logo infinix">i</span><b>Infinix</b><small>Official Support</small></button>
-    <button class="warranty-brand-card" type="button" data-brand="TECNO"><span class="warranty-logo tecno">TECNO</span><b>TECNO</b><small>Official Support</small></button>
-    <button class="warranty-brand-card" type="button" data-brand="Lava"><span class="warranty-logo lava">LAVA</span><b>Lava</b><small>Official Support</small></button>
-    <button class="warranty-brand-card" type="button" data-brand="HONOR"><span class="warranty-logo honor">HONOR</span><b>HONOR</b><small>Official Support</small></button>
-  </div>
-  <div class="warranty-brand-note">किसी company पर tap करते ही उसका official warranty / support page खुलेगा। Warranty status manufacturer के official system में ही verify करें।</div>
-</section>
-
 <section id="financePage" data-page class="glass panel hidden app-page"><div class="section-head"><div><div class="eyebrow">FINANCE</div><h2>Finance Management</h2></div><button class="close" data-page-back="homeView">×</button></div>
   <div class="module-grid"><button id="totalCustomersCard" class="glass stat" type="button"><span class="icon">👥</span><span>Total Customers</span><strong id="totalCustomers">0</strong></button><button id="totalDevicesCard" class="glass stat" type="button"><span class="icon">📱</span><span>Total Devices</span><strong id="totalDevices">0</strong></button><button id="searchCustomerCard" class="glass action" type="button"><span class="icon">⌕</span><strong>Search Customer</strong><small>Name, mobile, IMEI, date…</small></button><button id="addCustomerCard" class="glass action" type="button"><span class="icon">＋</span><strong>Add Customer</strong><small>Create a new customer record</small></button></div>
 </section>
