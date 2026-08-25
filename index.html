@@ -151,12 +151,12 @@
 
 <section id="addSection" data-page class="glass panel hidden app-page">
   <div class="section-head"><div><div class="eyebrow">NEW RECORD</div><h2>Add Customer</h2></div><button class="close" data-close="addSection">×</button></div>
-  <form id="customerForm">
+  <form id="customerForm" autocomplete="off">
     <div class="block customer-block"><b>Customer Details</b>
       <label class="entry-date-label">Entry Date<input id="entryDate" class="entry-date-field" type="date"></label>
       <div class="customer-pair customer-name-phone-pair">
-        <label class="customer-name-field">Customer Name<input id="customerName" autocomplete="name"></label>
-        <label class="customer-phone-field">Mobile Number<input id="phone" type="tel" inputmode="tel" maxlength="10"></label>
+        <label class="customer-name-field">Customer Name<input id="customerName" name="customer_name_new" autocomplete="new-password" data-lpignore="true" data-form-type="other"></label>
+        <label class="customer-phone-field">Mobile Number<input id="phone" name="customer_phone_new" type="tel" inputmode="tel" maxlength="10" autocomplete="off" data-lpignore="true" data-form-type="other"></label>
       </div>
       <label class="customer-code-field">Customer Code<input id="customerCode" readonly placeholder="Automatic KM1234"></label>
       <label>Address<textarea id="address" rows="3"></textarea></label>
