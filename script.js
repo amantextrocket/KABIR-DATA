@@ -1361,7 +1361,7 @@ function enforceWriteLock(messageId="formMessage"){
 function makeCustomerCode(){
     return "KM"+Math.floor(1000+Math.random()*9000);
 }
-function findMatchingCustomerByPhone(phone,excludeId=""){const p=normalizeDigits(phone);return customers.find(c=>c.id!==excludeId&&normalizeDigits(c.phone)===p)||null;}
+function findMatchingCustomerByPhone(phone,excludeId=""){const p=normalizeDigits(phone);if(!p||p.length<10)return null;return customers.find(c=>c.id!==excludeId&&normalizeDigits(c.phone)===p)||null;}
 function findMatchingCustomersByName(name,excludeId=""){const n=String(name||"").trim().toLowerCase();return customers.filter(c=>c.id!==excludeId&&String(c.customerName||"").trim().toLowerCase()===n);}
 function syncCustomerFields(nameId,phoneId){
     const nameEl=$(nameId),phoneEl=$(phoneId);if(!nameEl||!phoneEl)return;
@@ -1376,23 +1376,8 @@ function applyCustomerDuplicateState(){
     const nameEl=$("customerName"),phoneEl=$("phone");if(!nameEl||!phoneEl)return;
     const editId=$("customerForm")?.dataset.editId||"";
     const byPhone=findMatchingCustomerByPhone(phoneEl.value,editId);
-    if(byPhone){
-        nameEl.value=byPhone.customerName||"";
-        nameEl.readOnly=true;
-        nameEl.dataset.autoMatched="1";
-        return;
-    }
-
-    // A previous customer's auto-filled name must never remain locked/stuck
-    // when the user starts entering a new mobile number.
-    if(nameEl.dataset.autoMatched==="1"){
-        nameEl.value="";
-        nameEl.dataset.autoMatched="";
-    }
+    if(byPhone){nameEl.value=byPhone.customerName||"";nameEl.readOnly=true;return;}
     nameEl.readOnly=false;
-
-    // Preserve the existing convenience feature: typing an existing customer
-    // name can fill its mobile number, but it must not lock the name field.
     const matches=findMatchingCustomersByName(nameEl.value,editId);
     if(matches.length===1 && !normalizeDigits(phoneEl.value)) phoneEl.value=matches[0].phone||"";
 }
@@ -1592,6 +1577,7 @@ async function save(e){
          */
 
         $("customerForm").reset();
+        if($("customerName")){ $("customerName").readOnly=false; $("customerName").dataset.autoMatched=""; }
         if($("entryDate"))$("entryDate").value=todayISO();
         delete $("customerForm").dataset.editId;
         if($("customerCode")) $("customerCode").value="";
@@ -1604,17 +1590,6 @@ async function save(e){
 
         if($("financeCompany"))
             $("financeCompany").value="";
-
-        // reset() clears values but does not reset readOnly/custom state.
-        // Always make the next Finance customer name field editable and empty.
-        if($("customerName")){
-            $("customerName").readOnly=false;
-            $("customerName").dataset.autoMatched="";
-            $("customerName").value="";
-        }
-        if($("phone")){
-            $("phone").value="";
-        }
 
 
         /*
@@ -1880,10 +1855,6 @@ function openFinanceEdit(c){
     $("customerCode").value=c.customerCode||"";
     $("saveCustomerButton").textContent="UPDATE CUSTOMER";
     $("customerForm").dataset.editId=c.id;
-    if($("customerName")){
-        $("customerName").readOnly=false;
-        $("customerName").dataset.autoMatched="";
-    }
     $("brand").dispatchEvent(new Event("change"));
     setTimeout(()=>{
         $("model").value=c.model||"";$("model").dispatchEvent(new Event("change"));
