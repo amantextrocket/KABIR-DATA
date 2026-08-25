@@ -1376,8 +1376,23 @@ function applyCustomerDuplicateState(){
     const nameEl=$("customerName"),phoneEl=$("phone");if(!nameEl||!phoneEl)return;
     const editId=$("customerForm")?.dataset.editId||"";
     const byPhone=findMatchingCustomerByPhone(phoneEl.value,editId);
-    if(byPhone){nameEl.value=byPhone.customerName||"";nameEl.readOnly=true;return;}
+    if(byPhone){
+        nameEl.value=byPhone.customerName||"";
+        nameEl.readOnly=true;
+        nameEl.dataset.autoMatched="1";
+        return;
+    }
+
+    // A previous customer's auto-filled name must never remain locked/stuck
+    // when the user starts entering a new mobile number.
+    if(nameEl.dataset.autoMatched==="1"){
+        nameEl.value="";
+        nameEl.dataset.autoMatched="";
+    }
     nameEl.readOnly=false;
+
+    // Preserve the existing convenience feature: typing an existing customer
+    // name can fill its mobile number, but it must not lock the name field.
     const matches=findMatchingCustomersByName(nameEl.value,editId);
     if(matches.length===1 && !normalizeDigits(phoneEl.value)) phoneEl.value=matches[0].phone||"";
 }
@@ -1590,6 +1605,17 @@ async function save(e){
         if($("financeCompany"))
             $("financeCompany").value="";
 
+        // reset() clears values but does not reset readOnly/custom state.
+        // Always make the next Finance customer name field editable and empty.
+        if($("customerName")){
+            $("customerName").readOnly=false;
+            $("customerName").dataset.autoMatched="";
+            $("customerName").value="";
+        }
+        if($("phone")){
+            $("phone").value="";
+        }
+
 
         /*
          * Brand / model reset
@@ -1713,14 +1739,12 @@ function renderSearch(){
             catch(x){i.checked=!i.checked;console.error(x)}
         };
     });
-    // Robust delegated tap handler: works after every re-render and on iPhone touch.
-    box.onclick=e=>{
-        const card=e.target.closest(".customer-result");
-        if(!card||!box.contains(card)||e.target.closest(".switch"))return;
-        e.preventDefault();
-        const c=customers.find(x=>x.id===card.dataset.customer);
-        if(c)showCustomerDetail(c);
-    };
+    box.querySelectorAll(".customer-result").forEach(card=>{
+        card.addEventListener("click",e=>{
+            if(e.target.closest(".switch"))return;
+            const c=customers.find(x=>x.id===card.dataset.customer);if(c)showCustomerDetail(c);
+        });
+    });
 }
 function detailItem(a,b){return `<div class="detail-item"><small>${esc(a)}</small><b>${esc(b??"-")}</b></div>`}
 let activeCustomerId=null;
@@ -1752,19 +1776,9 @@ function showCustomerDetail(c){
       ${detailItem("Counter",c.counter)}${detailItem("Financer",c.financerName)}
       ${detailItem("Bill",c.billYes?"YES":"NO")}
     </div>`;
-    const within24h=canEditRecord(c);
-    const editBtn=$("editCustomerButton"),deleteBtn=$("deleteCustomerButton");
-    if(editBtn){
-        editBtn.disabled=!within24h;
-        editBtn.title=within24h?"Edit available for 24 hours after add":editLockMessage(c);
-        editBtn.textContent=within24h?"EDIT CUSTOMER":"EDIT LOCKED";
-    }
-    if(deleteBtn){
-        deleteBtn.disabled=!within24h;
-        deleteBtn.title=within24h?"Delete available for 24 hours after add":editLockMessage(c);
-        deleteBtn.textContent=within24h?"DELETE CUSTOMER":"DELETE LOCKED";
-    }
     $("customerDetailModal")?.classList.remove("hidden");
+    $("editCustomerButton")?.removeAttribute("disabled");
+    $("deleteCustomerButton")?.removeAttribute("disabled");
 }
 function closeCustomerDetail(){activeCustomerId=null;$("customerDetailModal")?.classList.add("hidden")}
 async function moveToRecentlyDeleted(collectionName,id,data){
@@ -1827,10 +1841,6 @@ async function deleteCustomer(){
     }
 
     if(!row||!source||!id){alert("Customer record नहीं मिला.");return;}
-    if(!canEditRecord(row)){
-        alert(editLockMessage(row));
-        return;
-    }
 
     const collectionName=source==="finance"?COL:source==="repair"?REPAIR_COL:source==="second"?SECOND_COL:ACCESSORY_COL;
     const label=source==="finance"?"Finance":source==="repair"?"Repairing":source==="second"?"Second Hand":"Accessories";
@@ -1870,6 +1880,10 @@ function openFinanceEdit(c){
     $("customerCode").value=c.customerCode||"";
     $("saveCustomerButton").textContent="UPDATE CUSTOMER";
     $("customerForm").dataset.editId=c.id;
+    if($("customerName")){
+        $("customerName").readOnly=false;
+        $("customerName").dataset.autoMatched="";
+    }
     $("brand").dispatchEvent(new Event("change"));
     setTimeout(()=>{
         $("model").value=c.model||"";$("model").dispatchEvent(new Event("change"));
@@ -1932,32 +1946,16 @@ function openAccessoryEdit(x){
 }
 function editCustomer(){
     if(enforceWriteLock("formMessage"))return;
-    const u=window.activeUnifiedCustomer||{};
+    const u=window.activeUnifiedCustomer;
     let row=null;
-    let source=u.actionSource||null;
+    if(u?.actionSource==="finance")row=customers.find(x=>x.id===u.actionId);
+    if(!row && activeCustomerId)row=customers.find(x=>x.id===activeCustomerId);
+    else if(u?.actionSource==="repair")row=repairing.find(x=>x.id===u.actionId);
+    else if(u?.actionSource==="second")row=secondHand.find(x=>x.id===u.actionId);
+    else if(u?.actionSource==="accessory")row=accessories.find(x=>x.id===u.actionId);
 
-    if(source==="finance")row=customers.find(x=>x.id===u.actionId);
-    else if(source==="repair")row=repairing.find(x=>x.id===u.actionId);
-    else if(source==="second")row=secondHand.find(x=>x.id===u.actionId);
-    else if(source==="accessory")row=accessories.find(x=>x.id===u.actionId);
-
-    if(!row && activeCustomerId){
-        row=customers.find(x=>x.id===activeCustomerId);
-        if(row)source="finance";
-    }
-
-    if(!row && u.phone){
-        const groups=getUnifiedRecords(u.phone,u.name);
-        row=getLatestUnifiedRecord(groups);
-        source=row?.__source||null;
-    }
-
-    if(!row||!source){alert("Customer record नहीं मिला.");return;}
-    if(!canEditRecord(row)){
-        alert(editLockMessage(row));
-        return;
-    }
-
+    if(!row){alert("Customer record नहीं मिला.");return;}
+    const source=u.actionSource;
     if(source==="finance")openFinanceEdit(row);
     else if(source==="repair")openRepairEdit(row);
     else if(source==="second")openSecondEdit(row);
@@ -2251,13 +2249,7 @@ function renderAllCustomers(){
     $("homeCustomerCount")&&($("homeCustomerCount").textContent=`${count} Customers`);
     updateCustomerTypeSwitch();
     box.innerHTML=rows.length?rows.map(x=>`<article class="result all-customer-result" data-phone="${esc(x.phone)}" data-name="${esc(x.name)}"><div class="result-top"><div><div class="result-name">${esc(x.name)}</div><div class="result-meta">${esc(x.phone||"Phone not available")} • ${x.records} record${x.records===1?"":"s"}</div><div class="result-date">${esc(x.latestCreatedAt?formatDateTime({createdAt:{toDate:()=>x.latestCreatedAt}}):"Date pending")}</div></div><div class="work-log-tag">${esc(x.type)}</div></div><div class="result-open-hint">Tap करके आज तक का पूरा data देखें</div></article>`).join(""):"<div class=\"empty\">No customer found.</div>";
-    // Delegated tap handler keeps customer opening reliable after live Firebase re-renders.
-    box.onclick=e=>{
-        const card=e.target.closest(".all-customer-result");
-        if(!card||!box.contains(card))return;
-        e.preventDefault();
-        showUnifiedCustomerHistory(card.dataset.phone,card.dataset.name);
-    };
+    box.querySelectorAll(".all-customer-result").forEach(card=>card.addEventListener("click",()=>showUnifiedCustomerHistory(card.dataset.phone,card.dataset.name)));
 }
 function getRecordCreatedDate(row){
     if(!row)return null;
@@ -2395,13 +2387,10 @@ function renderRepairing(){
       <div class="result-name">${esc(r.customerName||"")}</div><div class="result-meta">${esc(r.phone||"")} • ${esc(formatDateTime(r))}</div>
       <div class="result-grid">${item("Brand / Model",r.device)}${item("Problem",r.problem)}${item("Repairing By",r.repairBy)}${item("Total",`₹${Number(r.total??r.payment??0).toLocaleString("en-IN")}`)}${item("Parts Price",`₹${Number(r.partsPrice||0).toLocaleString("en-IN")}`)}${item("Profit",`₹${Number(r.profit??(Number(r.total??r.payment??0)-Number(r.partsPrice||0))).toLocaleString("en-IN")}`)}</div>
     </article>`).join("");
-    // Delegated tap handler keeps repairing customer records tappable after re-render.
-    box.onclick=e=>{
-        const card=e.target.closest(".repair-result");
-        if(!card||!box.contains(card)||e.target.closest("button,input,label,select,textarea,a"))return;
-        e.preventDefault();
+    box.querySelectorAll(".repair-result").forEach(card=>card.addEventListener("click",e=>{
+        if(e.target.closest("button,input,label,select,textarea,a"))return;
         showUnifiedCustomerHistory(card.dataset.phone,card.dataset.name);
-    };
+    }));
     box.querySelectorAll(".repair-delete-btn").forEach(btn=>btn.onclick=async e=>{e.stopPropagation();const r=repairing.find(x=>x.id===btn.dataset.repairId);if(!r||!confirm(`Delete ${r.customerName||"this customer"} repairing record?`))return;try{await deleteWithRecycle(REPAIR_COL,r.id,r);await audit("customer_delete",{section:"Kabir Repairing Data",customerId:r.id,customerName:r.customerName,description:`Repairing customer ${r.customerName||r.id} moved to Recently Deleted`});renderRepairing();renderAllCustomers();showSuccessToast("Deleted","Repairing record moved to Recently Deleted");}catch(err){console.error(err);alert("Delete failed. Firebase Rules check करें.");}});
 }
 async function saveRepair(e){
