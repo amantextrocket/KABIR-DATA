@@ -1750,9 +1750,11 @@ function showCustomerDetail(c){
       ${detailItem("Counter",c.counter)}${detailItem("Financer",c.financerName)}
       ${detailItem("Bill",c.billYes?"YES":"NO")}
     </div>`;
+    const editable=canEditRecord(c);
+    const editBtn=$("editCustomerButton"),deleteBtn=$("deleteCustomerButton");
+    if(editBtn){editBtn.disabled=!editable;editBtn.textContent=editable?"EDIT CUSTOMER":"EDIT LOCKED";editBtn.title=editable?"Edit available for 24 hours after add":editLockMessage(c);}
+    if(deleteBtn){deleteBtn.disabled=!editable;deleteBtn.textContent=editable?"DELETE CUSTOMER":"DELETE LOCKED";deleteBtn.title=editable?"Delete available for 24 hours after add":editLockMessage(c);}
     $("customerDetailModal")?.classList.remove("hidden");
-    $("editCustomerButton")?.removeAttribute("disabled");
-    $("deleteCustomerButton")?.removeAttribute("disabled");
 }
 function closeCustomerDetail(){activeCustomerId=null;$("customerDetailModal")?.classList.add("hidden")}
 async function moveToRecentlyDeleted(collectionName,id,data){
@@ -1792,34 +1794,23 @@ async function restoreDeleted(id){
 
 async function deleteCustomer(){
     if(enforceWriteLock("pinMessage"))return;
-    const u=window.activeUnifiedCustomer;
-    let source=u?.actionSource||null;
-    let id=u?.actionId||null;
-    let row=null;
-
-    if(source==="finance")row=customers.find(x=>x.id===id);
-    else if(source==="repair")row=repairing.find(x=>x.id===id);
-    else if(source==="second")row=secondHand.find(x=>x.id===id);
-    else if(source==="accessory")row=accessories.find(x=>x.id===id);
-
-    // Fallback for older/open detail states.
+    const resolved=resolveActiveCustomerRecord();
+    let row=resolved.row,source=resolved.source,id=resolved.id;
     if(!row && activeCustomerId){
-        row=customers.find(x=>x.id===activeCustomerId);
+        row=customers.find(x=>String(x.id)===String(activeCustomerId));
         if(row){source="finance";id=row.id;}
     }
-    if(!row && u){
+    if(!row && window.activeUnifiedCustomer){
+        const u=window.activeUnifiedCustomer;
         const groups=getUnifiedRecords(u.phone,u.name);
         row=getLatestUnifiedRecord(groups);
-        source=row?.__source||null;
-        id=row?.id||null;
+        source=row?.__source||null; id=row?.id||null;
     }
-
-    if(!row||!source||!id){alert("Customer record नहीं मिला.");return;}
-
+    if(!row||!source||!id){alert("Customer record नहीं मिला. Detail को दोबारा खोलकर Delete करें.");return;}
+    if(!canEditRecord(row)){alert(editLockMessage(row));return;}
     const collectionName=source==="finance"?COL:source==="repair"?REPAIR_COL:source==="second"?SECOND_COL:ACCESSORY_COL;
     const label=source==="finance"?"Finance":source==="repair"?"Repairing":source==="second"?"Second Hand":"Accessories";
     if(!confirm(`Delete ${row.customerName||row.name||"this customer"} का ${label} record?`))return;
-
     try{
         await deleteWithRecycle(collectionName,id,row);
         await audit("customer_delete",{
@@ -1914,34 +1905,25 @@ function openAccessoryEdit(x){
     if(btn)btn.textContent="UPDATE ACCESSORY";
     updateAccessoryProfit();
 }
+function resolveActiveCustomerRecord(){
+    const u=window.activeUnifiedCustomer||{};
+    const source=u.actionSource||null;
+    const id=u.actionId||null;
+    if(!source||!id)return {row:null,source:null,id:null};
+    let row=null;
+    if(source==="finance")row=customers.find(x=>String(x.id)===String(id));
+    else if(source==="repair")row=repairing.find(x=>String(x.id)===String(id));
+    else if(source==="second")row=secondHand.find(x=>String(x.id)===String(id));
+    else if(source==="accessory")row=accessories.find(x=>String(x.id)===String(id));
+    return {row,source,id};
+}
+
 function editCustomer(){
     if(enforceWriteLock("formMessage"))return;
-    const u=window.activeUnifiedCustomer||{};
-    let source=u.actionSource||null;
-    let id=u.actionId||null;
-    let row=null;
-
-    // Resolve the exact record first. Do not depend on activeCustomerId,
-    // because unified customer details can come from Finance or Repairing.
-    if(source==="finance") row=customers.find(x=>x.id===id)||null;
-    else if(source==="repair") row=repairing.find(x=>x.id===id)||null;
-    else if(source==="second") row=secondHand.find(x=>x.id===id)||null;
-    else if(source==="accessory") row=accessories.find(x=>x.id===id)||null;
-
-    // Fallback for older detail states.
-    if(!row && activeCustomerId){
-        row=customers.find(x=>x.id===activeCustomerId)||null;
-        if(row){source="finance";id=row.id;}
-    }
-    if(!row && u.phone){
-        const groups=getUnifiedRecords(u.phone,u.name);
-        const latest=getLatestUnifiedRecord(groups);
-        if(latest){row=latest;source=latest.__source;id=latest.id;}
-    }
-
-    if(!row||!source){alert("Customer record नहीं मिला.");return;}
+    const resolved=resolveActiveCustomerRecord();
+    const row=resolved.row,source=resolved.source;
+    if(!row){alert("Customer record नहीं मिला. Detail को दोबारा खोलकर Edit करें.");return;}
     if(!canEditRecord(row)){alert(editLockMessage(row));return;}
-
     if(source==="finance")openFinanceEdit(row);
     else if(source==="repair")openRepairEdit(row);
     else if(source==="second")openSecondEdit(row);
@@ -2239,10 +2221,12 @@ function renderAllCustomers(){
 }
 function getRecordCreatedDate(row){
     if(!row)return null;
-    const d=row.createdAt?.toDate?.();
-    if(d instanceof Date && !Number.isNaN(d.getTime()))return d;
-    if(row.createdAt){
-        const x=new Date(row.createdAt);
+    const candidates=[row.createdAt,row.updatedAt,row.entryDate,row.repairEntryDate,row.date,row.timestamp];
+    for(const value of candidates){
+        if(!value)continue;
+        const d=value?.toDate?.();
+        if(d instanceof Date && !Number.isNaN(d.getTime()))return d;
+        const x=new Date(value);
         if(!Number.isNaN(x.getTime()))return x;
     }
     return null;
@@ -2955,9 +2939,9 @@ function setupCustomerEnterNavigation(){
 // Delegation ensures the buttons keep working even when the modal is rebuilt or re-rendered.
 document.addEventListener("click",e=>{
     const edit=e.target.closest("#editCustomerButton");
-    if(edit && !edit.disabled){e.preventDefault();e.stopImmediatePropagation();editCustomer();return;}
+    if(edit){e.preventDefault();e.stopImmediatePropagation();editCustomer();return;}
     const del=e.target.closest("#deleteCustomerButton");
-    if(del && !del.disabled){e.preventDefault();e.stopImmediatePropagation();deleteCustomer();return;}
+    if(del){e.preventDefault();e.stopImmediatePropagation();deleteCustomer();return;}
     const close=e.target.closest("#closeDetailButton");
     if(close){e.preventDefault();e.stopImmediatePropagation();closeCustomerDetail();return;}
 });
