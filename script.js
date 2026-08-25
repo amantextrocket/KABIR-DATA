@@ -1713,12 +1713,14 @@ function renderSearch(){
             catch(x){i.checked=!i.checked;console.error(x)}
         };
     });
-    box.querySelectorAll(".customer-result").forEach(card=>{
-        card.addEventListener("click",e=>{
-            if(e.target.closest(".switch"))return;
-            const c=customers.find(x=>x.id===card.dataset.customer);if(c)showCustomerDetail(c);
-        });
-    });
+    // Robust delegated tap handler: works after every re-render and on iPhone touch.
+    box.onclick=e=>{
+        const card=e.target.closest(".customer-result");
+        if(!card||!box.contains(card)||e.target.closest(".switch"))return;
+        e.preventDefault();
+        const c=customers.find(x=>x.id===card.dataset.customer);
+        if(c)showCustomerDetail(c);
+    };
 }
 function detailItem(a,b){return `<div class="detail-item"><small>${esc(a)}</small><b>${esc(b??"-")}</b></div>`}
 let activeCustomerId=null;
@@ -1750,10 +1752,18 @@ function showCustomerDetail(c){
       ${detailItem("Counter",c.counter)}${detailItem("Financer",c.financerName)}
       ${detailItem("Bill",c.billYes?"YES":"NO")}
     </div>`;
-    const editable=canEditRecord(c);
+    const within24h=canEditRecord(c);
     const editBtn=$("editCustomerButton"),deleteBtn=$("deleteCustomerButton");
-    if(editBtn){editBtn.disabled=!editable;editBtn.textContent=editable?"EDIT CUSTOMER":"EDIT LOCKED";editBtn.title=editable?"Edit available for 24 hours after add":editLockMessage(c);}
-    if(deleteBtn){deleteBtn.disabled=!editable;deleteBtn.textContent=editable?"DELETE CUSTOMER":"DELETE LOCKED";deleteBtn.title=editable?"Delete available for 24 hours after add":editLockMessage(c);}
+    if(editBtn){
+        editBtn.disabled=!within24h;
+        editBtn.title=within24h?"Edit available for 24 hours after add":editLockMessage(c);
+        editBtn.textContent=within24h?"EDIT CUSTOMER":"EDIT LOCKED";
+    }
+    if(deleteBtn){
+        deleteBtn.disabled=!within24h;
+        deleteBtn.title=within24h?"Delete available for 24 hours after add":editLockMessage(c);
+        deleteBtn.textContent=within24h?"DELETE CUSTOMER":"DELETE LOCKED";
+    }
     $("customerDetailModal")?.classList.remove("hidden");
 }
 function closeCustomerDetail(){activeCustomerId=null;$("customerDetailModal")?.classList.add("hidden")}
@@ -1794,23 +1804,38 @@ async function restoreDeleted(id){
 
 async function deleteCustomer(){
     if(enforceWriteLock("pinMessage"))return;
-    const resolved=resolveActiveCustomerRecord();
-    let row=resolved.row,source=resolved.source,id=resolved.id;
+    const u=window.activeUnifiedCustomer;
+    let source=u?.actionSource||null;
+    let id=u?.actionId||null;
+    let row=null;
+
+    if(source==="finance")row=customers.find(x=>x.id===id);
+    else if(source==="repair")row=repairing.find(x=>x.id===id);
+    else if(source==="second")row=secondHand.find(x=>x.id===id);
+    else if(source==="accessory")row=accessories.find(x=>x.id===id);
+
+    // Fallback for older/open detail states.
     if(!row && activeCustomerId){
-        row=customers.find(x=>String(x.id)===String(activeCustomerId));
+        row=customers.find(x=>x.id===activeCustomerId);
         if(row){source="finance";id=row.id;}
     }
-    if(!row && window.activeUnifiedCustomer){
-        const u=window.activeUnifiedCustomer;
+    if(!row && u){
         const groups=getUnifiedRecords(u.phone,u.name);
         row=getLatestUnifiedRecord(groups);
-        source=row?.__source||null; id=row?.id||null;
+        source=row?.__source||null;
+        id=row?.id||null;
     }
-    if(!row||!source||!id){alert("Customer record नहीं मिला. Detail को दोबारा खोलकर Delete करें.");return;}
-    if(!canEditRecord(row)){alert(editLockMessage(row));return;}
+
+    if(!row||!source||!id){alert("Customer record नहीं मिला.");return;}
+    if(!canEditRecord(row)){
+        alert(editLockMessage(row));
+        return;
+    }
+
     const collectionName=source==="finance"?COL:source==="repair"?REPAIR_COL:source==="second"?SECOND_COL:ACCESSORY_COL;
     const label=source==="finance"?"Finance":source==="repair"?"Repairing":source==="second"?"Second Hand":"Accessories";
     if(!confirm(`Delete ${row.customerName||row.name||"this customer"} का ${label} record?`))return;
+
     try{
         await deleteWithRecycle(collectionName,id,row);
         await audit("customer_delete",{
@@ -1905,25 +1930,34 @@ function openAccessoryEdit(x){
     if(btn)btn.textContent="UPDATE ACCESSORY";
     updateAccessoryProfit();
 }
-function resolveActiveCustomerRecord(){
-    const u=window.activeUnifiedCustomer||{};
-    const source=u.actionSource||null;
-    const id=u.actionId||null;
-    if(!source||!id)return {row:null,source:null,id:null};
-    let row=null;
-    if(source==="finance")row=customers.find(x=>String(x.id)===String(id));
-    else if(source==="repair")row=repairing.find(x=>String(x.id)===String(id));
-    else if(source==="second")row=secondHand.find(x=>String(x.id)===String(id));
-    else if(source==="accessory")row=accessories.find(x=>String(x.id)===String(id));
-    return {row,source,id};
-}
-
 function editCustomer(){
     if(enforceWriteLock("formMessage"))return;
-    const resolved=resolveActiveCustomerRecord();
-    const row=resolved.row,source=resolved.source;
-    if(!row){alert("Customer record नहीं मिला. Detail को दोबारा खोलकर Edit करें.");return;}
-    if(!canEditRecord(row)){alert(editLockMessage(row));return;}
+    const u=window.activeUnifiedCustomer||{};
+    let row=null;
+    let source=u.actionSource||null;
+
+    if(source==="finance")row=customers.find(x=>x.id===u.actionId);
+    else if(source==="repair")row=repairing.find(x=>x.id===u.actionId);
+    else if(source==="second")row=secondHand.find(x=>x.id===u.actionId);
+    else if(source==="accessory")row=accessories.find(x=>x.id===u.actionId);
+
+    if(!row && activeCustomerId){
+        row=customers.find(x=>x.id===activeCustomerId);
+        if(row)source="finance";
+    }
+
+    if(!row && u.phone){
+        const groups=getUnifiedRecords(u.phone,u.name);
+        row=getLatestUnifiedRecord(groups);
+        source=row?.__source||null;
+    }
+
+    if(!row||!source){alert("Customer record नहीं मिला.");return;}
+    if(!canEditRecord(row)){
+        alert(editLockMessage(row));
+        return;
+    }
+
     if(source==="finance")openFinanceEdit(row);
     else if(source==="repair")openRepairEdit(row);
     else if(source==="second")openSecondEdit(row);
@@ -2217,16 +2251,20 @@ function renderAllCustomers(){
     $("homeCustomerCount")&&($("homeCustomerCount").textContent=`${count} Customers`);
     updateCustomerTypeSwitch();
     box.innerHTML=rows.length?rows.map(x=>`<article class="result all-customer-result" data-phone="${esc(x.phone)}" data-name="${esc(x.name)}"><div class="result-top"><div><div class="result-name">${esc(x.name)}</div><div class="result-meta">${esc(x.phone||"Phone not available")} • ${x.records} record${x.records===1?"":"s"}</div><div class="result-date">${esc(x.latestCreatedAt?formatDateTime({createdAt:{toDate:()=>x.latestCreatedAt}}):"Date pending")}</div></div><div class="work-log-tag">${esc(x.type)}</div></div><div class="result-open-hint">Tap करके आज तक का पूरा data देखें</div></article>`).join(""):"<div class=\"empty\">No customer found.</div>";
-    box.querySelectorAll(".all-customer-result").forEach(card=>card.addEventListener("click",()=>showUnifiedCustomerHistory(card.dataset.phone,card.dataset.name)));
+    // Delegated tap handler keeps customer opening reliable after live Firebase re-renders.
+    box.onclick=e=>{
+        const card=e.target.closest(".all-customer-result");
+        if(!card||!box.contains(card))return;
+        e.preventDefault();
+        showUnifiedCustomerHistory(card.dataset.phone,card.dataset.name);
+    };
 }
 function getRecordCreatedDate(row){
     if(!row)return null;
-    const candidates=[row.createdAt,row.updatedAt,row.entryDate,row.repairEntryDate,row.date,row.timestamp];
-    for(const value of candidates){
-        if(!value)continue;
-        const d=value?.toDate?.();
-        if(d instanceof Date && !Number.isNaN(d.getTime()))return d;
-        const x=new Date(value);
+    const d=row.createdAt?.toDate?.();
+    if(d instanceof Date && !Number.isNaN(d.getTime()))return d;
+    if(row.createdAt){
+        const x=new Date(row.createdAt);
         if(!Number.isNaN(x.getTime()))return x;
     }
     return null;
@@ -2308,9 +2346,8 @@ function showUnifiedCustomerHistory(phone,name){
     second.forEach(x=>rows.push(`<article class="history-row"><b>📱 Second Hand</b><small>${esc(formatDateTime(x))}</small><span>${esc(`${x.brand||""} ${x.model||x.device||""}`)} • IMEI ${esc(x.imei||"—")} • Profit ₹${Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))).toLocaleString("en-IN")}</span></article>`));
     acc.forEach(x=>rows.push(`<article class="history-row"><b>🎧 Accessories</b><small>${esc(formatDateTime(x))}</small><span>${esc(x.name||"")} • SN ${esc(x.sn||"—")} • Profit ₹${Number(x.profit??(Number(x.salePrice||0)-Number(x.price||0))).toLocaleString("en-IN")}</span></article>`));
 
-    const editable=within24h;
     const status=primary
-        ? (editable
+        ? (within24h
             ? `<div class="edit-window-note">✏️ Edit available for 24 hours after this record was added.</div>`
             : `<div class="edit-window-note locked">🔒 ${esc(editLockMessage(primary))}</div>`)
         : "";
@@ -2354,10 +2391,17 @@ function renderRepairing(){
     const s=val("repairSearchInput").toLowerCase();
     const arr=repairing.filter(r=>!s||[r.customerName,r.phone,r.device,r.problem,r.repairBy,r.total,r.partsPrice,r.profit,r.payment,formatDateTime(r)].join(" ").toLowerCase().includes(s));
     if(!arr.length){box.innerHTML=`<div class="empty">${s?"No repairing record found.":"No repairing records yet."}</div>`;return}
-    box.innerHTML=arr.map(r=>`<article class="result">
+    box.innerHTML=arr.map(r=>`<article class="result repair-result" data-phone="${esc(r.phone||"")}" data-name="${esc(r.customerName||"")}">
       <div class="result-name">${esc(r.customerName||"")}</div><div class="result-meta">${esc(r.phone||"")} • ${esc(formatDateTime(r))}</div>
       <div class="result-grid">${item("Brand / Model",r.device)}${item("Problem",r.problem)}${item("Repairing By",r.repairBy)}${item("Total",`₹${Number(r.total??r.payment??0).toLocaleString("en-IN")}`)}${item("Parts Price",`₹${Number(r.partsPrice||0).toLocaleString("en-IN")}`)}${item("Profit",`₹${Number(r.profit??(Number(r.total??r.payment??0)-Number(r.partsPrice||0))).toLocaleString("en-IN")}`)}</div>
     </article>`).join("");
+    // Delegated tap handler keeps repairing customer records tappable after re-render.
+    box.onclick=e=>{
+        const card=e.target.closest(".repair-result");
+        if(!card||!box.contains(card)||e.target.closest("button,input,label,select,textarea,a"))return;
+        e.preventDefault();
+        showUnifiedCustomerHistory(card.dataset.phone,card.dataset.name);
+    };
     box.querySelectorAll(".repair-delete-btn").forEach(btn=>btn.onclick=async e=>{e.stopPropagation();const r=repairing.find(x=>x.id===btn.dataset.repairId);if(!r||!confirm(`Delete ${r.customerName||"this customer"} repairing record?`))return;try{await deleteWithRecycle(REPAIR_COL,r.id,r);await audit("customer_delete",{section:"Kabir Repairing Data",customerId:r.id,customerName:r.customerName,description:`Repairing customer ${r.customerName||r.id} moved to Recently Deleted`});renderRepairing();renderAllCustomers();showSuccessToast("Deleted","Repairing record moved to Recently Deleted");}catch(err){console.error(err);alert("Delete failed. Firebase Rules check करें.");}});
 }
 async function saveRepair(e){
