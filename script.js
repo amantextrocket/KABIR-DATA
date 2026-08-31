@@ -400,35 +400,47 @@ let pinLoadPromise=null;
 
 async function loadSharedPin(){
     if(pinLoadPromise)return pinLoadPromise;
+
     pinLoadPromise=(async()=>{
         const securityRef=doc(db,SETTINGS_COL,SETTINGS_DOC);
+
+        // If Firebase auth has not emitted yet, wait only when truly necessary.
+        if(!user && !auth.currentUser) await authReady;
+
         try{
-            // SECURITY: PIN verification must use the live Firebase value.
-            // localStorage is never accepted as the source of truth.
             const securitySnap=await getDoc(securityRef);
+
             if(securitySnap.exists()){
                 const p=String(securitySnap.data()?.pin||"");
                 if(/^\d{4}$/.test(p)){
                     sharedPin=p;
                     pinLoaded=true;
+                    // Keep a verified PIN locally so the next startup can prepare
+                    // the input immediately. Firebase remains the source of truth
+                    // for every actual verification.
+                    try{localStorage.setItem(PIN_KEY,p)}catch(_){}
                     return p;
                 }
             }
+
             const legacyRef=doc(db,SETTINGS_COL,"app");
             const legacySnap=await getDoc(legacyRef);
+
             if(legacySnap.exists()){
                 const p=String(legacySnap.data()?.pin||"");
                 if(/^\d{4}$/.test(p)){
                     sharedPin=p;
                     pinLoaded=true;
+                    try{localStorage.setItem(PIN_KEY,p)}catch(_){}
                     await setDoc(securityRef,{pin:p,updatedAt:serverTimestamp()},{merge:true});
                     return p;
                 }
             }
-            // Only create the default on a genuinely new Firebase setup.
+
             sharedPin=DEFAULT_PIN;
             await setDoc(securityRef,{pin:DEFAULT_PIN,updatedAt:serverTimestamp()},{merge:true});
             pinLoaded=true;
+            try{localStorage.setItem(PIN_KEY,DEFAULT_PIN)}catch(_){}
             return sharedPin;
         }catch(e){
             console.error("Shared PIN load failed:",e);
@@ -436,6 +448,7 @@ async function loadSharedPin(){
             throw Error("PIN load नहीं हुआ. Firebase connection check करें.");
         }
     })();
+
     return pinLoadPromise;
 }
 
@@ -448,6 +461,7 @@ async function changeSharedPin(newPin){
     await setDoc(doc(db,SETTINGS_COL,"app"),{pin:newPin,updatedAt:serverTimestamp()},{merge:true});
     sharedPin=newPin;
     pinLoaded=true;
+    try{localStorage.setItem(PIN_KEY,newPin)}catch(_){}
     await audit("pin_change",{section:"Admin Panel",description:"Shared PIN changed from Admin Panel"});
 }
 
@@ -788,41 +802,78 @@ function pinError(){
 function setupPin(){
     const e=$("pinInput");
     if(!e)return;
+
+    // iPhone/iPad: autofocus + repeated immediate focus attempts.
+    // iOS may still suppress the software keyboard without a user gesture,
+    // but the PIN field is focused as early as the browser allows.
+    const focusPin=()=>{
+        try{
+            e.focus({preventScroll:true});
+            const end=e.value.length;
+            if(typeof e.setSelectionRange==="function") e.setSelectionRange(end,end);
+        }catch(_){}
+    };
+    focusPin();
+    requestAnimationFrame(focusPin);
+    setTimeout(focusPin,0);
+    setTimeout(focusPin,60);
+    setTimeout(focusPin,160);
+
     const attempt=()=>{
         e.value=e.value.replace(/\D/g,"").slice(0,4);
         dots(e.value);
         if(e.value.length!==4)return;
+
         const entered=e.value;
         const finish=async()=>{
             if(e.value!==entered)return;
-            // Never unlock from a cached/local PIN. Wait for live Firebase PIN.
+
             try{
-                await authReady;
+                // auth.currentUser is often available before onAuthStateChanged
+                // fires. Use it immediately instead of waiting unnecessarily.
+                if(!user && !auth.currentUser) await authReady;
+
+                // Load/verify the live Firebase PIN. unlock() itself is synchronous
+                // so there is no extra animation/network delay after verification.
                 const livePin=await loadSharedPin();
                 if(e.value!==entered)return;
+
                 if(entered===livePin){
-                    audit("login_success",{section:$('appScreen')?.classList.contains('admin')?'Admin Panel':'Kabir Mobile Data',description:'PIN login successful',deviceBrand:deviceInfo().brand,deviceModel:deviceInfo().model});
+                    audit("login_success",{
+                        section:$('appScreen')?.classList.contains('admin')?'Admin Panel':'Kabir Mobile Data',
+                        description:'PIN login successful',
+                        deviceBrand:deviceInfo().brand,
+                        deviceModel:deviceInfo().model
+                    });
                     unlock();
                     msg("pinMessage","");
                 }else{
-                    audit("login_failed",{section:$('appScreen')?.classList.contains('admin')?'Admin Panel':'Kabir Mobile Data',description:'Incorrect PIN entered'});
+                    audit("login_failed",{
+                        section:$('appScreen')?.classList.contains('admin')?'Admin Panel':'Kabir Mobile Data',
+                        description:'Incorrect PIN entered'
+                    });
                     msg("pinMessage","Incorrect PIN");
                     pinError();
-                    setTimeout(()=>{e.value="";dots("");msg("pinMessage","");e.focus()},240);
+                    setTimeout(()=>{e.value="";dots("");msg("pinMessage","");focusPin()},240);
                 }
             }catch(err){
+                console.error("PIN verification failed:",err);
                 msg("pinMessage","Firebase से PIN verify नहीं हो पाया.");
                 pinError();
-                setTimeout(()=>{e.value="";dots("");e.focus()},240);
+                setTimeout(()=>{e.value="";dots("");focusPin()},240);
             }
         };
         finish();
     };
+
     e.addEventListener("input",attempt);
-    $("homeButton")?.addEventListener("click",()=>{pageHistory=["homeView"];show("homeView");window.scrollTo({top:0,behavior:"smooth"});});
-    // Do not restore an unlocked session after a reload/device change.
+    $("homeButton")?.addEventListener("click",()=>{
+        pageHistory=["homeView"];
+        show("homeView");
+        window.scrollTo({top:0,behavior:"smooth"});
+    });
+
     sessionStorage.removeItem("kabir_unlocked");
-    setTimeout(()=>e.focus(),100);
 }
 
 /* =========================================================
@@ -1361,7 +1412,7 @@ function enforceWriteLock(messageId="formMessage"){
 function makeCustomerCode(){
     return "KM"+Math.floor(1000+Math.random()*9000);
 }
-function findMatchingCustomerByPhone(phone,excludeId=""){const p=normalizeDigits(phone);if(!p||p.length<10)return null;return customers.find(c=>c.id!==excludeId&&normalizeDigits(c.phone)===p)||null;}
+function findMatchingCustomerByPhone(phone,excludeId=""){const p=normalizeDigits(phone);return customers.find(c=>c.id!==excludeId&&normalizeDigits(c.phone)===p)||null;}
 function findMatchingCustomersByName(name,excludeId=""){const n=String(name||"").trim().toLowerCase();return customers.filter(c=>c.id!==excludeId&&String(c.customerName||"").trim().toLowerCase()===n);}
 function syncCustomerFields(nameId,phoneId){
     const nameEl=$(nameId),phoneEl=$(phoneId);if(!nameEl||!phoneEl)return;
@@ -1577,7 +1628,6 @@ async function save(e){
          */
 
         $("customerForm").reset();
-        if($("customerName")){ $("customerName").readOnly=false; $("customerName").dataset.autoMatched=""; }
         if($("entryDate"))$("entryDate").value=todayISO();
         delete $("customerForm").dataset.editId;
         if($("customerCode")) $("customerCode").value="";
@@ -1714,12 +1764,14 @@ function renderSearch(){
             catch(x){i.checked=!i.checked;console.error(x)}
         };
     });
-    box.querySelectorAll(".customer-result").forEach(card=>{
-        card.addEventListener("click",e=>{
-            if(e.target.closest(".switch"))return;
-            const c=customers.find(x=>x.id===card.dataset.customer);if(c)showCustomerDetail(c);
-        });
-    });
+    // Robust delegated tap handler: works after every re-render and on iPhone touch.
+    box.onclick=e=>{
+        const card=e.target.closest(".customer-result");
+        if(!card||!box.contains(card)||e.target.closest(".switch"))return;
+        e.preventDefault();
+        const c=customers.find(x=>x.id===card.dataset.customer);
+        if(c)showCustomerDetail(c);
+    };
 }
 function detailItem(a,b){return `<div class="detail-item"><small>${esc(a)}</small><b>${esc(b??"-")}</b></div>`}
 let activeCustomerId=null;
@@ -1751,9 +1803,19 @@ function showCustomerDetail(c){
       ${detailItem("Counter",c.counter)}${detailItem("Financer",c.financerName)}
       ${detailItem("Bill",c.billYes?"YES":"NO")}
     </div>`;
+    const within24h=canEditRecord(c);
+    const editBtn=$("editCustomerButton"),deleteBtn=$("deleteCustomerButton");
+    if(editBtn){
+        editBtn.disabled=!within24h;
+        editBtn.title=within24h?"Edit available for 24 hours after add":editLockMessage(c);
+        editBtn.textContent=within24h?"EDIT CUSTOMER":"EDIT LOCKED";
+    }
+    if(deleteBtn){
+        deleteBtn.disabled=!within24h;
+        deleteBtn.title=within24h?"Delete available for 24 hours after add":editLockMessage(c);
+        deleteBtn.textContent=within24h?"DELETE CUSTOMER":"DELETE LOCKED";
+    }
     $("customerDetailModal")?.classList.remove("hidden");
-    $("editCustomerButton")?.removeAttribute("disabled");
-    $("deleteCustomerButton")?.removeAttribute("disabled");
 }
 function closeCustomerDetail(){activeCustomerId=null;$("customerDetailModal")?.classList.add("hidden")}
 async function moveToRecentlyDeleted(collectionName,id,data){
@@ -1816,6 +1878,10 @@ async function deleteCustomer(){
     }
 
     if(!row||!source||!id){alert("Customer record नहीं मिला.");return;}
+    if(!canEditRecord(row)){
+        alert(editLockMessage(row));
+        return;
+    }
 
     const collectionName=source==="finance"?COL:source==="repair"?REPAIR_COL:source==="second"?SECOND_COL:ACCESSORY_COL;
     const label=source==="finance"?"Finance":source==="repair"?"Repairing":source==="second"?"Second Hand":"Accessories";
@@ -1917,16 +1983,32 @@ function openAccessoryEdit(x){
 }
 function editCustomer(){
     if(enforceWriteLock("formMessage"))return;
-    const u=window.activeUnifiedCustomer;
+    const u=window.activeUnifiedCustomer||{};
     let row=null;
-    if(u?.actionSource==="finance")row=customers.find(x=>x.id===u.actionId);
-    if(!row && activeCustomerId)row=customers.find(x=>x.id===activeCustomerId);
-    else if(u?.actionSource==="repair")row=repairing.find(x=>x.id===u.actionId);
-    else if(u?.actionSource==="second")row=secondHand.find(x=>x.id===u.actionId);
-    else if(u?.actionSource==="accessory")row=accessories.find(x=>x.id===u.actionId);
+    let source=u.actionSource||null;
 
-    if(!row){alert("Customer record नहीं मिला.");return;}
-    const source=u.actionSource;
+    if(source==="finance")row=customers.find(x=>x.id===u.actionId);
+    else if(source==="repair")row=repairing.find(x=>x.id===u.actionId);
+    else if(source==="second")row=secondHand.find(x=>x.id===u.actionId);
+    else if(source==="accessory")row=accessories.find(x=>x.id===u.actionId);
+
+    if(!row && activeCustomerId){
+        row=customers.find(x=>x.id===activeCustomerId);
+        if(row)source="finance";
+    }
+
+    if(!row && u.phone){
+        const groups=getUnifiedRecords(u.phone,u.name);
+        row=getLatestUnifiedRecord(groups);
+        source=row?.__source||null;
+    }
+
+    if(!row||!source){alert("Customer record नहीं मिला.");return;}
+    if(!canEditRecord(row)){
+        alert(editLockMessage(row));
+        return;
+    }
+
     if(source==="finance")openFinanceEdit(row);
     else if(source==="repair")openRepairEdit(row);
     else if(source==="second")openSecondEdit(row);
@@ -2220,7 +2302,13 @@ function renderAllCustomers(){
     $("homeCustomerCount")&&($("homeCustomerCount").textContent=`${count} Customers`);
     updateCustomerTypeSwitch();
     box.innerHTML=rows.length?rows.map(x=>`<article class="result all-customer-result" data-phone="${esc(x.phone)}" data-name="${esc(x.name)}"><div class="result-top"><div><div class="result-name">${esc(x.name)}</div><div class="result-meta">${esc(x.phone||"Phone not available")} • ${x.records} record${x.records===1?"":"s"}</div><div class="result-date">${esc(x.latestCreatedAt?formatDateTime({createdAt:{toDate:()=>x.latestCreatedAt}}):"Date pending")}</div></div><div class="work-log-tag">${esc(x.type)}</div></div><div class="result-open-hint">Tap करके आज तक का पूरा data देखें</div></article>`).join(""):"<div class=\"empty\">No customer found.</div>";
-    box.querySelectorAll(".all-customer-result").forEach(card=>card.addEventListener("click",()=>showUnifiedCustomerHistory(card.dataset.phone,card.dataset.name)));
+    // Delegated tap handler keeps customer opening reliable after live Firebase re-renders.
+    box.onclick=e=>{
+        const card=e.target.closest(".all-customer-result");
+        if(!card||!box.contains(card))return;
+        e.preventDefault();
+        showUnifiedCustomerHistory(card.dataset.phone,card.dataset.name);
+    };
 }
 function getRecordCreatedDate(row){
     if(!row)return null;
@@ -2358,10 +2446,13 @@ function renderRepairing(){
       <div class="result-name">${esc(r.customerName||"")}</div><div class="result-meta">${esc(r.phone||"")} • ${esc(formatDateTime(r))}</div>
       <div class="result-grid">${item("Brand / Model",r.device)}${item("Problem",r.problem)}${item("Repairing By",r.repairBy)}${item("Total",`₹${Number(r.total??r.payment??0).toLocaleString("en-IN")}`)}${item("Parts Price",`₹${Number(r.partsPrice||0).toLocaleString("en-IN")}`)}${item("Profit",`₹${Number(r.profit??(Number(r.total??r.payment??0)-Number(r.partsPrice||0))).toLocaleString("en-IN")}`)}</div>
     </article>`).join("");
-    box.querySelectorAll(".repair-result").forEach(card=>card.addEventListener("click",e=>{
-        if(e.target.closest("button,input,label,select,textarea,a"))return;
+    // Delegated tap handler keeps repairing customer records tappable after re-render.
+    box.onclick=e=>{
+        const card=e.target.closest(".repair-result");
+        if(!card||!box.contains(card)||e.target.closest("button,input,label,select,textarea,a"))return;
+        e.preventDefault();
         showUnifiedCustomerHistory(card.dataset.phone,card.dataset.name);
-    }));
+    };
     box.querySelectorAll(".repair-delete-btn").forEach(btn=>btn.onclick=async e=>{e.stopPropagation();const r=repairing.find(x=>x.id===btn.dataset.repairId);if(!r||!confirm(`Delete ${r.customerName||"this customer"} repairing record?`))return;try{await deleteWithRecycle(REPAIR_COL,r.id,r);await audit("customer_delete",{section:"Kabir Repairing Data",customerId:r.id,customerName:r.customerName,description:`Repairing customer ${r.customerName||r.id} moved to Recently Deleted`});renderRepairing();renderAllCustomers();showSuccessToast("Deleted","Repairing record moved to Recently Deleted");}catch(err){console.error(err);alert("Delete failed. Firebase Rules check करें.");}});
 }
 async function saveRepair(e){
