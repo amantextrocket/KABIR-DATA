@@ -15,7 +15,7 @@
     <h1>Kabir Mobile Data</h1>
     <p class="muted">Secure shop database</p>
     <label class="pin-label" for="pinInput">Enter PIN</label>
-    <input id="pinInput" class="pin-input" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" placeholder="••••">
+    <input id="pinInput" class="pin-input" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" autofocus enterkeyhint="done" placeholder="••••">
     <div id="pinDots" class="pin-dots"><i></i><i></i><i></i><i></i></div>
     <p id="pinMessage" class="message"></p><p id="connectionStatus" class="firebase-status">Firebase connecting…</p>
   </div>
@@ -151,12 +151,12 @@
 
 <section id="addSection" data-page class="glass panel hidden app-page">
   <div class="section-head"><div><div class="eyebrow">NEW RECORD</div><h2>Add Customer</h2></div><button class="close" data-close="addSection">×</button></div>
-  <form id="customerForm" autocomplete="off">
+  <form id="customerForm">
     <div class="block customer-block"><b>Customer Details</b>
       <label class="entry-date-label">Entry Date<input id="entryDate" class="entry-date-field" type="date"></label>
       <div class="customer-pair customer-name-phone-pair">
-        <label class="customer-name-field">Customer Name<input id="customerName" name="customer_name_new" autocomplete="new-password" data-lpignore="true" data-form-type="other"></label>
-        <label class="customer-phone-field">Mobile Number<input id="phone" name="customer_phone_new" type="tel" inputmode="tel" maxlength="10" autocomplete="off" data-lpignore="true" data-form-type="other"></label>
+        <label class="customer-name-field">Customer Name<input id="customerName" autocomplete="name"></label>
+        <label class="customer-phone-field">Mobile Number<input id="phone" type="tel" inputmode="tel" maxlength="10"></label>
       </div>
       <label class="customer-code-field">Customer Code<input id="customerCode" readonly placeholder="Automatic KM1234"></label>
       <label>Address<textarea id="address" rows="3"></textarea></label>
